@@ -11,6 +11,11 @@ import StudyGuidePage from './pages/StudyGuidePage';
 import MindMapPage from './pages/MindMapPage';
 import PomodoroPage from './pages/PomodoroPage';
 import SettingsPage from './pages/SettingsPage';
+import TutorPage from './pages/TutorPage';
+import NotesPage from './pages/NotesPage';
+import ConceptPage from './pages/ConceptPage';
+import ExamPage from './pages/ExamPage';
+import SchedulePage from './pages/SchedulePage';
 import { useSettingsStore } from './store/settingsStore';
 
 export default function App() {
@@ -33,6 +38,11 @@ export default function App() {
           <Route path="/study-guide" element={<StudyGuidePage />} />
           <Route path="/mindmap" element={<MindMapPage />} />
           <Route path="/pomodoro" element={<PomodoroPage />} />
+          <Route path="/tutor" element={<TutorPage />} />
+          <Route path="/notes" element={<NotesPage />} />
+          <Route path="/concepts" element={<ConceptPage />} />
+          <Route path="/exam" element={<ExamPage />} />
+          <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>

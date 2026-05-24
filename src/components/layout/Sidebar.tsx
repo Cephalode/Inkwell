@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiDocumentText, HiAcademicCap, HiQuestionMarkCircle, HiBookOpen, HiClock, HiCog, HiTemplate, HiSparkles } from 'react-icons/hi';
+import { HiHome, HiDocumentText, HiAcademicCap, HiQuestionMarkCircle, HiBookOpen, HiClock, HiCog, HiTemplate, HiSparkles, HiChat, HiLightBulb, HiBeaker, HiClipboardCheck, HiCalendar } from 'react-icons/hi';
 import { useUIStore } from '../../store/uiStore';
 
 const navItems = [
@@ -11,6 +11,11 @@ const navItems = [
   { to: '/study-guide', icon: HiTemplate, label: 'Study Guide' },
   { to: '/mindmap', icon: HiSparkles, label: 'Mind Map' },
   { to: '/pomodoro', icon: HiClock, label: 'Pomodoro' },
+  { to: '/tutor', icon: HiLightBulb, label: 'AI Tutor' },
+  { to: '/notes', icon: HiChat, label: 'Notes' },
+  { to: '/concepts', icon: HiBeaker, label: 'Concepts' },
+  { to: '/exam', icon: HiClipboardCheck, label: 'Practice Exam' },
+  { to: '/schedule', icon: HiCalendar, label: 'Schedule' },
   { to: '/settings', icon: HiCog, label: 'Settings' },
 ];
 
