@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { unlinkSync } from 'fs';
+import { unlinkSync, renameSync } from 'fs';
 import { readdirSync } from 'fs';
 import pool from '../db.js';
 
@@ -15,7 +15,8 @@ const storage = multer.diskStorage({
     cb(null, __dirname);
   },
   filename: (_req, file, cb) => {
-    cb(null, file.originalname);
+    // Use temp prefix; renamed after we have the chapter ID
+    cb(null, `tmp_ch_${Date.now()}_${file.originalname}`);
   },
 });
 
@@ -108,6 +109,10 @@ router.post('/documents/:parentId/chapters', upload.array('files', 100), async (
       const meta = metadata[i] || {};
       const id = `${parentId}_ch${meta.chapterIndex ?? i}`;
 
+      // Rename from temp name to final name
+      const finalPath = path.join(__dirname, `${id}_${file.originalname}`);
+      renameSync(file.path, finalPath);
+
       await pool.query(
         `INSERT INTO chapters (id, parent_id, chapter_title, chapter_index, start_page, end_page, parsed_text, tags, file_path)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -120,7 +125,7 @@ router.post('/documents/:parentId/chapters', upload.array('files', 100), async (
           meta.endPage ?? 0,
           meta.parsedText || '',
           JSON.stringify(meta.tags || []),
-          file.path,
+          finalPath,
         ],
       );
 

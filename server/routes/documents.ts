@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { unlinkSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { renameSync } from 'fs';
 import pool from '../db.js';
 
 const router = Router();
@@ -15,7 +16,8 @@ const storage = multer.diskStorage({
     cb(null, __dirname);
   },
   filename: (_req, file, cb) => {
-    cb(null, file.originalname);
+    // Use a temp prefix to avoid collisions; renamed after we have the UUID
+    cb(null, `tmp_${Date.now()}_${file.originalname}`);
   },
 });
 
@@ -64,13 +66,16 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   const ext = path.extname(name).slice(1).toLowerCase() || 'bin';
   const mimeType = file.mimetype;
   const size = file.size;
-  const filePath = file.path;
+
+  // Rename from temp name to UUID-based final name
+  const finalPath = path.join(__dirname, `${id}_${name}`);
+  renameSync(file.path, finalPath);
 
   try {
     await pool.query(
       `INSERT INTO documents (id, name, type, mime_type, size, file_path)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, name, ext, mimeType, size, filePath],
+      [id, name, ext, mimeType, size, finalPath],
     );
 
     const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
