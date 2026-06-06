@@ -3,6 +3,15 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
+  server: {
+    allowedHosts: ['metasepia'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+    },
+  },
   plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: {
