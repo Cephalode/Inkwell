@@ -32,6 +32,7 @@ interface DocRow {
   size: number;
   parsed_text: string;
   thumbnail: string;
+  chapter_markers: unknown;
   tags: unknown;
   file_path: string | null;
   created_at: string;
@@ -47,6 +48,7 @@ function rowToDoc(row: DocRow) {
     size: Number(row.size),
     parsedText: row.parsed_text,
     thumbnail: row.thumbnail,
+    chapterMarkers: row.chapter_markers,
     tags: row.tags,
     filePath: row.file_path,
     createdAt: row.created_at,
@@ -111,16 +113,42 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ── PATCH /:id — Update tags ───────────────────────────────────────────────
+// ── PATCH /:id — Update document fields (tags, parsedText, thumbnail, chapterMarkers) ──
 router.patch('/:id', async (req: Request, res: Response) => {
-  const { tags } = req.body;
-  if (!Array.isArray(tags)) {
-    return res.status(400).json({ error: 'tags must be an array' });
+  const { tags, parsedText, thumbnail, chapterMarkers } = req.body;
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+
+  if (Array.isArray(tags)) {
+    sets.push(`tags = $${i++}`);
+    values.push(JSON.stringify(tags));
   }
+  if (typeof parsedText === 'string') {
+    sets.push(`parsed_text = $${i++}`);
+    values.push(parsedText);
+  }
+  if (typeof thumbnail === 'string' || thumbnail === null) {
+    sets.push(`thumbnail = $${i++}`);
+    values.push(thumbnail);
+  }
+  if (Array.isArray(chapterMarkers)) {
+    sets.push(`chapter_markers = $${i++}`);
+    values.push(JSON.stringify(chapterMarkers));
+  }
+
+  if (sets.length === 0) {
+    return res.status(400).json({ error: 'No fields to update' });
+  }
+
+  sets.push(`updated_at = now()`);
+  values.push(req.params.id);
+
   try {
     const { rows } = await pool.query(
-      `UPDATE documents SET tags = $1, updated_at = now() WHERE id = $2 RETURNING *`,
-      [JSON.stringify(tags), req.params.id],
+      `UPDATE documents SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      values,
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });

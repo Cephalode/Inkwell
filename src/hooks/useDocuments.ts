@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { parseFile } from '../services/parsers/index';
 import { classifyDocument } from '../services/classifyDocument';
-import { uploadDocument, listDocuments, updateDocumentTags, deleteDocument as deleteDoc } from '../services/api/client';
+import { uploadDocument, listDocuments, updateDocumentTags, updateDocument as updateDoc, deleteDocument as deleteDoc } from '../services/api/client';
 import type { DocumentFile, DocumentType } from '../types/document';
 import { SUPPORTED_MIME_TYPES, SUPPORTED_EXTENSIONS } from '../types/document';
 
@@ -39,6 +39,13 @@ export function useDocuments() {
         rawBlob: file,
       };
       addDocument(enrichedDoc);
+
+      // 3b. Persist parsed text + thumbnail + chapter markers to backend
+      updateDoc(doc.id, {
+        parsedText: parsed.text,
+        thumbnail: parsed.thumbnail ?? null,
+        chapterMarkers: parsed.chapters ?? [],
+      }).catch((err) => console.error('Failed to persist parsed data:', err));
 
       // 4. Classify in the background — update tags when done
       setClassifyingIds((prev) => new Set(prev).add(doc.id));

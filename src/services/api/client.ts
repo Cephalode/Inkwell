@@ -22,6 +22,7 @@ function mapDocument(r: any): DocumentFile {
     rawBlob: undefined,
     parsedText: r.parsedText ?? '',
     thumbnail: r.thumbnail ?? undefined,
+    chapterMarkers: r.chapterMarkers ?? undefined,
     tags: r.tags ?? [],
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
@@ -80,6 +81,15 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
     body: JSON.stringify({ tags }),
   });
   if (!res.ok) throw new Error(`Failed to update tags: ${res.status}`);
+}
+
+export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[] }): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update document: ${res.status}`);
 }
 
 export async function deleteDocument(id: string): Promise<void> {
