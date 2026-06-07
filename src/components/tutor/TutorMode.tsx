@@ -9,6 +9,8 @@ import { chatCompletion } from '../../services/ai/client';
 interface TutorModeProps {
   documentText: string;
   documentName: string;
+  documentId?: string;
+  onSessionEnd?: (info: { duration: number; messageCount: number }) => void;
 }
 
 interface TutorMessage {
@@ -30,11 +32,12 @@ Study material you are tutoring on:
 {CONTEXT}
 ---`;
 
-export default function TutorMode({ documentText, documentName }: TutorModeProps) {
+export default function TutorMode({ documentText, documentName, documentId, onSessionEnd }: TutorModeProps) {
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [started, setStarted] = useState(false);
+  const [sessionStart, setSessionStart] = useState<number>(0);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -42,6 +45,7 @@ export default function TutorMode({ documentText, documentName }: TutorModeProps
   const startTutor = async () => {
     setStarted(true);
     setIsLoading(true);
+    setSessionStart(Date.now());
     try {
       const systemPrompt = TUTOR_SYSTEM.replace('{CONTEXT}', documentText.slice(0, 8000));
       const response = await chatCompletion([
@@ -101,17 +105,24 @@ export default function TutorMode({ documentText, documentName }: TutorModeProps
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-4">
         <Badge color="yellow">🧑‍🏫 Tutor Mode</Badge>
-        <Badge color="gray">{documentName}</Badge>
+        <Badge color="gray" className="hidden sm:inline-flex">{documentName}</Badge>
         <div className="flex-1" />
-        <Button variant="ghost" size="sm" onClick={() => { setMessages([]); setStarted(false); }}>
+        <Button variant="ghost" size="sm" onClick={() => {
+          const durationSec = sessionStart > 0 ? Math.round((Date.now() - sessionStart) / 1000) : 0;
+          if (onSessionEnd && messages.length > 0) {
+            onSessionEnd({ duration: durationSec, messageCount: messages.length });
+          }
+          setMessages([]);
+          setStarted(false);
+        }}>
           <HiRefresh className="w-4 h-4" /> Reset
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-[400px] max-h-[500px] bg-slate-900/30 rounded-xl p-4">
+      <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 mb-4 min-h-[300px] sm:min-h-[400px] max-h-[500px] bg-slate-900/30 rounded-xl p-3 sm:p-4">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'student' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${
+            <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm whitespace-pre-wrap ${
               msg.role === 'student'
                 ? 'bg-cyan-600 text-white rounded-br-md'
                 : 'bg-slate-700 text-slate-200 rounded-bl-md border border-slate-600'

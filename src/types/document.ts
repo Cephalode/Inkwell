@@ -34,6 +34,20 @@ export interface DocumentFile {
   updatedAt: number;
 }
 
+export interface ChapterDocument {
+  id: string;
+  parentId: string;
+  chapterTitle: string;
+  chapterIndex: number;
+  startPage: number;
+  endPage: number;
+  rawBlob?: Blob;
+  parsedText: string;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export const SUPPORTED_MIME_TYPES: Record<string, DocumentType> = {
   'application/pdf': 'pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',

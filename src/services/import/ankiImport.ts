@@ -1,4 +1,5 @@
 import { Flashcard } from '../../types/flashcard';
+import { generateUUID } from '../../utils/uuid';
 
 export function importAnkiDeck(text: string, documentId: string, deckName: string): Flashcard[] {
   const lines = text.split('\n').filter((l) => l.trim());
@@ -7,7 +8,7 @@ export function importAnkiDeck(text: string, documentId: string, deckName: strin
     const front = parts[0] || '';
     const back = parts[1] || '';
     return {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       documentId,
       deck: deckName,
       front: front.replace(/<br>/g, '\n'),
@@ -17,6 +18,8 @@ export function importAnkiDeck(text: string, documentId: string, deckName: strin
       interval: 1,
       easeFactor: 2.5,
       reviewCount: 0,
+      repetitions: 0,
+      lastReview: null,
       createdAt: Date.now(),
     };
   });
@@ -30,7 +33,7 @@ export function importCSVFlashcards(text: string, documentId: string, deckName: 
   return lines.slice(1).map((line) => {
     const parts = parseCSVLine(line);
     return {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       documentId,
       deck: deckName,
       front: parts[0] || '',
@@ -40,6 +43,8 @@ export function importCSVFlashcards(text: string, documentId: string, deckName: 
       interval: 1,
       easeFactor: 2.5,
       reviewCount: 0,
+      repetitions: 0,
+      lastReview: null,
       createdAt: Date.now(),
     };
   });

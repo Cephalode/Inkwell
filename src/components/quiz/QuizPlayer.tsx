@@ -23,14 +23,14 @@ export default function QuizPlayer({ questions, onAnswer, onComplete, answers, s
   const isCorrect = showResults && answers[q.id]?.toLowerCase() === q.correctAnswer.toLowerCase();
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <ProgressBar value={currentIdx + 1} max={questions.length} className="mb-6" />
-      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
+    <div className="max-w-2xl mx-auto w-full">
+      <ProgressBar value={currentIdx + 1} max={questions.length} className="mb-4 sm:mb-6" />
+      <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 sm:p-6">
         <div className="flex items-center gap-2 mb-4">
           <span className="text-xs text-slate-400">Question {currentIdx + 1} of {questions.length}</span>
           {showResults && (isCorrect ? <HiCheck className="text-green-400" /> : <HiX className="text-red-400" />)}
         </div>
-        <h3 className="text-lg font-semibold text-slate-200 mb-4">{q.question}</h3>
+        <h3 className="text-base sm:text-lg font-semibold text-slate-200 mb-4">{q.question}</h3>
         {q.type === 'multiple_choice' && q.options && (
           <div className="space-y-2">
             {q.options.map((opt) => (
@@ -49,7 +49,7 @@ export default function QuizPlayer({ questions, onAnswer, onComplete, answers, s
           </div>
         )}
         {q.type === 'true_false' && (
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             {['True', 'False'].map((opt) => (
               <button
                 key={opt}
@@ -83,11 +83,11 @@ export default function QuizPlayer({ questions, onAnswer, onComplete, answers, s
           />
         )}
         {showResults && q.explanation && (
-          <div className="mt-4 p-3 rounded-lg bg-slate-700/50 text-sm text-slate-300">
+          <div className="mt-4 p-2 sm:p-3 rounded-lg bg-slate-700/50 text-sm text-slate-300">
             <strong>Explanation:</strong> {q.explanation}
           </div>
         )}
-        <div className="flex justify-between mt-6">
+        <div className="flex justify-between mt-4 sm:mt-6">
           <Button variant="ghost" onClick={() => setCurrentIdx(Math.max(0, currentIdx - 1))} disabled={currentIdx === 0}>
             Previous
           </Button>

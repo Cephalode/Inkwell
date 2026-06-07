@@ -10,8 +10,8 @@ export default function PomodoroTimer() {
   const phaseLabels = { work: 'Focus Time', break: 'Short Break', longBreak: 'Long Break' };
 
   return (
-    <div className="flex flex-col items-center justify-center py-10">
-      <div className="relative w-64 h-64 mb-8">
+    <div className="flex flex-col items-center justify-center py-6 sm:py-10">
+      <div className="relative w-48 h-48 sm:w-64 sm:h-64 mb-6 sm:mb-8">
         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" className="text-slate-700" strokeWidth="4" />
           <circle
@@ -22,7 +22,7 @@ export default function PomodoroTimer() {
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`text-4xl font-mono font-bold ${phaseColors[phase]}`}>
+          <span className={`text-3xl sm:text-4xl font-mono font-bold ${phaseColors[phase]}`}>
             {formatTimerDisplay(timeRemaining)}
           </span>
           <span className="text-sm text-slate-400 mt-2">{phaseLabels[phase]}</span>

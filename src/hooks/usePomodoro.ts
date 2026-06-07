@@ -3,6 +3,7 @@ import { usePomodoroStore } from '../store/pomodoroStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useProgressStore } from '../store/progressStore';
 import { saveStudySession } from '../services/storage/progressStore';
+import { generateUUID } from '../utils/uuid';
 
 export function usePomodoro() {
   const {
@@ -29,7 +30,7 @@ export function usePomodoro() {
     if (timeRemaining === 0 && isRunning) {
       completeSession();
       const session = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         type: 'pomodoro' as const,
         duration: phase === 'work' ? settings.workDuration * 60 : settings.breakDuration * 60,
         date: Date.now(),

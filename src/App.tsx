@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import DocumentsPage from './pages/DocumentsPage';
 import DocumentDetailPage from './pages/DocumentDetailPage';
 import { useSettingsStore } from './store/settingsStore';
+import { useDocuments } from './hooks/useDocuments';
 
 // Lazy-load non-critical pages for better initial load
 const TextbookPage = lazy(() => import('./pages/TextbookPage'));
@@ -21,6 +22,7 @@ const NotesPage = lazy(() => import('./pages/NotesPage'));
 const ConceptPage = lazy(() => import('./pages/ConceptPage'));
 const ExamPage = lazy(() => import('./pages/ExamPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
+const CoursesPage = lazy(() => import('./pages/CoursesPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
@@ -28,10 +30,17 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const theme = useSettingsStore((s) => s.settings.theme);
+  const { loadDocuments } = useDocuments();
 
   useEffect(() => {
     document.documentElement.className = theme;
   }, [theme]);
+
+  // Hydrate documents from IndexedDB on app start so the Dashboard
+  // (and any other page) can display the correct document count immediately.
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
 
   return (
     <ErrorBoundary>
@@ -41,6 +50,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/documents/:id" element={<DocumentDetailPage />} />
+            <Route path="/courses" element={<SuspenseWrapper><CoursesPage /></SuspenseWrapper>} />
             <Route path="/textbook" element={<SuspenseWrapper><TextbookPage /></SuspenseWrapper>} />
             <Route path="/flashcards" element={<SuspenseWrapper><FlashcardsPage /></SuspenseWrapper>} />
             <Route path="/quiz" element={<SuspenseWrapper><QuizPage /></SuspenseWrapper>} />

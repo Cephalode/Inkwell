@@ -20,8 +20,10 @@ export const useProgressStore = create<ProgressState>()((set, get) => ({
     return {
       totalStudyTime: sessions.reduce((a, s) => a + s.duration, 0),
       totalDocuments: new Set(sessions.filter((s) => s.documentId).map((s) => s.documentId)).size,
-      flashcardsReviewed: sessions.filter((s) => s.type === 'flashcard').length,
-      quizzesTaken: sessions.filter((s) => s.type === 'quiz').length,
+      flashcardsReviewed: sessions
+        .filter((s) => s.type === 'flashcard')
+        .reduce((a, s) => a + ((s.metadata?.cardsReviewed as number) || 1), 0),
+      quizzesTaken: sessions.filter((s) => s.type === 'quiz' || s.type === 'exam').length,
       currentStreak,
       longestStreak: currentStreak,
     };

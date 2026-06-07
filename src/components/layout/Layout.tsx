@@ -2,9 +2,27 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useUIStore } from '../../store/uiStore';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import MobileTabBar from './MobileTabBar';
+import MobileDrawer from './MobileDrawer';
+import MobileHeader from './MobileHeader';
 
 export default function Layout() {
   const { sidebarOpen } = useUIStore();
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
+        <MobileHeader />
+        <MobileDrawer />
+        <main className="p-6 pb-20 ml-0">
+          <Outlet />
+        </main>
+        <MobileTabBar />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>

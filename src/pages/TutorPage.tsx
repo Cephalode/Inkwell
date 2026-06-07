@@ -3,17 +3,32 @@ import TutorMode from '../components/tutor/TutorMode';
 import Card from '../components/shared/Card';
 import EmptyState from '../components/shared/EmptyState';
 import { useDocumentStore } from '../store/documentStore';
+import { useProgress } from '../hooks/useProgress';
+import { generateUUID } from '../utils/uuid';
 
 export default function TutorPage() {
   const documents = useDocumentStore((s) => s.documents);
+  const { trackSession } = useProgress();
   const [selectedDoc, setSelectedDoc] = useState('');
 
   const doc = documents.find((d) => d.id === selectedDoc);
 
+  const handleSessionEnd = (info: { duration: number; messageCount: number }) => {
+    if (info.messageCount === 0) return;
+    trackSession({
+      id: generateUUID(),
+      type: 'tutor',
+      documentId: doc?.id,
+      duration: info.duration,
+      date: Date.now(),
+      metadata: { messageCount: info.messageCount },
+    });
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-1">🧑‍🏫 AI Tutor</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">🧑‍🏫 AI Tutor</h1>
         <p className="text-slate-400">Active recall with the Socratic method — the AI asks YOU questions</p>
       </div>
 
@@ -38,7 +53,7 @@ export default function TutorPage() {
           )}
         </div>
       ) : (
-        <TutorMode documentText={doc.parsedText || ''} documentName={doc.name} />
+        <TutorMode documentText={doc.parsedText || ''} documentName={doc.name} documentId={doc.id} onSessionEnd={handleSessionEnd} />
       )}
     </div>
   );

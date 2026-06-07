@@ -1,4 +1,4 @@
-# StudyForge — Implementation Plan
+# Inkwell — Implementation Plan
 
 ## Overview
 AI-powered study companion. Upload any file type → AI generates flashcards, quizzes, summaries, study guides, mind maps. Special textbook mode for page-range Q&A. Fully client-side (IndexedDB + OpenAI API key).

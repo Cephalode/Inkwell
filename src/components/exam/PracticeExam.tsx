@@ -25,9 +25,11 @@ interface ExamResult {
 interface PracticeExamProps {
   documentText: string;
   documentName: string;
+  documentId?: string;
+  onComplete?: (result: { score: number; totalPoints: number; questionCount: number; duration: number }) => void;
 }
 
-export default function PracticeExam({ documentText, documentName }: PracticeExamProps) {
+export default function PracticeExam({ documentText, documentName, documentId, onComplete }: PracticeExamProps) {
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -35,6 +37,7 @@ export default function PracticeExam({ documentText, documentName }: PracticeExa
   const [isLoading, setIsLoading] = useState(false);
   const [questionCount, setQuestionCount] = useState(10);
   const [difficulty, setDifficulty] = useState('mixed');
+  const [startTime, setStartTime] = useState<number>(Date.now());
 
   const generateExam = async () => {
     setIsLoading(true);
@@ -54,6 +57,7 @@ export default function PracticeExam({ documentText, documentName }: PracticeExa
       setAnswers({});
       setSubmitted(false);
       setResult(null);
+      setStartTime(Date.now());
     } catch { /* handle */ }
     setIsLoading(false);
   };
@@ -75,6 +79,10 @@ export default function PracticeExam({ documentText, documentName }: PracticeExa
 
     setResult({ score, total, feedback });
     setSubmitted(true);
+    if (onComplete) {
+      const durationSec = Math.round((Date.now() - startTime) / 1000);
+      onComplete({ score, totalPoints: total, questionCount: questions.length, duration: durationSec });
+    }
   };
 
   const scorePercent = result ? Math.round((result.score / result.total) * 100) : 0;
@@ -128,7 +136,7 @@ export default function PracticeExam({ documentText, documentName }: PracticeExa
               const isCorrect = submitted && answers[q.id]?.toLowerCase().trim() === q.correctAnswer.toLowerCase().trim();
               return (
                 <Card key={q.id} className={submitted ? (isCorrect ? "border-green-500/30" : "border-red-500/30") : ""}>
-                  <div className="flex items-start gap-2">
+                  <div className="flex flex-wrap items-start gap-2">
                     <Badge color="gray" className="shrink-0">{"Q" + q.id}</Badge>
                     <Badge color={q.type === "mcq" ? "cyan" : q.type === "true_false" ? "teal" : "yellow"} className="shrink-0">
                       {q.type.replace("_", " ")}
@@ -191,7 +199,7 @@ export default function PracticeExam({ documentText, documentName }: PracticeExa
             })}
           </div>
 
-          <div className="flex justify-center gap-4">
+          <div className="flex flex-wrap justify-center gap-4">
             {!submitted ? (
               <>
                 <Button onClick={submitExam} disabled={answeredCount < questions.length}>

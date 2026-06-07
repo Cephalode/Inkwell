@@ -9,7 +9,7 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const sizeClasses = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl' };
+const sizeClasses = { sm: 'max-w-[95vw] sm:max-w-md', md: 'max-w-[95vw] sm:max-w-xl', lg: 'max-w-[95vw] sm:max-w-3xl' };
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
   useEffect(() => {
@@ -23,7 +23,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative w-full ${sizeClasses[size]} rounded-xl bg-slate-800 border border-slate-700 shadow-2xl`}>
+      <div className={`relative w-full max-h-[90vh] overflow-y-auto ${sizeClasses[size]} rounded-xl bg-slate-800 border border-slate-700 shadow-2xl`}>
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
             <h2 className="text-lg font-semibold text-white">{title}</h2>

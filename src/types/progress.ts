@@ -1,6 +1,6 @@
 export interface StudySession {
   id: string;
-  type: 'flashcard' | 'quiz' | 'pomodoro' | 'chat' | 'reading';
+  type: 'flashcard' | 'quiz' | 'pomodoro' | 'chat' | 'reading' | 'exam' | 'tutor';
   documentId?: string;
   duration: number;
   date: number;

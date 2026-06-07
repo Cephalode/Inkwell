@@ -15,13 +15,12 @@ export default function ConceptPage() {
   const doc = documents.find((d) => d.id === selectedDoc);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-1">🔬 Concepts & Audio</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">🔬 Concepts & Audio</h1>
         <p className="text-slate-400">Explain concepts with analogies or listen to an audio overview</p>
       </div>
-
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <select value={selectedDoc} onChange={(e) => setSelectedDoc(e.target.value)} className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200">
           <option value="">Select document...</option>
           {documents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}

@@ -40,11 +40,11 @@ export default function MarkdownNotesEditor({ initialContent = '', title = 'Unti
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <input
           value={noteTitle}
           onChange={(e) => setNoteTitle(e.target.value)}
-          className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 font-semibold"
+          className="w-full sm:w-auto sm:flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 font-semibold"
           placeholder="Note title..."
         />
         <div className="flex gap-1">
@@ -70,7 +70,7 @@ export default function MarkdownNotesEditor({ initialContent = '', title = 'Unti
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          className="w-full h-[500px] px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 font-mono resize-none focus:outline-none focus:border-cyan-500"
+          className="w-full h-[300px] sm:h-[500px] px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-sm text-slate-200 font-mono resize-none focus:outline-none focus:border-cyan-500"
           placeholder="Start writing your notes in Markdown..."
         />
       )}

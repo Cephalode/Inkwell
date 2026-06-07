@@ -51,9 +51,9 @@ export default function CornellNotesGenerator({ documentText, documentName }: Co
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-slate-200">📝 Cornell Notes</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {notes && <Button variant="secondary" size="sm" onClick={exportNotes}>Export</Button>}
           <Button onClick={generate} isLoading={isLoading}>Generate Cornell Notes</Button>
         </div>

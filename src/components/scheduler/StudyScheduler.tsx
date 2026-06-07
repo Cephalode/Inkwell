@@ -3,6 +3,7 @@ import { HiCalendar, HiPlus, HiTrash, HiCheck } from 'react-icons/hi';
 import Button from '../shared/Button';
 import Card from '../shared/Card';
 import Badge from '../shared/Badge';
+import { generateUUID } from '../../utils/uuid';
 
 interface StudyBlock {
   id: string;
@@ -14,7 +15,20 @@ interface StudyBlock {
   type: 'review' | 'new_material' | 'practice' | 'exam_prep';
 }
 
-const STORAGE_KEY = 'studyforge_schedule';
+const STORAGE_KEY = 'inkwell_schedule';
+const OLD_STORAGE_KEY = 'studyforge_schedule';
+
+// One-time migration: copy old key to new key if new key doesn't exist yet
+function migrateScheduleStorage() {
+  try {
+    const newData = localStorage.getItem(STORAGE_KEY);
+    const oldData = localStorage.getItem(OLD_STORAGE_KEY);
+    if (!newData && oldData) {
+      localStorage.setItem(STORAGE_KEY, oldData);
+      localStorage.removeItem(OLD_STORAGE_KEY);
+    }
+  } catch { /* ignore */ }
+}
 
 const typeColors: Record<string, 'cyan' | 'gray' | 'green' | 'red' | 'teal' | 'yellow'> = {
   review: 'cyan', new_material: 'green', practice: 'yellow', exam_prep: 'red',
@@ -34,6 +48,7 @@ export default function StudyScheduler() {
   });
 
   useEffect(() => {
+    migrateScheduleStorage();
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
       setBlocks(saved);
@@ -48,7 +63,7 @@ export default function StudyScheduler() {
   const addBlock = () => {
     if (!newBlock.title || !newBlock.date) return;
     const block: StudyBlock = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       title: newBlock.title || '',
       subject: newBlock.subject || '',
       date: newBlock.date || '',
@@ -76,8 +91,8 @@ export default function StudyScheduler() {
   const totalMinutes = blocks.reduce((sum, b) => sum + b.duration, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6 overflow-x-auto">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-white">📅 Study Schedule</h3>
           <p className="text-xs text-slate-400">Plan your study sessions with spaced repetition</p>
@@ -86,8 +101,7 @@ export default function StudyScheduler() {
           <HiPlus className="w-4 h-4" /> Add Block
         </Button>
       </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <Card className="text-center">
           <div className="text-2xl font-bold text-cyan-400">{blocks.length}</div>
           <div className="text-xs text-slate-400">Total Blocks</div>

@@ -8,6 +8,21 @@ import { useDocumentStore } from '../store/documentStore';
 
 type NoteTab = 'editor' | 'cornell';
 
+const STORAGE_KEY = 'inkwell_notes';
+const OLD_STORAGE_KEY = 'studyforge_notes';
+
+// One-time migration: copy old key to new key if new key doesn't exist yet
+function migrateNotesStorage() {
+  try {
+    const newData = localStorage.getItem(STORAGE_KEY);
+    const oldData = localStorage.getItem(OLD_STORAGE_KEY);
+    if (!newData && oldData) {
+      localStorage.setItem(STORAGE_KEY, oldData);
+      localStorage.removeItem(OLD_STORAGE_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
 export default function NotesPage() {
   const documents = useDocumentStore((s) => s.documents);
   const [selectedDoc, setSelectedDoc] = useState('');
@@ -21,27 +36,27 @@ export default function NotesPage() {
     setSavedNotes((prev) => ({ ...prev, [selectedDoc]: content }));
     // Save to localStorage for now
     try {
-      const existing = JSON.parse(localStorage.getItem('studyforge_notes') || '{}');
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       existing[selectedDoc] = content;
-      localStorage.setItem('studyforge_notes', JSON.stringify(existing));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
     } catch { /* ignore */ }
   };
 
   useEffect(() => {
+    migrateNotesStorage();
     try {
-      const saved = JSON.parse(localStorage.getItem('studyforge_notes') || '{}');
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
       setSavedNotes(saved);
     } catch { /* ignore */ }
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-1">📝 Notes</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">📝 Notes</h1>
         <p className="text-slate-400">Write notes, generate Cornell-style notes from your materials</p>
       </div>
-
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <select
           value={selectedDoc}
           onChange={(e) => setSelectedDoc(e.target.value)}

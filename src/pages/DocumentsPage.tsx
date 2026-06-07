@@ -8,7 +8,7 @@ import { useDocumentStore } from '../store/documentStore';
 import { useNavigate } from 'react-router-dom';
 
 export default function DocumentsPage() {
-  const { documents, isLoading, loadDocuments, uploadFile, deleteDocumentById } = useDocuments();
+  const { documents, isLoading, classifyingIds, loadDocuments, uploadFile, deleteDocumentById } = useDocuments();
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const navigate = useNavigate();
 
@@ -26,7 +26,7 @@ export default function DocumentsPage() {
   }, [setCurrentDocument, navigate]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white mb-1">📄 Documents</h1>
         <p className="text-slate-400">Upload and manage your study materials</p>
@@ -43,7 +43,7 @@ export default function DocumentsPage() {
           description="Upload your first study material to get started"
         />
       ) : (
-        <FileList documents={documents} onDelete={deleteDocumentById} onSelect={handleSelectDoc} />
+        <FileList documents={documents} classifyingIds={classifyingIds} onDelete={deleteDocumentById} onSelect={handleSelectDoc} />
       )}
     </div>
   );

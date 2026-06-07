@@ -3,16 +3,32 @@ import PracticeExam from '../components/exam/PracticeExam';
 import Card from '../components/shared/Card';
 import EmptyState from '../components/shared/EmptyState';
 import { useDocumentStore } from '../store/documentStore';
+import { useProgress } from '../hooks/useProgress';
+import { generateUUID } from '../utils/uuid';
 
 export default function ExamPage() {
   const documents = useDocumentStore((s) => s.documents);
+  const { trackSession } = useProgress();
   const [selectedDoc, setSelectedDoc] = useState('');
   const doc = documents.find((d) => d.id === selectedDoc);
 
+  const handleExamComplete = (result: { score: number; totalPoints: number; questionCount: number; duration: number }) => {
+    const scorePercent = result.totalPoints > 0 ? Math.round((result.score / result.totalPoints) * 100) : 0;
+    trackSession({
+      id: generateUUID(),
+      type: 'exam',
+      documentId: doc?.id,
+      duration: result.duration,
+      date: Date.now(),
+      score: scorePercent,
+      metadata: { questionCount: result.questionCount, totalPoints: result.totalPoints },
+    });
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-1">📋 Practice Exam</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">📋 Practice Exam</h1>
         <p className="text-slate-400">Generate and take practice exams from your study materials</p>
       </div>
 
@@ -37,7 +53,7 @@ export default function ExamPage() {
           )}
         </div>
       ) : (
-        <PracticeExam documentText={doc.parsedText || ''} documentName={doc.name} />
+        <PracticeExam documentText={doc.parsedText || ''} documentName={doc.name} documentId={doc.id} onComplete={handleExamComplete} />
       )}
     </div>
   );

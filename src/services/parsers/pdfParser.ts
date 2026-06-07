@@ -1,10 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import type { ParsedDocument, PageContent } from '../../types/document';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export async function parsePDF(file: File | Blob): Promise<ParsedDocument> {
   const arrayBuffer = await file.arrayBuffer();
@@ -62,4 +60,20 @@ export async function renderPDFPage(
   const ctx = canvas.getContext('2d')!;
   await page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any).promise;
   return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+export async function renderPDFPageToCanvas(
+  canvas: HTMLCanvasElement,
+  file: File | Blob | ArrayBuffer,
+  pageNumber: number,
+  scale: number = 1.0
+): Promise<void> {
+  const data = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  const page = await pdf.getPage(pageNumber);
+  const viewport = page.getViewport({ scale });
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d')!;
+  await page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any).promise;
 }

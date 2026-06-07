@@ -123,7 +123,7 @@ export default function FlashcardsPage() {
   const displayCards = isReviewMode ? dueCards : flashcards;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white mb-1">🃏 Flashcards</h1>
         <p className="text-slate-400">
@@ -133,7 +133,7 @@ export default function FlashcardsPage() {
 
       {/* Stats Overview */}
       {totalCards > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-4 text-center">
             <p className="text-2xl font-bold text-white">{totalCards}</p>
             <p className="text-xs text-slate-400 mt-1">Total Cards</p>
@@ -217,7 +217,7 @@ export default function FlashcardsPage() {
       )}
 
       {/* Generate Section */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <select
           value={selectedDoc}
           onChange={(e) => setSelectedDoc(e.target.value)}

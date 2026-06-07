@@ -16,6 +16,24 @@ interface SettingsState {
   resetSettings: () => void;
 }
 
+const OLD_STORE_KEY = 'studyforge-settings';
+const STORE_KEY = 'inkwell-settings';
+
+// One-time migration: if new key doesn't exist but old key does, copy it over
+function migrateSettingsStorage() {
+  try {
+    const newData = localStorage.getItem(STORE_KEY);
+    const oldData = localStorage.getItem(OLD_STORE_KEY);
+    if (!newData && oldData) {
+      localStorage.setItem(STORE_KEY, oldData);
+      localStorage.removeItem(OLD_STORE_KEY);
+    }
+  } catch { /* ignore */ }
+}
+
+// Run migration before store initialization
+migrateSettingsStorage();
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
@@ -34,6 +52,6 @@ export const useSettingsStore = create<SettingsState>()(
       setDefaultSummaryType: (t) => set((s) => ({ settings: { ...s.settings, defaultSummaryType: t } })),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
     }),
-    { name: 'studyforge-settings' }
+    { name: STORE_KEY }
   )
 );

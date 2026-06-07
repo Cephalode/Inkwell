@@ -1,5 +1,5 @@
 import StatsCards from '../components/progress/StatsCards';
-import StreakCalendar from '../components/progress/StreakCalendar';
+import ActivityHeatmap from '../components/dashboard/ActivityHeatmap';
 import Card from '../components/shared/Card';
 import { HiDocumentAdd, HiAcademicCap, HiQuestionMarkCircle, HiBookOpen, HiLightBulb, HiClipboardCheck, HiSparkles, HiCalendar } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -30,18 +30,18 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white mb-1">Welcome to StudyForge 🧠</h1>
-        <p className="text-slate-400">Your AI-powered study companion — upload materials and learn smarter</p>
-      </div>
+  <div className="space-y-4 sm:space-y-6">
+    <div>
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">Welcome to Inkwell 🧠</h1>
+      <p className="text-sm sm:text-base text-slate-400">Your AI-powered study companion — upload materials and learn smarter</p>
+    </div>
 
-      <StatsCards stats={stats} />
+    <StatsCards stats={stats} documentCount={documents.length} onDocumentsClick={() => navigate('/documents')} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <StreakCalendar sessions={sessions} />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+      <ActivityHeatmap sessions={sessions} />
 
-        <Card header={<h3 className="text-white font-semibold">⚡ Quick Actions</h3>}>
+      <Card header={<h3 className="text-white font-semibold">⚡ Quick Actions</h3>}>
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map(({ icon: Icon, label, color, to }) => (
               <button
