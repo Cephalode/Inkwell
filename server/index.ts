@@ -1,10 +1,10 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { homedir } from 'os';
+import { API_KEY, UPSTREAM } from './config.js';
 import documentsRouter from './routes/documents.js';
 import chaptersRouter from './routes/chapters.js';
+import coursesRouter from './routes/courses.js';
+import chatSessionsRouter from './routes/chatSessions.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -18,6 +18,7 @@ interface ChatRequestBody {
   max_tokens?: number;
   stream?: boolean;
   model?: string;
+  tools?: unknown[];
 }
 
 interface ChatPayload {
@@ -26,26 +27,9 @@ interface ChatPayload {
   temperature: number;
   max_tokens: number;
   stream: boolean;
+  tools?: unknown[];
 }
 
-// ── Load GLM_API_KEY ────────────────────────────────────────────────────────
-// Priority: process.env > ~/.hermes/.env
-let API_KEY: string | undefined = process.env.GLM_API_KEY;
-if (!API_KEY) {
-  try {
-    const envPath = resolve(homedir(), '.hermes', '.env');
-    const envFile = readFileSync(envPath, 'utf-8');
-    const match = envFile.match(/^GLM_API_KEY=(.+)$/m);
-    if (match) API_KEY = match[1].trim();
-  } catch { /* file not found */ }
-}
-
-if (!API_KEY) {
-  console.error('ERROR: GLM_API_KEY not found. Set it in process.env or ~/.hermes/.env');
-  process.exit(1);
-}
-
-const UPSTREAM = 'https://api.z.ai/api/coding/paas/v4/chat/completions';
 const MODEL = 'glm-5.1';
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
@@ -84,10 +68,12 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // ── Document & Chapter CRUD ────────────────────────────────────────────────
 app.use('/api/documents', documentsRouter);
 app.use('/api', chaptersRouter);
+app.use('/api/courses', coursesRouter);
+app.use('/api/chat-sessions', chatSessionsRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {
-  const { messages, temperature, max_tokens, stream, model } = req.body;
+  const { messages, temperature, max_tokens, stream, model, tools } = req.body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages array is required' });
@@ -100,6 +86,10 @@ app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRe
     max_tokens: max_tokens ?? 4096,
     stream: !!stream,
   };
+
+  if (Array.isArray(tools) && tools.length > 0) {
+    payload.tools = tools;
+  }
 
   try {
     const upstream = await fetch(UPSTREAM, {
