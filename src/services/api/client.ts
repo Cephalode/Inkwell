@@ -1,6 +1,18 @@
 import type { DocumentFile, ChapterDocument } from '../../types/document';
+import type { Course } from '../../types/course';
+import type { ChatSession, ChatMessage } from '../../types/chat';
 
-const API_BASE = '/api';
+/**
+ * Build an absolute API base URL so that `fetch()` always receives a
+ * fully-qualified URL (avoids "Failed to parse URL from /api/…" errors
+ * that can arise in some browser / worker contexts).
+ * Falls back to the relative '/api' path when `window` is unavailable
+ * (e.g. during SSR or unit-test runs in Node).
+ */
+const API_BASE: string =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api`
+    : '/api';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -24,6 +36,7 @@ function mapDocument(r: any): DocumentFile {
     thumbnail: r.thumbnail ?? undefined,
     chapterMarkers: r.chapterMarkers ?? undefined,
     tags: r.tags ?? [],
+    classifyStatus: r.classifyStatus ?? undefined,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };
@@ -74,6 +87,12 @@ export async function getDocument(id: string): Promise<DocumentFile> {
   return mapDocument(json);
 }
 
+export async function downloadDocumentFile(id: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${id}/download`);
+  if (!res.ok) throw new Error(`Failed to download document file: ${res.status}`);
+  return await res.blob();
+}
+
 export async function updateDocumentTags(id: string, tags: string[]): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'PATCH',
@@ -83,7 +102,7 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
   if (!res.ok) throw new Error(`Failed to update tags: ${res.status}`);
 }
 
-export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[] }): Promise<void> {
+export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string }): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -95,6 +114,12 @@ export async function updateDocument(id: string, updates: { parsedText?: string;
 export async function deleteDocument(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error(`Failed to delete document: ${res.status}`);
+}
+
+export async function classifyDocument(id: string): Promise<{ label: string; subject: string; confidence: number; status: string }> {
+  const res = await fetch(`${API_BASE}/documents/${id}/classify`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to classify document: ${res.status}`);
+  return await res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +162,30 @@ export async function uploadChapters(
   return json.map(mapChapter);
 }
 
+export async function uploadSingleChapter(
+  parentId: string,
+  blob: Blob,
+  metadata: {
+    chapterTitle: string;
+    chapterIndex: number;
+    startPage: number;
+    endPage: number;
+    tags: string[];
+  },
+): Promise<ChapterDocument> {
+  const form = new FormData();
+  form.append('files', blob);
+  form.append('metadata', JSON.stringify([{ ...metadata, parsedText: '' }]));
+
+  const res = await fetch(`${API_BASE}/documents/${parentId}/chapters`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Failed to upload chapter: ${res.status}`);
+  const json: any[] = await res.json();
+  return json.map(mapChapter)[0];
+}
+
 export async function deleteChapters(parentId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${parentId}/chapters`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error(`Failed to delete chapters: ${res.status}`);
@@ -147,4 +196,157 @@ export async function getChapter(id: string): Promise<ChapterDocument> {
   if (!res.ok) throw new Error(`Failed to get chapter: ${res.status}`);
   const json = await res.json();
   return mapChapter(json);
+}
+
+// ---------------------------------------------------------------------------
+// Courses API
+// ---------------------------------------------------------------------------
+
+function mapCourse(r: any): Course {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? '',
+    color: r.color ?? '',
+    documentIds: r.documentIds ?? [],
+    createdAt: toEpoch(r.createdAt),
+    updatedAt: toEpoch(r.updatedAt),
+  };
+}
+
+export async function listCourses(): Promise<Course[]> {
+  const res = await fetch(`${API_BASE}/courses`);
+  if (!res.ok) throw new Error('Failed to list courses');
+  const data = await res.json();
+  return data.map(mapCourse);
+}
+
+export async function getCourse(id: string): Promise<Course> {
+  const res = await fetch(`${API_BASE}/courses/${id}`);
+  if (!res.ok) throw new Error('Failed to get course');
+  const data = await res.json();
+  return mapCourse(data);
+}
+
+export async function createCourse(course: { name: string; description?: string; color?: string }): Promise<Course> {
+  const res = await fetch(`${API_BASE}/courses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `course_${Date.now()}`,
+      name: course.name,
+      description: course.description ?? '',
+      color: course.color ?? '',
+      document_ids: [],
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to create course');
+  const data = await res.json();
+  return mapCourse(data);
+}
+
+export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds'>>): Promise<Course> {
+  const body: Record<string, unknown> = {};
+  if (updates.name !== undefined) body.name = updates.name;
+  if (updates.description !== undefined) body.description = updates.description;
+  if (updates.color !== undefined) body.color = updates.color;
+  if (updates.documentIds !== undefined) body.documentIds = updates.documentIds;
+  const res = await fetch(`${API_BASE}/courses/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to update course');
+  const data = await res.json();
+  return mapCourse(data);
+}
+
+export async function deleteCourse(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/courses/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete course');
+}
+
+// ---------------------------------------------------------------------------
+// Chat Sessions API
+// ---------------------------------------------------------------------------
+
+function mapChatSession(r: any): ChatSession {
+  return {
+    id: r.id,
+    documentId: r.documentId ?? undefined,
+    title: r.title ?? '',
+    messages: (r.messages ?? []).map(mapChatMessage),
+    createdAt: toEpoch(r.createdAt),
+    updatedAt: toEpoch(r.updatedAt),
+  };
+}
+
+function mapChatMessage(r: any): ChatMessage {
+  return {
+    id: r.id,
+    role: r.role,
+    content: r.content,
+    citations: r.citations ?? undefined,
+    timestamp: toEpoch(r.timestamp),
+  };
+}
+
+export async function listChatSessions(): Promise<ChatSession[]> {
+  const res = await fetch(`${API_BASE}/chat-sessions`);
+  if (!res.ok) throw new Error('Failed to list chat sessions');
+  const data = await res.json();
+  return data.map((r: any) => mapChatSession({ ...r, messages: [] }));
+}
+
+export async function getChatSession(id: string): Promise<ChatSession> {
+  const res = await fetch(`${API_BASE}/chat-sessions/${id}`);
+  if (!res.ok) throw new Error('Failed to get chat session');
+  const data = await res.json();
+  return mapChatSession(data);
+}
+
+export async function createChatSession(title?: string, documentId?: string): Promise<ChatSession> {
+  const res = await fetch(`${API_BASE}/chat-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: `session_${Date.now()}`,
+      title: title ?? '',
+      document_id: documentId ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to create chat session');
+  const data = await res.json();
+  return mapChatSession({ ...data, messages: [] });
+}
+
+export async function updateChatSession(id: string, updates: Partial<Pick<ChatSession, 'title' | 'documentId'>>): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (updates.title !== undefined) body.title = updates.title;
+  if (updates.documentId !== undefined) body.documentId = updates.documentId;
+  const res = await fetch(`${API_BASE}/chat-sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Failed to update chat session');
+}
+
+export async function addChatMessage(sessionId: string, message: { id: string; role: string; content: string; citations?: any[] }): Promise<void> {
+  const res = await fetch(`${API_BASE}/chat-sessions/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      citations: message.citations ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to add chat message');
+}
+
+export async function deleteChatSession(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/chat-sessions/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete chat session');
 }
