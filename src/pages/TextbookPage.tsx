@@ -1,55 +1,65 @@
 import { useState, useEffect } from 'react';
 import TextbookViewer from '../components/textbook/TextbookViewer';
 import ChapterSelector from '../components/textbook/ChapterSelector';
-import ChapterSubpage from '../components/textbook/ChapterSubpage';
-import TextbookChat from '../components/textbook/TextbookChat';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
 import EmptyState from '../components/shared/EmptyState';
 import { useTextbook } from '../hooks/useTextbook';
 import { useChapters } from '../hooks/useChapters';
 import { useDocumentStore } from '../store/documentStore';
-import { SUPPORTED_FILE_TYPES } from '../utils/constants';
-import type { ChapterDocument } from '../types/document';
+import { downloadDocumentFile } from '../services/api/client';
+import type { Chapter } from '../types/document';
 
 export default function TextbookPage() {
   const { documents, currentDocument, setCurrentDocument } = useDocumentStore();
   const pdfs = documents.filter((d) => d.type === 'pdf');
-  const { pageCount, startPage, endPage, isLoading, loadPDF, selectPageRange, askQuestion, setStartPage, setEndPage } = useTextbook();
-  const { chapters, isExtracting, error: chapterError, extractChapters, loadChapters } = useChapters(currentDocument);
+  const { pageCount, startPage, endPage, loadPDF, selectPageRange, setStartPage, setEndPage } = useTextbook();
+  const { chapters, isExtracting, isSaving, savingIndex, savedCount, savedChapters, error: chapterError, extractChapters, clearChapters, initChapters, saveSingleChapter, saveAllChapters } = useChapters(currentDocument);
   const [pageLoaded, setPageLoaded] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedChapter, setSelectedChapter] = useState<ChapterDocument | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [chapterLocalPage, setChapterLocalPage] = useState(1);
 
   const handleSelectPDF = async (doc: any) => {
     setCurrentDocument(doc);
     setSelectedChapter(null);
-    if (doc.rawBlob) {
-      const count = await loadPDF(doc.rawBlob);
-      setPageLoaded(true);
+    let blob = doc.rawBlob;
+    if (!blob) {
+      blob = await downloadDocumentFile(doc.id);
+      doc.rawBlob = blob;
     }
+    await loadPDF(blob);
+    setPageLoaded(true);
   };
 
-  const handleConfirmRange = async () => {
+  const handleSwitchDocument = () => {
+    setCurrentDocument(null);
+    setSelectedChapter(null);
+    setPageLoaded(false);
+  };
+
+  const handleSelectChapter = (ch: Chapter) => {
+    setSelectedChapter(ch);
+    setChapterLocalPage(1);
+    setStartPage(ch.page);
+    const idx = chapters.findIndex((c) => c.title === ch.title && c.page === ch.page);
+    const endPageNum = idx + 1 < chapters.length ? chapters[idx + 1].page - 1 : pageCount;
+    setEndPage(endPageNum);
     if (currentDocument?.rawBlob) {
-      await selectPageRange(currentDocument.rawBlob, startPage, endPage);
+      selectPageRange(currentDocument.rawBlob, ch.page, endPageNum);
     }
   };
 
-  const handleSelectChapter = (chapter: ChapterDocument) => {
-    setSelectedChapter(chapter);
-  };
-
-  const handleBackFromChapter = () => {
+  const handleCloseChapter = () => {
     setSelectedChapter(null);
   };
 
-  // Reload chapters when the document changes
+  // Load cached chapter markers when document changes
   useEffect(() => {
     if (currentDocument) {
-      loadChapters();
+      initChapters();
     }
-  }, [currentDocument, loadChapters]);
+  }, [currentDocument, initChapters]);
 
   if (pdfs.length === 0) {
     return (
@@ -82,22 +92,52 @@ export default function TextbookPage() {
           ))}
         </div>
       ) : selectedChapter ? (
-        <ChapterSubpage chapter={selectedChapter} onBack={handleBackFromChapter} />
+        /* ── Chapter sub-page ─────────────────────────────────────────────── */
+        <>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleCloseChapter} variant="secondary">← Back to textbook</Button>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm text-slate-400 truncate">{currentDocument.name}</span>
+              <span className="text-slate-600">/</span>
+              <span className="text-sm font-medium text-cyan-300 truncate">{selectedChapter.title}</span>
+            </div>
+          </div>
+          <div>
+            <TextbookViewer
+              file={currentDocument.rawBlob || null}
+              currentPage={chapterLocalPage}
+              onPageChange={setChapterLocalPage}
+              totalPages={endPage - selectedChapter.page + 1}
+              pageOffset={selectedChapter.page - 1}
+            />
+          </div>
+        </>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        /* ── Full textbook view ────────────────────────────────────────────── */
+        <>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleSwitchDocument} variant="secondary">← Switch Document</Button>
+            <span className="text-sm text-slate-400 truncate">{currentDocument.name}</span>
+          </div>
           <div className="space-y-4">
             <TextbookViewer file={currentDocument.rawBlob || null} currentPage={currentPage} onPageChange={setCurrentPage} totalPages={pageCount} />
             <ChapterSelector
               chapters={chapters}
+              totalPages={pageCount}
               isExtracting={isExtracting}
+              isSaving={isSaving}
+              savingIndex={savingIndex}
+              savedCount={savedCount}
+              savedChapters={savedChapters}
               error={chapterError}
               onExtractChapters={extractChapters}
+              onClearChapters={() => { clearChapters(); setSelectedChapter(null); }}
               onSelectChapter={handleSelectChapter}
-              selectedChapterId={selectedChapter?.id ?? null}
+              onSaveChapter={(i) => saveSingleChapter(i, pageCount)}
+              onSaveAllChapters={() => saveAllChapters(pageCount)}
             />
           </div>
-          <TextbookChat onAsk={askQuestion} startPage={startPage} endPage={endPage} isLoading={isLoading} />
-        </div>
+        </>
       )}
     </div>
   );

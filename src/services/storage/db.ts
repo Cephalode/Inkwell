@@ -1,12 +1,6 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DocumentFile } from '../../types/document';
-import { Flashcard } from '../../types/flashcard';
-import { Quiz } from '../../types/quiz';
-import { StudySession } from '../../types/progress';
 import { AppSettings } from '../../types/settings';
-import { ChatSession } from '../../types/chat';
-import { ChapterDocument } from '../../types/document';
-import { Course } from '../../types/course';
 
 interface InkwellDB extends DBSchema {
   documents: {
@@ -14,39 +8,9 @@ interface InkwellDB extends DBSchema {
     value: DocumentFile & { rawBlob?: ArrayBuffer };
     indexes: { 'by-type': string; 'by-date': number };
   };
-  flashcards: {
-    key: string;
-    value: Flashcard;
-    indexes: { 'by-deck': string; 'by-document': string; 'by-review': number };
-  };
-  quizzes: {
-    key: string;
-    value: Quiz;
-    indexes: { 'by-document': string };
-  };
-  studySessions: {
-    key: string;
-    value: StudySession;
-    indexes: { 'by-date': number; 'by-type': string };
-  };
   settings: {
     key: string;
     value: AppSettings;
-  };
-  chatSessions: {
-    key: string;
-    value: ChatSession;
-    indexes: { 'by-date': number };
-  };
-  chapters: {
-    key: string;
-    value: ChapterDocument & { rawBlob?: ArrayBuffer };
-    indexes: { 'by-parent': string; 'by-date': number };
-  };
-  courses: {
-    key: string;
-    value: Course;
-    indexes: { 'by-date': number };
   };
 }
 
@@ -69,28 +33,7 @@ async function migrateFromStudyForge(): Promise<void> {
         docStore.createIndex('by-type', 'type');
         docStore.createIndex('by-date', 'createdAt');
 
-        const fcStore = db.createObjectStore('flashcards', { keyPath: 'id' });
-        fcStore.createIndex('by-deck', 'deck');
-        fcStore.createIndex('by-document', 'documentId');
-        fcStore.createIndex('by-review', 'nextReview');
-
-        const quizStore = db.createObjectStore('quizzes', { keyPath: 'id' });
-        quizStore.createIndex('by-document', 'documentId');
-
-        const sessionStore = db.createObjectStore('studySessions', { keyPath: 'id' });
-        sessionStore.createIndex('by-date', 'date');
-        sessionStore.createIndex('by-type', 'type');
-
         db.createObjectStore('settings', { keyPath: 'ai' });
-
-        const chatStore = db.createObjectStore('chatSessions', { keyPath: 'id' });
-        chatStore.createIndex('by-date', 'updatedAt');
-
-        if (!db.objectStoreNames.contains('chapters')) {
-          const chapterStore = db.createObjectStore('chapters', { keyPath: 'id' });
-          chapterStore.createIndex('by-parent', 'parentId');
-          chapterStore.createIndex('by-date', 'createdAt');
-        }
       },
     });
 
@@ -102,8 +45,8 @@ async function migrateFromStudyForge(): Promise<void> {
       return;
     }
 
-    // Migrate all object stores
-    const storeNames = ['documents', 'flashcards', 'quizzes', 'studySessions', 'settings', 'chatSessions'] as const;
+    // Migrate relevant object stores (skip flashcards/quizzes which are removed)
+    const storeNames = ['documents', 'settings'] as const;
 
     for (const storeName of storeNames) {
       try {
@@ -141,38 +84,39 @@ export async function getDB(): Promise<IDBPDatabase<InkwellDB>> {
   // Run migration before opening the new DB for normal use
   await migrateFromStudyForge();
 
-  dbInstance = await openDB<InkwellDB>('inkwell', 4, {
-    upgrade(db) {
-      const docStore = db.createObjectStore('documents', { keyPath: 'id' });
-      docStore.createIndex('by-type', 'type');
-      docStore.createIndex('by-date', 'createdAt');
+  dbInstance = await openDB<InkwellDB>('inkwell', 7, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const docStore = db.createObjectStore('documents', { keyPath: 'id' });
+        docStore.createIndex('by-type', 'type');
+        docStore.createIndex('by-date', 'createdAt');
 
-      const fcStore = db.createObjectStore('flashcards', { keyPath: 'id' });
-      fcStore.createIndex('by-deck', 'deck');
-      fcStore.createIndex('by-document', 'documentId');
-      fcStore.createIndex('by-review', 'nextReview');
-
-      const quizStore = db.createObjectStore('quizzes', { keyPath: 'id' });
-      quizStore.createIndex('by-document', 'documentId');
-
-      const sessionStore = db.createObjectStore('studySessions', { keyPath: 'id' });
-      sessionStore.createIndex('by-date', 'date');
-      sessionStore.createIndex('by-type', 'type');
-
-      db.createObjectStore('settings', { keyPath: 'ai' });
-
-      const chatStore = db.createObjectStore('chatSessions', { keyPath: 'id' });
-      chatStore.createIndex('by-date', 'updatedAt');
-
-      if (!db.objectStoreNames.contains('chapters')) {
-        const chapterStore = db.createObjectStore('chapters', { keyPath: 'id' });
-        chapterStore.createIndex('by-parent', 'parentId');
-        chapterStore.createIndex('by-date', 'createdAt');
+        db.createObjectStore('settings', { keyPath: 'ai' });
       }
-      if (!db.objectStoreNames.contains('courses')) {
-        const courseStore = db.createObjectStore('courses', { keyPath: 'id' });
-        courseStore.createIndex('by-date', 'createdAt');
+      // Version 5: remove studySessions object store (no longer used)
+      if (oldVersion < 5 && db.objectStoreNames.contains('studySessions')) {
+        db.deleteObjectStore('studySessions');
       }
+      // Version 6: remove flashcards and quizzes object stores (no longer used)
+      if (oldVersion < 6) {
+        if (db.objectStoreNames.contains('flashcards')) {
+          db.deleteObjectStore('flashcards');
+        }
+        if (db.objectStoreNames.contains('quizzes')) {
+          db.deleteObjectStore('quizzes');
+        }
+      }
+      // Version 7: remove chatSessions, chapters, courses object stores (migrated to Postgres)
+      if (oldVersion < 7) {
+        if (db.objectStoreNames.contains('chatSessions')) db.deleteObjectStore('chatSessions');
+        if (db.objectStoreNames.contains('courses')) db.deleteObjectStore('courses');
+        if (db.objectStoreNames.contains('chapters')) db.deleteObjectStore('chapters');
+      }
+    },
+    blocked() {
+      console.warn('IndexedDB open blocked — closing stale connections');
+      dbInstance?.close();
+      dbInstance = null;
     },
   });
   return dbInstance;

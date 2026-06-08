@@ -1,36 +1,76 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { HiChevronLeft, HiChevronRight, HiZoomIn, HiZoomOut } from 'react-icons/hi';
 import Button from '../shared/Button';
+import * as pdfjsLib from 'pdfjs-dist';
 import { renderPDFPageToCanvas } from '../../services/parsers/pdfParser';
+
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface TextbookViewerProps {
   file: File | Blob | null;
   currentPage: number;
   onPageChange: (page: number) => void;
   totalPages: number;
+  /** When set, the actual PDF page rendered = currentPage + pageOffset */
+  pageOffset?: number;
 }
 
-export default function TextbookViewer({ file, currentPage, onPageChange, totalPages }: TextbookViewerProps) {
+export default function TextbookViewer({ file, currentPage, onPageChange, totalPages, pageOffset = 0 }: TextbookViewerProps) {
   const [scale, setScale] = useState(1);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderVersionRef = useRef(0);
+  const cancelRenderRef = useRef<(() => void) | null>(null);
+  const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const arrayBufferRef = useRef<ArrayBuffer | null>(null);
+
+  // Load and cache PDF document from blob — reuse ArrayBuffer across remounts
+  useEffect(() => {
+    if (!file) {
+      pdfRef.current = null;
+      arrayBufferRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      // Reuse cached ArrayBuffer if we already have one for this blob
+      if (!arrayBufferRef.current) {
+        arrayBufferRef.current = await file.arrayBuffer();
+      }
+
+      if (cancelled) return;
+      const pdf = await pdfjsLib.getDocument({ data: arrayBufferRef.current.slice(0) }).promise;
+      if (!cancelled) {
+        pdfRef.current = pdf;
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [file]);
 
   const renderPage = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas || !file) return;
 
-    // Increment version to detect stale renders
+    // Cancel any in-flight render before starting a new one
+    cancelRenderRef.current?.();
+    cancelRenderRef.current = null;
+
     const version = ++renderVersionRef.current;
     setIsRendering(true);
     setError(null);
 
     try {
-      await renderPDFPageToCanvas(canvas, file, currentPage, scale);
+      const pdf = pdfRef.current;
+      if (!pdf) return;
 
-      // Only update state if this is still the latest render
+      const cancel = await renderPDFPageToCanvas(canvas, pdf, currentPage + pageOffset, scale);
       if (version === renderVersionRef.current) {
+        cancelRenderRef.current = cancel;
         setIsRendering(false);
       }
     } catch (err) {
@@ -39,13 +79,13 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
         setIsRendering(false);
       }
     }
-  }, [file, currentPage, scale]);
+  }, [file, currentPage, scale, pageOffset]);
 
   useEffect(() => {
     renderPage();
   }, [renderPage]);
 
-  // Cleanup: mark render as stale on unmount
+  // On unmount, just bump version — don't cancel completed renders
   useEffect(() => {
     return () => {
       renderVersionRef.current++;
@@ -57,7 +97,6 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
 
   return (
     <div className="flex flex-col items-center bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden overflow-x-auto">
-      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-2 sm:p-3 border-b border-slate-700/50 w-full bg-slate-800/50">
         <Button size="sm" variant="ghost" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}>
           <HiChevronLeft className="w-4 h-4" />
@@ -76,7 +115,6 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
         </Button>
       </div>
 
-      {/* Canvas area */}
       <div className="p-4 overflow-auto max-h-[600px] w-full flex justify-center items-center relative min-h-[200px]">
         {!file ? (
           <div className="text-center text-slate-400 py-20">

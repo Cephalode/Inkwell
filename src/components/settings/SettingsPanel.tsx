@@ -6,7 +6,7 @@ import { HiEye, HiEyeOff, HiCheck, HiStatusOffline, HiStatusOnline } from 'react
 import { checkBackendHealth } from '../../services/ai/client';
 
 export default function SettingsPanel() {
-  const { settings, setApiKey, setProvider, setBaseUrl, setModel, setPomodoroWork, setPomodoroBreak, setPomodoroLongBreak, setDefaultSummaryType } = useSettingsStore();
+  const { settings, setApiKey, setProvider, setBaseUrl, setModel, setDefaultSummaryType } = useSettingsStore();
   const [showKey, setShowKey] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -139,23 +139,6 @@ export default function SettingsPanel() {
               Using the built-in Inkwell AI backend with GLM-5.1. The backend proxy runs on port 3002 and handles API authentication automatically.
             </p>
           )}
-        </div>
-      </Card>
-
-      <Card header={<h3 className="text-white font-semibold">⏱️ Pomodoro Settings</h3>}>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Work (min)</label>
-            <input type="number" value={settings.pomodoro.workDuration} onChange={(e) => setPomodoroWork(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Break (min)</label>
-            <input type="number" value={settings.pomodoro.breakDuration} onChange={(e) => setPomodoroBreak(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Long Break (min)</label>
-            <input type="number" value={settings.pomodoro.longBreakDuration} onChange={(e) => setPomodoroLongBreak(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm" />
-          </div>
         </div>
       </Card>
 

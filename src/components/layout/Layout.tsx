@@ -6,6 +6,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileTabBar from './MobileTabBar';
 import MobileDrawer from './MobileDrawer';
 import MobileHeader from './MobileHeader';
+import GlobalChat from '../chat/GlobalChat';
 
 export default function Layout() {
   const { sidebarOpen } = useUIStore();
@@ -20,6 +21,7 @@ export default function Layout() {
           <Outlet />
         </main>
         <MobileTabBar />
+        <GlobalChat />
       </div>
     );
   }
@@ -33,6 +35,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <GlobalChat />
     </div>
   );
 }

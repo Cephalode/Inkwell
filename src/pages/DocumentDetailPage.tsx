@@ -1,38 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../store/documentStore';
-import { useChatStore } from '../store/chatStore';
-import ChatPanel from '../components/chat/ChatPanel';
 import SummaryPanel from '../components/summary/SummaryPanel';
-import FlashcardDeck from '../components/flashcards/FlashcardDeck';
-import QuizPlayer from '../components/quiz/QuizPlayer';
-import StudyGuidePanel from '../components/studyguide/StudyGuidePanel';
-import { MindMapPageViewer } from '../components/mindmap/MindMapViewer';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
 import Spinner from '../components/shared/Spinner';
-import { ragChat } from '../services/rag/retriever';
 import { chatCompletion } from '../services/ai/client';
-import { SUMMARY_PROMPTS, QUIZ_PROMPT, FLASHCARD_PROMPT, STUDY_GUIDE_PROMPT, MINDMAP_PROMPT } from '../services/ai/prompts';
-import { ChatMessage, Citation } from '../types/chat';
-import { Flashcard } from '../types/flashcard';
-import { QuizQuestion } from '../types/quiz';
+import { SUMMARY_PROMPTS } from '../services/ai/prompts';
 import Badge from '../components/shared/Badge';
-import { generateUUID } from '../utils/uuid';
 
-type Tab = 'chat' | 'summary' | 'flashcards' | 'quiz' | 'studyguide' | 'mindmap';
+type Tab = 'summary';
 
 export default function DocumentDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { documents, setCurrentDocument, currentDocument } = useDocumentStore();
-  const [tab, setTab] = useState<Tab>('chat');
+  const [tab, setTab] = useState<Tab>('summary');
   const [isLoading, setIsLoading] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
-  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
-  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     const doc = documents.find((d) => d.id === id);
@@ -46,21 +30,6 @@ export default function DocumentDetailPage() {
   const doc = currentDocument;
   const text = doc.parsedText || '';
 
-  const handleChat = async (message: string) => {
-    const userMsg: ChatMessage = { id: generateUUID(), role: 'user', content: message, timestamp: Date.now() };
-    setChatMessages((prev) => [...prev, userMsg]);
-    setIsLoading(true);
-    try {
-      const { answer } = await ragChat(message, text, chatMessages);
-      const asstMsg: ChatMessage = { id: generateUUID(), role: 'assistant', content: answer, timestamp: Date.now() };
-      setChatMessages((prev) => [...prev, asstMsg]);
-    } catch (err: any) {
-      const errMsg: ChatMessage = { id: generateUUID(), role: 'assistant', content: `Error: ${err.message}`, timestamp: Date.now() };
-      setChatMessages((prev) => [...prev, errMsg]);
-    }
-    setIsLoading(false);
-  };
-
   const handleSummary = async (type: 'tldr' | 'keypoints' | 'detailed') => {
     setIsLoading(true);
     try {
@@ -68,54 +37,8 @@ export default function DocumentDetailPage() {
     } finally { setIsLoading(false); }
   };
 
-  const handleFlashcards = async () => {
-    setIsLoading(true);
-    try {
-      const result = await chatCompletion([{ role: 'user', content: FLASHCARD_PROMPT(text, 10) }]);
-      const parsed = JSON.parse(result.match(/\[.*\]/s)?.[0] || '[]');
-      const cards: Flashcard[] = parsed.map((c: any, i: number) => ({
-        id: generateUUID(), documentId: doc.id, deck: doc.name,
-        front: c.front, back: c.back, difficulty: 'medium' as const,
-        nextReview: Date.now(), interval: 1, easeFactor: 2.5, reviewCount: 0, createdAt: Date.now(),
-      }));
-      setFlashcards(cards);
-    } catch { setFlashcards([]); }
-    setIsLoading(false);
-  };
-
-  const handleQuiz = async () => {
-    setIsLoading(true);
-    try {
-      const result = await chatCompletion([{ role: 'user', content: QUIZ_PROMPT(text, 5, ['multiple_choice', 'true_false']) }]);
-      const parsed = JSON.parse(result.match(/\[.*\]/s)?.[0] || '[]');
-      setQuizQuestions(parsed.map((q: any) => ({ ...q, id: generateUUID() })));
-    } catch { setQuizQuestions([]); }
-    setIsLoading(false);
-  };
-
-  const handleStudyGuide = async () => {
-    setIsLoading(true);
-    try {
-      return await chatCompletion([{ role: 'user', content: STUDY_GUIDE_PROMPT(text) }]);
-    } finally { setIsLoading(false); }
-  };
-
-  const handleMindMap = async () => {
-    setIsLoading(true);
-    try {
-      const result = await chatCompletion([{ role: 'user', content: MINDMAP_PROMPT(text) }]);
-      const jsonStr = result.match(/\{[\s\S]*\}/)?.[0] || '{"nodes":[],"edges":[]}';
-      return JSON.parse(jsonStr);
-    } finally { setIsLoading(false); }
-  };
-
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'chat', label: '💬 Chat' },
     { key: 'summary', label: '📝 Summary' },
-    { key: 'flashcards', label: '🃏 Flashcards' },
-    { key: 'quiz', label: '❓ Quiz' },
-    { key: 'studyguide', label: '📖 Study Guide' },
-    { key: 'mindmap', label: '🧠 Mind Map' },
   ];
 
   return (
@@ -146,22 +69,7 @@ export default function DocumentDetailPage() {
       </div>
 
       <div>
-        {tab === 'chat' && <ChatPanel messages={chatMessages} onSend={handleChat} isLoading={isLoading} contextLabel={doc.name} />}
         {tab === 'summary' && <SummaryPanel onGenerate={handleSummary} isLoading={isLoading} />}
-        {tab === 'flashcards' && (
-          <div>
-            <div className="flex justify-end mb-4"><Button onClick={handleFlashcards} isLoading={isLoading} className="w-full sm:w-auto">Generate Flashcards</Button></div>
-            <FlashcardDeck cards={flashcards} />
-          </div>
-        )}
-        {tab === 'quiz' && (
-          <div>
-            <div className="flex justify-end mb-4"><Button onClick={handleQuiz} isLoading={isLoading} className="w-full sm:w-auto">Generate Quiz</Button></div>
-            <QuizPlayer questions={quizQuestions} onAnswer={(qid, ans) => setQuizAnswers((p) => ({ ...p, [qid]: ans }))} onComplete={() => setShowResults(true)} answers={quizAnswers} showResults={showResults} />
-          </div>
-        )}
-        {tab === 'studyguide' && <StudyGuidePanel onGenerate={handleStudyGuide} isLoading={isLoading} />}
-        {tab === 'mindmap' && <MindMapPageViewer onGenerate={handleMindMap} isLoading={isLoading} />}
       </div>
     </div>
   );

@@ -9,9 +9,6 @@ interface SettingsState {
   setBaseUrl: (url: string) => void;
   setModel: (model: string) => void;
   setTheme: (theme: ThemeMode) => void;
-  setPomodoroWork: (min: number) => void;
-  setPomodoroBreak: (min: number) => void;
-  setPomodoroLongBreak: (min: number) => void;
   setDefaultSummaryType: (t: 'tldr' | 'keypoints' | 'detailed') => void;
   resetSettings: () => void;
 }
@@ -46,9 +43,6 @@ export const useSettingsStore = create<SettingsState>()(
         document.documentElement.className = theme;
         return { settings: { ...s.settings, theme } };
       }),
-      setPomodoroWork: (min) => set((s) => ({ settings: { ...s.settings, pomodoro: { ...s.settings.pomodoro, workDuration: min } } })),
-      setPomodoroBreak: (min) => set((s) => ({ settings: { ...s.settings, pomodoro: { ...s.settings.pomodoro, breakDuration: min } } })),
-      setPomodoroLongBreak: (min) => set((s) => ({ settings: { ...s.settings, pomodoro: { ...s.settings.pomodoro, longBreakDuration: min } } })),
       setDefaultSummaryType: (t) => set((s) => ({ settings: { ...s.settings, defaultSummaryType: t } })),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
     }),

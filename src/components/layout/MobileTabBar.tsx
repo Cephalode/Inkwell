@@ -1,12 +1,10 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HiHome, HiDocumentText, HiViewColumns, HiQuestionMarkCircle, HiBars3 } from 'react-icons/hi2';
+import { HiHome, HiDocumentText, HiBars3 } from 'react-icons/hi2';
 import { useUIStore } from '../../store/uiStore';
 
 const tabs = [
   { key: 'dashboard', label: 'Home', icon: HiHome, path: '/' },
   { key: 'documents', label: 'Docs', icon: HiDocumentText, path: '/documents' },
-  { key: 'flashcards', label: 'Cards', icon: HiViewColumns, path: '/flashcards' },
-  { key: 'quiz', label: 'Quiz', icon: HiQuestionMarkCircle, path: '/quiz' },
 ] as const;
 
 export default function MobileTabBar() {
@@ -19,8 +17,6 @@ export default function MobileTabBar() {
     const path = location.pathname;
     if (path === '/') return 'dashboard';
     if (path.startsWith('/documents')) return 'documents';
-    if (path.startsWith('/flashcards')) return 'flashcards';
-    if (path.startsWith('/quiz')) return 'quiz';
     return '';
   })();
 

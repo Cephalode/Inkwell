@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate, NavLink } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   HiAcademicCap,
@@ -7,43 +7,72 @@ import {
   HiSun,
   HiMoon,
   HiXMark,
+  HiPlus,
 } from 'react-icons/hi2';
 import { useTheme } from '../../hooks/useTheme';
+import { useCourses } from '../../hooks/useCourses';
 
 const pathTitleMap: Record<string, string> = {
   '/': 'Dashboard',
   '/documents': 'Documents',
   '/courses': 'Courses',
-  '/flashcards': 'Flashcards',
-  '/quiz': 'Quiz',
   '/textbook': 'Textbook',
-  '/study-guide': 'Study Guide',
-  '/mindmap': 'Mind Map',
-  '/pomodoro': 'Pomodoro',
-  '/tutor': 'AI Tutor',
-  '/notes': 'Notes',
-  '/concepts': 'Concepts',
-  '/exam': 'Practice Exam',
-  '/schedule': 'Schedule',
   '/settings': 'Settings',
 };
-
-function getPageTitle(pathname: string): string {
-  if (pathTitleMap[pathname]) return pathTitleMap[pathname];
-  // Try matching prefix for nested routes
-  const match = Object.entries(pathTitleMap).find(
-    ([path]) => path !== '/' && pathname.startsWith(path)
-  );
-  return match ? match[1] : 'Inkwell';
-}
 
 export default function MobileHeader() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { courses, loadCourses, createCourse } = useCourses();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newCourseName, setNewCourseName] = useState('');
+  const createRef = useRef<HTMLDivElement>(null);
 
-  const pageTitle = getPageTitle(location.pathname);
+  useEffect(() => {
+    loadCourses();
+  }, [loadCourses]);
+
+  useEffect(() => {
+    if (!showCreateForm) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (createRef.current && !createRef.current.contains(e.target as Node)) {
+        setShowCreateForm(false);
+        setNewCourseName('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCreateForm]);
+
+  const handleCreate = async () => {
+    const name = newCourseName.trim();
+    if (!name) return;
+    const course = await createCourse(name);
+    setShowCreateForm(false);
+    setNewCourseName('');
+    navigate(`/courses/${course.id}`);
+  };
+
+  // Dynamic page title with course name lookup
+  const pageTitle = (() => {
+    if (pathTitleMap[location.pathname]) return pathTitleMap[location.pathname];
+    // Match /courses/:id and look up course name
+    const courseMatch = location.pathname.match(/^\/courses\/(.+)$/);
+    if (courseMatch) {
+      const courseId = courseMatch[1];
+      const course = courses.find((c) => c.id === courseId);
+      if (course) return course.name;
+      return 'Course';
+    }
+    // Try matching prefix for other nested routes
+    const match = Object.entries(pathTitleMap).find(
+      ([path]) => path !== '/' && location.pathname.startsWith(path)
+    );
+    return match ? match[1] : 'Inkwell';
+  })();
 
   return (
     <>
@@ -56,10 +85,61 @@ export default function MobileHeader() {
         </div>
 
         {/* Center: Page title */}
-        <div className="flex-1 text-center">
+        <div className="flex-1 text-center min-w-0">
           <span className="text-sm font-medium text-slate-300 truncate block">
             {pageTitle}
           </span>
+        </div>
+
+        {/* Course Tabs */}
+        <div className="flex items-center gap-1 flex-shrink-0 overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {courses.map((course) => (
+            <NavLink
+              key={course.id}
+              to={`/courses/${course.id}`}
+              className={({ isActive }) =>
+                `px-2 py-0.5 rounded-full text-[11px] font-medium border whitespace-nowrap transition-colors ${
+                  isActive
+                    ? 'bg-cyan-600/20 text-cyan-400 border-cyan-500/30'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
+                }`
+              }
+            >
+              {course.name}
+            </NavLink>
+          ))}
+
+          {/* Create Course Button + Dropdown */}
+          <div className="relative" ref={createRef}>
+            <button
+              onClick={() => setShowCreateForm((v) => !v)}
+              className="px-2 py-0.5 rounded-full text-[11px] font-medium border bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700 transition-colors"
+            >
+              <HiPlus className="w-3.5 h-3.5" />
+            </button>
+
+            {showCreateForm && (
+              <div className="absolute right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-3 w-52 z-50">
+                <input
+                  type="text"
+                  placeholder="Course name..."
+                  autoFocus
+                  value={newCourseName}
+                  onChange={(e) => setNewCourseName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreate();
+                  }}
+                  className="w-full pl-3 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                />
+                <button
+                  onClick={handleCreate}
+                  className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm px-3 py-1.5 transition-colors"
+                >
+                  Create
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right: Actions */}
@@ -108,7 +188,7 @@ export default function MobileHeader() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search documents, flashcards..."
+                  placeholder="Search documents..."
                   autoFocus
                   className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
                 />

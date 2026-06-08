@@ -62,18 +62,20 @@ export async function renderPDFPage(
   return canvas.toDataURL('image/jpeg', 0.7);
 }
 
+/** Render a PDF page onto an existing canvas. Returns a cancel function. */
 export async function renderPDFPageToCanvas(
   canvas: HTMLCanvasElement,
-  file: File | Blob | ArrayBuffer,
+  pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>>['promise'],
   pageNumber: number,
-  scale: number = 1.0
-): Promise<void> {
-  const data = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data }).promise;
+  scale: number = 1.0,
+): Promise<() => void> {
   const page = await pdf.getPage(pageNumber);
   const viewport = page.getViewport({ scale });
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d')!;
-  await page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any).promise;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const task = page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any);
+  await task.promise;
+  return () => task.cancel();
 }
