@@ -186,9 +186,9 @@ function SessionListDropdown({
 }: {
   sessions: ChatSession[];
   activeSessionId: string | null;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onDelete: (id: string) => void;
+  onSelect: (id: string) => void | Promise<void>;
+  onNew: () => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);

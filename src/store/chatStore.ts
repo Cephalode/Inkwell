@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ChatMessage, ChatSession } from '../types/chat';
-import * as chatDB from '../services/storage/chatStore';
+import { listChatSessions, getChatSession, createChatSession, updateChatSession, addChatMessage, deleteChatSession } from '../services/api/client';
 import { generateUUID } from '../utils/uuid';
 
 interface PendingTool {
@@ -16,6 +16,7 @@ interface ChatState {
   pendingTools: PendingTool[];
   sessions: ChatSession[];
   activeSessionId: string | null;
+  isLoadingSessions: boolean;
   open: () => void;
   close: () => void;
   toggle: () => void;
@@ -24,13 +25,10 @@ interface ChatState {
   setPendingTools: (tools: PendingTool[]) => void;
   clearMessages: () => void;
   loadSessions: () => Promise<void>;
-  setActiveSession: (id: string) => void;
-  createNewSession: () => void;
-  deleteSession: (id: string) => void;
-  persistSession: () => Promise<void>;
+  setActiveSession: (id: string) => Promise<void>;
+  createNewSession: () => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
 }
-
-let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 export type { PendingTool };
 
@@ -41,6 +39,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   pendingTools: [],
   sessions: [],
   activeSessionId: null,
+  isLoadingSessions: false,
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
@@ -58,19 +57,17 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         ),
       }));
       // Persist title update
-      const session = get().sessions.find((s) => s.id === get().activeSessionId);
-      if (session) {
-        chatDB.saveSession({ ...session, title, updatedAt: Date.now() });
-      }
+      updateChatSession(state.activeSessionId, { title }).catch(console.error);
     }
 
-    // Debounced persist (300ms)
+    // Persist message to API (fire-and-forget)
     if (state.activeSessionId) {
-      if (persistTimer) clearTimeout(persistTimer);
-      persistTimer = setTimeout(() => {
-        get().persistSession();
-        persistTimer = null;
-      }, 300);
+      addChatMessage(state.activeSessionId, {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        citations: msg.citations,
+      }).catch(console.error);
     }
   },
 
@@ -79,111 +76,95 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   clearMessages: () => {
     set({ messages: [], pendingTools: [] });
-    // Persist empty messages to current session
-    const state = get();
-    if (state.activeSessionId) {
-      const session = state.sessions.find((s) => s.id === state.activeSessionId);
-      if (session) {
-        chatDB.saveSession({ ...session, messages: [], updatedAt: Date.now() });
-      }
-    }
   },
 
   loadSessions: async () => {
-    const sessions = await chatDB.getAllSessions();
-    set({ sessions });
+    set({ isLoadingSessions: true });
+    try {
+      const sessions = await listChatSessions();
+      set({ sessions });
 
-    // Set the most recent session as active and load its messages
-    if (sessions.length > 0) {
-      const mostRecent = sessions[0];
-      set({ activeSessionId: mostRecent.id, messages: mostRecent.messages });
-    } else {
-      // Create an initial session
-      const now = Date.now();
-      const newSession: ChatSession = {
-        id: generateUUID(),
-        title: 'New chat',
-        messages: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-      await chatDB.saveSession(newSession);
-      set({ sessions: [newSession], activeSessionId: newSession.id, messages: [] });
+      if (sessions.length > 0) {
+        const mostRecent = sessions[0];
+        // Load messages for the most recent session
+        try {
+          const full = await getChatSession(mostRecent.id);
+          set({ activeSessionId: mostRecent.id, messages: full.messages });
+        } catch {
+          set({ activeSessionId: mostRecent.id, messages: [] });
+        }
+      } else {
+        // No sessions — create one
+        const created = await createChatSession();
+        set({ sessions: [created], activeSessionId: created.id, messages: [] });
+      }
+    } catch (err) {
+      console.error('Failed to load chat sessions:', err);
+    } finally {
+      set({ isLoadingSessions: false });
     }
   },
 
-  setActiveSession: (id) => {
+  setActiveSession: async (id) => {
     const state = get();
     const session = state.sessions.find((s) => s.id === id);
-    if (session) {
-      set({ activeSessionId: id, messages: session.messages, pendingTools: [] });
-    }
-  },
-
-  createNewSession: () => {
-    const now = Date.now();
-    const newSession: ChatSession = {
-      id: generateUUID(),
-      title: 'New chat',
-      messages: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    chatDB.saveSession(newSession);
-    set((s) => ({
-      sessions: [newSession, ...s.sessions],
-      activeSessionId: newSession.id,
-      messages: [],
-      pendingTools: [],
-    }));
-  },
-
-  deleteSession: (id) => {
-    const state = get();
-    chatDB.deleteSession(id);
-    const remaining = state.sessions.filter((s) => s.id !== id);
-
-    if (state.activeSessionId === id) {
-      if (remaining.length > 0) {
-        const next = remaining[0];
-        set({
-          sessions: remaining,
-          activeSessionId: next.id,
-          messages: next.messages,
-          pendingTools: [],
-        });
-      } else {
-        // No sessions left — create a new one
-        const now = Date.now();
-        const fresh: ChatSession = {
-          id: generateUUID(),
-          title: 'New chat',
-          messages: [],
-          createdAt: now,
-          updatedAt: now,
-        };
-        chatDB.saveSession(fresh);
-        set({ sessions: [fresh], activeSessionId: fresh.id, messages: [], pendingTools: [] });
-      }
-    } else {
-      set({ sessions: remaining });
-    }
-  },
-
-  persistSession: async () => {
-    const state = get();
-    if (!state.activeSessionId) return;
-    const session = state.sessions.find((s) => s.id === state.activeSessionId);
     if (!session) return;
-    const updated: ChatSession = {
-      ...session,
-      messages: state.messages,
-      updatedAt: Date.now(),
-    };
-    await chatDB.saveSession(updated);
-    // Update sessions list in memory too
-    set((s) => ({
-      sessions: s.sessions.map((ses) => (ses.id === state.activeSessionId ? updated : ses)),
-    }));
+
+    set({ activeSessionId: id, pendingTools: [] });
+    // Load messages from API
+    try {
+      const full = await getChatSession(id);
+      set({ messages: full.messages });
+    } catch {
+      set({ messages: [] });
+    }
+  },
+
+  createNewSession: async () => {
+    try {
+      const created = await createChatSession();
+      set((s) => ({
+        sessions: [created, ...s.sessions],
+        activeSessionId: created.id,
+        messages: [],
+        pendingTools: [],
+      }));
+    } catch (err) {
+      console.error('Failed to create chat session:', err);
+    }
+  },
+
+  deleteSession: async (id) => {
+    try {
+      await deleteChatSession(id);
+      const state = get();
+      const remaining = state.sessions.filter((s) => s.id !== id);
+
+      if (state.activeSessionId === id) {
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          set({
+            sessions: remaining,
+            activeSessionId: next.id,
+            pendingTools: [],
+          });
+          // Load messages for the next session
+          try {
+            const full = await getChatSession(next.id);
+            set({ messages: full.messages });
+          } catch {
+            set({ messages: [] });
+          }
+        } else {
+          // No sessions left — create a new one
+          const created = await createChatSession();
+          set({ sessions: [created], activeSessionId: created.id, messages: [], pendingTools: [] });
+        }
+      } else {
+        set({ sessions: remaining });
+      }
+    } catch (err) {
+      console.error('Failed to delete chat session:', err);
+    }
   },
 }));
