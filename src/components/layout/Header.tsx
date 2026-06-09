@@ -73,38 +73,38 @@ export default function Header() {
             {course.name}
           </NavLink>
         ))}
+      </div>
 
-        {/* Create Course Button + Dropdown */}
-        <div className="relative" ref={createRef}>
-          <button
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="px-2 py-1 rounded-full text-xs font-medium border bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700 transition-colors"
-          >
-            <HiPlus className="w-4 h-4" />
-          </button>
+      {/* Create Course Button — outside overflow container so dropdown isn't clipped */}
+      <div className="relative flex-shrink-0" ref={createRef}>
+        <button
+          onClick={() => setShowCreateForm((v) => !v)}
+          className="px-2 py-1 rounded-full text-xs font-medium border bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700 transition-colors"
+        >
+          <HiPlus className="w-4 h-4" />
+        </button>
 
-          {showCreateForm && (
-            <div className="absolute right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-3 w-56 z-40">
-              <input
-                type="text"
-                placeholder="Course name..."
-                autoFocus
-                value={newCourseName}
-                onChange={(e) => setNewCourseName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreate();
-                }}
-                className="w-full pl-3 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
-              />
-              <button
-                onClick={handleCreate}
-                className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm px-3 py-1.5 transition-colors"
-              >
-                Create
-              </button>
-            </div>
-          )}
-        </div>
+        {showCreateForm && (
+          <div className="absolute right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-3 w-56 z-40">
+            <input
+              type="text"
+              placeholder="Course name..."
+              autoFocus
+              value={newCourseName}
+              onChange={(e) => setNewCourseName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreate();
+              }}
+              className="w-full pl-3 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+            />
+            <button
+              onClick={handleCreate}
+              className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm px-3 py-1.5 transition-colors"
+            >
+              Create
+            </button>
+          </div>
+        )}
       </div>
 
       <button
