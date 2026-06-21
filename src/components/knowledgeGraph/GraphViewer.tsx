@@ -43,6 +43,25 @@ const FILTER_TYPE_MAP: Record<string, KGNodeType> = {
   showChapters: 'chapter',
 };
 
+// ── Initial fit-to-view tuning ───────────────────────────────────
+// force-graph's *default* initial zoom is a viewport-blind heuristic
+// (4 / ∛nodeCount) that makes the graph look far too zoomed-out on
+// small screens. We replace it with a real fit computed from the
+// layout's bounding box and the actual viewport size.
+/** Tailwind `md` breakpoint — below this we treat the viewport as mobile. */
+const MOBILE_BREAKPOINT = 768;
+/**
+ * On narrow viewports a full fit squishes every node into a tiny,
+ * illegible dot. We instead zoom in tighter than a full fit so users
+ * start with a focused, readable region and pan to see the rest.
+ * (A full fit is already ideal on desktop, so no boost there.)
+ */
+const MOBILE_TIGHTEN_FACTOR = 2.5;
+/** Never blow the initial zoom up beyond this (e.g. a 2-node graph). */
+const MAX_INIT_ZOOM = 4;
+/** Floor; matches the component's minZoom prop. */
+const MIN_INIT_ZOOM = 0.1;
+
 interface GraphViewerProps {
   graph: KGGraph;
   onNodeClick?: (node: KGNode) => void;
@@ -51,6 +70,7 @@ interface GraphViewerProps {
 export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<any>(null);
+  const didInitialFitRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const { filters, setHoveredNode, simulationControls } = useKnowledgeGraphStore();
@@ -198,6 +218,68 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     setHoveredNode(kgNode);
   }, [setHoveredNode]);
 
+  // ── Initial fit-to-view (runs once when the force simulation settles) ──
+  // force-graph's default zoom (4 / ∛nodeCount) ignores the viewport and the
+  // actual layout bounds, which is why the graph looks far too zoomed-out on
+  // mobile. We compute a real fit from the bounding box + viewport size, and
+  // zoom in tighter than a full fit on narrow screens so nodes stay legible.
+  const handleEngineStop = useCallback(() => {
+    const fg = graphRef.current;
+    if (!fg || didInitialFitRef.current) return;
+
+    // Measure the live container rather than the (possibly stale) state so
+    // the fit is correct regardless of when the simulation settles.
+    const container = containerRef.current;
+    const vw = container?.clientWidth ?? dimensions.width;
+    const vh = container?.clientHeight ?? dimensions.height;
+    if (vw <= 0 || vh <= 0) return;
+
+    let bbox: { x: [number, number]; y: [number, number] } | null = null;
+    try {
+      bbox = fg.getGraphBbox();
+    } catch {
+      bbox = null;
+    }
+    if (!bbox) return;
+
+    const bw = bbox.x[1] - bbox.x[0];
+    const bh = bbox.y[1] - bbox.y[0];
+    const cx = (bbox.x[0] + bbox.x[1]) / 2;
+    const cy = (bbox.y[0] + bbox.y[1]) / 2;
+
+    const isNarrow = vw < MOBILE_BREAKPOINT;
+
+    // Layout collapsed to a single point (or fully overlapping nodes) — just
+    // centre it at a comfortable zoom.
+    if (!isFinite(bw) || !isFinite(bh) || bw <= 0 || bh <= 0) {
+      fg.centerAt(cx, cy, 0);
+      fg.zoom(isNarrow ? 2 : 1, 0);
+      didInitialFitRef.current = true;
+      return;
+    }
+
+    // Viewport-relative padding: a fixed pixel padding would eat up most of a
+    // narrow mobile viewport, so express it as a fraction of the screen.
+    const padFraction = isNarrow ? 0.04 : 0.12;
+    const padX = vw * padFraction;
+    const padY = vh * padFraction;
+
+    // Scale that would fit the *entire* graph inside the padded viewport.
+    const fitScale = Math.min((vw - padX * 2) / bw, (vh - padY * 2) / bh);
+
+    // Desktop: a proper fit-to-bounds is ideal. Mobile: a full fit squishes
+    // everything into tiny illegible dots, so zoom in tighter (accepting that
+    // some nodes start off-screen and the user pans to reach them).
+    let targetScale = isNarrow ? fitScale * MOBILE_TIGHTEN_FACTOR : fitScale;
+
+    // Clamp to a sane range: never below minZoom, never absurdly large.
+    targetScale = Math.max(MIN_INIT_ZOOM, Math.min(targetScale, MAX_INIT_ZOOM));
+
+    fg.centerAt(cx, cy, 0);
+    fg.zoom(targetScale, 0);
+    didInitialFitRef.current = true;
+  }, [dimensions.width, dimensions.height]);
+
   // Compute the effective radius for a node, respecting simulation controls
   const getNodeRadius = useCallback(
     (kgNode: KGNode) => {
@@ -309,6 +391,7 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
         linkVisibility={true}
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
+        onEngineStop={handleEngineStop}
         cooldownTicks={200}
         cooldownTime={simulationControls.cooldownTime}
         velocityDecay={simulationControls.velocityDecay}

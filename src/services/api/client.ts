@@ -332,6 +332,17 @@ export async function updateChatSession(id: string, updates: Partial<Pick<ChatSe
   if (!res.ok) throw new Error('Failed to update chat session');
 }
 
+export async function generateChatTitle(sessionId: string, message: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/chat-sessions/${sessionId}/generate-title`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) throw new Error('Failed to generate chat title');
+  const data = await res.json();
+  return data.title;
+}
+
 export async function addChatMessage(sessionId: string, message: { id: string; role: string; content: string; citations?: any[] }): Promise<void> {
   const res = await fetch(`${API_BASE}/chat-sessions/${sessionId}/messages`, {
     method: 'POST',

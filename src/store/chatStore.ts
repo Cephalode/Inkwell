@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { ChatMessage, ChatSession } from '../types/chat';
-import { listChatSessions, getChatSession, createChatSession, updateChatSession, addChatMessage, deleteChatSession } from '../services/api/client';
+import { listChatSessions, getChatSession, createChatSession, updateChatSession, addChatMessage, deleteChatSession, generateChatTitle } from '../services/api/client';
 import { generateUUID } from '../utils/uuid';
 
 interface PendingTool {
@@ -50,14 +50,24 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     // Auto-generate title from first user message
     if (msg.role === 'user' && state.messages.length === 0 && state.activeSessionId) {
-      const title = msg.content.length > 50 ? msg.content.slice(0, 50) + '…' : msg.content;
+      const fallback = msg.content.length > 50 ? msg.content.slice(0, 50) + '…' : msg.content;
+      const sessionId = state.activeSessionId;
       set((s) => ({
         sessions: s.sessions.map((ses) =>
-          ses.id === s.activeSessionId ? { ...ses, title, updatedAt: Date.now() } : ses,
+          ses.id === sessionId ? { ...ses, title: fallback, updatedAt: Date.now() } : ses,
         ),
       }));
-      // Persist title update
-      updateChatSession(state.activeSessionId, { title }).catch(console.error);
+      updateChatSession(sessionId, { title: fallback }).catch(console.error);
+      generateChatTitle(sessionId, msg.content)
+        .then((title) => {
+          set((s) => ({
+            sessions: s.sessions.map((ses) =>
+              ses.id === sessionId ? { ...ses, title, updatedAt: Date.now() } : ses,
+            ),
+          }));
+          updateChatSession(sessionId, { title }).catch(console.error);
+        })
+        .catch(() => { /* keep fallback title */ });
     }
 
     // Persist message to API (fire-and-forget)
