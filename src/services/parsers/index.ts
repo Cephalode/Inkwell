@@ -7,7 +7,7 @@ import { parseImage } from './imageParser';
 import { parseAudio } from './audioParser';
 import { parseEPUB } from './epubParser';
 
-export { extractPageRange, getPDFPageCount, renderPDFPage } from './pdfParser';
+export { extractPageRange, getPDFPageCount, renderPDFPage, renderPDFPageToCanvas } from './pdfParser';
 export { parseYouTube } from './youtubeParser';
 
 export async function parseFile(file: File): Promise<ParsedDocument> {

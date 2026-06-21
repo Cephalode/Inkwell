@@ -18,6 +18,8 @@ export interface ParsedDocument {
   thumbnail?: string;
 }
 
+export type ClassifyStatus = 'pending' | 'classifying' | 'done' | 'skipped';
+
 export interface DocumentFile {
   id: string;
   name: string;
@@ -29,6 +31,21 @@ export interface DocumentFile {
   parsedPages?: PageContent[];
   chapterMarkers?: Chapter[];
   thumbnail?: string;
+  tags: string[];
+  classifyStatus?: ClassifyStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChapterDocument {
+  id: string;
+  parentId: string;
+  chapterTitle: string;
+  chapterIndex: number;
+  startPage: number;
+  endPage: number;
+  rawBlob?: Blob;
+  parsedText: string;
   tags: string[];
   createdAt: number;
   updatedAt: number;

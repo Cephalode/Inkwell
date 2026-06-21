@@ -1,54 +1,150 @@
-import { useState } from 'react';
 import Button from '../shared/Button';
-import { HiSearch } from 'react-icons/hi';
+import Badge from '../shared/Badge';
+import Spinner from '../shared/Spinner';
+import { HiDocumentText, HiDownload, HiCheck } from 'react-icons/hi';
+import type { Chapter } from '../../types/document';
 
 interface ChapterSelectorProps {
+  chapters: Chapter[];
   totalPages: number;
-  onStartPageChange: (page: number) => void;
-  onEndPageChange: (page: number) => void;
-  startPage: number;
-  endPage: number;
-  onConfirm: () => void;
+  isExtracting: boolean;
+  isSaving: boolean;
+  savingIndex: number;
+  savedCount: number;
+  savedChapters: Set<number>;
+  error: string | null;
+  onExtractChapters: () => void;
+  onClearChapters: () => void;
+  onSelectChapter: (chapter: Chapter) => void;
+  onSaveChapter: (index: number) => void;
+  onSaveAllChapters: () => void;
 }
 
-export default function ChapterSelector({ totalPages, startPage, endPage, onStartPageChange, onEndPageChange, onConfirm }: ChapterSelectorProps) {
+export default function ChapterSelector({
+  chapters,
+  totalPages,
+  isExtracting,
+  isSaving,
+  savingIndex,
+  savedCount,
+  savedChapters,
+  error,
+  onExtractChapters,
+  onClearChapters,
+  onSelectChapter,
+  onSaveChapter,
+  onSaveAllChapters,
+}: ChapterSelectorProps) {
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">
-      <h4 className="text-sm font-semibold text-slate-200 mb-4">Select Page Range</h4>
-      <div className="flex items-center gap-4">
-        <div className="flex-1">
-          <label className="block text-xs text-slate-400 mb-1">Start Page</label>
-          <input
-            type="number"
-            min={1}
-            max={totalPages}
-            value={startPage}
-            onChange={(e) => onStartPageChange(Math.max(1, Number(e.target.value)))}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm"
-          />
+    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 sm:p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-sm font-semibold text-slate-200">Chapters</h4>
+        {chapters.length > 0 && (
+          <button
+            onClick={onClearChapters}
+            className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {isExtracting ? (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <Spinner size="md" />
+          <span className="text-sm text-slate-400">Analyzing chapters…</span>
         </div>
-        <div className="text-slate-500 mt-5">—</div>
-        <div className="flex-1">
-          <label className="block text-xs text-slate-400 mb-1">End Page</label>
-          <input
-            type="number"
-            min={startPage}
-            max={totalPages}
-            value={endPage}
-            onChange={(e) => onEndPageChange(Math.min(totalPages, Number(e.target.value)))}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm"
-          />
-        </div>
-        <div className="mt-5">
-          <Button onClick={onConfirm}>
-            <HiSearch className="w-4 h-4" />
-            Load Pages
+      ) : error ? (
+        <div className="text-center py-6">
+          <p className="text-sm text-red-400 mb-3">{error}</p>
+          <Button onClick={onExtractChapters} variant="outline" size="sm">
+            Retry
           </Button>
         </div>
-      </div>
-      <p className="text-xs text-slate-500 mt-3">
-        {endPage - startPage + 1} pages selected. Only this range will be used for Q&A.
-      </p>
+      ) : chapters.length > 0 ? (
+        <>
+          <ul className="space-y-1 max-h-[400px] overflow-y-auto">
+            {chapters.map((ch, i) => {
+              const endPage = i + 1 < chapters.length ? chapters[i + 1].page - 1 : totalPages;
+              const isSavingThis = savingIndex === i;
+              const isSaved = savedChapters.has(i);
+              return (
+                <li key={i}>
+                  <div
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors bg-slate-700/30 border border-transparent hover:bg-slate-700/60 text-slate-300 hover:text-slate-200"
+                  >
+                    <button
+                      onClick={() => onSelectChapter(ch)}
+                      className="flex-1 flex items-center gap-3 text-left min-w-0"
+                    >
+                      <HiDocumentText className="w-4 h-4 shrink-0 opacity-60" />
+                      <span className="truncate">{ch.title}</span>
+                      <Badge color="slate" className="shrink-0">
+                        pp. {ch.page}–{endPage}
+                      </Badge>
+                    </button>
+                    <button
+                      onClick={() => onSaveChapter(i)}
+                      disabled={isSaving}
+                      title={isSaved ? 'Saved' : 'Save chapter'}
+                      className="shrink-0 p-1 rounded hover:bg-slate-600/50 transition-colors disabled:opacity-50"
+                    >
+                      {isSavingThis ? (
+                        <Spinner size="sm" />
+                      ) : isSaved ? (
+                        <HiCheck className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <HiDownload className="w-4 h-4 opacity-50 hover:opacity-100" />
+                      )}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3 pt-3 border-t border-slate-700/50">
+            <Button
+              onClick={onSaveAllChapters}
+              disabled={isSaving || savedCount === chapters.length}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {savedCount === chapters.length ? (
+                <>
+                  <HiCheck className="w-4 h-4 text-green-400" />
+                  All {chapters.length} chapters saved
+                </>
+              ) : isSaving ? (
+                <>
+                  <Spinner size="sm" />
+                  Saving {savingIndex + 1}/{chapters.length}…
+                </>
+              ) : savedCount > 0 ? (
+                <>
+                  <HiDownload className="w-4 h-4" />
+                  Save remaining ({chapters.length - savedCount})
+                </>
+              ) : (
+                <>
+                  <HiDownload className="w-4 h-4" />
+                  Save all {chapters.length} chapters
+                </>
+              )}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className="text-center py-6">
+          <p className="text-sm text-slate-500 mb-3">
+            Detect chapter headings and page numbers from this PDF.
+          </p>
+          <Button onClick={onExtractChapters}>
+            <HiDocumentText className="w-4 h-4" />
+            Detect Chapters
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,5 @@
 import { useState, useCallback } from 'react';
 import { extractPageRange, getPDFPageCount } from '../services/parsers/index';
-import { chatCompletion } from '../services/ai/client';
-import { TEXTBOOK_CHAT_PROMPT } from '../services/ai/prompts';
 
 export function useTextbook() {
   const [pageCount, setPageCount] = useState(0);
@@ -30,19 +28,9 @@ export function useTextbook() {
     }
   }, []);
 
-  const askQuestion = useCallback(async (question: string): Promise<string> => {
-    if (!extractedText) throw new Error('No pages selected');
-    const pageRange = `pages ${startPage}-${endPage}`;
-    const messages = [
-      { role: 'system', content: TEXTBOOK_CHAT_PROMPT(extractedText, pageRange) },
-      { role: 'user', content: question },
-    ];
-    return chatCompletion(messages);
-  }, [extractedText, startPage, endPage]);
-
   return {
     pageCount, startPage, endPage, extractedText, isLoading,
-    loadPDF, selectPageRange, askQuestion,
+    loadPDF, selectPageRange,
     setStartPage, setEndPage,
   };
 }

@@ -1,50 +1,93 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { parseFile } from '../services/parsers/index';
-import { saveDocument, getAllDocuments, deleteDocument as deleteDoc } from '../services/storage/documentStore';
+import { classifyDocument, getDocument, listDocuments, updateDocumentTags, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
 import type { DocumentFile, DocumentType } from '../types/document';
 import { SUPPORTED_MIME_TYPES, SUPPORTED_EXTENSIONS } from '../types/document';
 
 export function useDocuments() {
-  const { documents, setDocuments, addDocument, removeDocument, setLoading, isLoading } = useDocumentStore();
+  const { documents, setDocuments, addDocument, removeDocument, updateDocument, setLoading, isLoading } = useDocumentStore();
+  const resumedRef = useRef(false);
 
   const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
-      const docs = await getAllDocuments();
+      const docs = await listDocuments();
       setDocuments(docs);
     } finally {
       setLoading(false);
     }
   }, [setDocuments, setLoading]);
 
+  // Resume stuck classifications on mount
+  useEffect(() => {
+    if (resumedRef.current || documents.length === 0) return;
+    resumedRef.current = true;
+
+    const pending = documents.filter((d) => d.classifyStatus === 'classifying' || d.classifyStatus === 'pending');
+    for (const doc of pending) {
+      triggerClassify(doc.id);
+    }
+  }, [documents]);
+
+  const triggerClassify = (id: string) => {
+    updateDocument(id, { classifyStatus: 'classifying' as any });
+    classifyDocument(id)
+      .then(async () => {
+        // Re-fetch the doc to get updated tags + name + status
+        const updated = await getDocument(id);
+        updateDocument(id, { tags: updated.tags ?? [], name: updated.name, classifyStatus: updated.classifyStatus });
+      })
+      .catch((err) => {
+        console.error('Classification failed:', err);
+        updateDocument(id, { classifyStatus: 'skipped' as any });
+      });
+  };
+
   const uploadFile = useCallback(async (file: File) => {
     setLoading(true);
     try {
+      const doc = await uploadDocument(file);
+
       const parsed = await parseFile(file);
-      const docType = getDocType(file);
-      const doc: DocumentFile = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        type: docType,
-        mimeType: file.type,
-        size: file.size,
-        rawBlob: file,
+
+      const enrichedDoc: DocumentFile = {
+        ...doc,
         parsedText: parsed.text,
         parsedPages: parsed.pages,
         chapterMarkers: parsed.chapters,
         thumbnail: parsed.thumbnail,
-        tags: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        rawBlob: file,
+        classifyStatus: 'classifying',
       };
-      await saveDocument(doc);
-      addDocument(doc);
-      return doc;
+      addDocument(enrichedDoc);
+
+      // Persist parsed text to DB first — classify endpoint reads parsed_text from DB
+      await updateDoc(doc.id, {
+        parsedText: parsed.text,
+        thumbnail: parsed.thumbnail ?? null,
+        chapterMarkers: parsed.chapters ?? [],
+      }).catch((err) => console.error('Failed to persist parsed data:', err));
+
+      // Classify server-side (parsed_text is now guaranteed in DB)
+      classifyDocument(doc.id)
+        .then(async () => {
+          const updated = await getDocument(doc.id);
+          updateDocument(doc.id, { tags: updated.tags ?? [], name: updated.name, classifyStatus: updated.classifyStatus });
+        })
+        .catch((err) => {
+          console.error('Classification failed:', err);
+          updateDocument(doc.id, { classifyStatus: 'skipped' as any });
+        });
+
+      return enrichedDoc;
+    } catch (err) {
+      console.error('Upload failed:', err);
+      throw err;
     } finally {
       setLoading(false);
     }
-  }, [addDocument, setLoading]);
+  }, [addDocument, setLoading, updateDocument]);
 
   const deleteDocumentById = useCallback(async (id: string) => {
     await deleteDoc(id);
