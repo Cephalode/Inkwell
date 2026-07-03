@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import db from '../db';
-import { setSSEHeaders, send } from '../src/sse';
 import { callGLMJson } from '../src/llm';
 import { collectMaterials } from '../src/materials';
+import { runGeneration, updateStatus, checkStale } from '../src/generationPipeline';
 
 const router = Router();
 
@@ -25,7 +25,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // GET /api/practice-tests/:id
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { reveal } = req.query;
 
     const test = await db.query(
@@ -40,22 +40,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const testRow = test.rows[0];
 
-    // Check staleness
-    if (testRow.status === 'generating') {
-      const updatedAt = new Date(testRow.updated_at);
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      if (updatedAt < tenMinutesAgo) {
-        await db.query(
-          `UPDATE practice_tests SET status = $1, error = $2, updated_at = NOW()
-           WHERE id = $3`,
-          ['error', 'Generation timed out', id]
-        );
-        return res.status(200).json({
-          ...testRow,
-          status: 'error',
-          error: 'Generation timed out',
-        });
-      }
+    // Staleness guard: a test stuck in `generating` for longer than the
+    // generation timeout is treated as errored (shared implementation).
+    if (testRow.status === 'generating' && checkStale(testRow)) {
+      await updateStatus('practice_tests', id, 'error', 'Generation timed out');
+      testRow.status = 'error';
+      testRow.error = 'Generation timed out';
     }
 
     // Fetch questions
@@ -123,83 +113,75 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/practice-tests/:id/generate
+//
+// Ported onto the shared `runGeneration` pipeline (US-009). The pipeline owns
+// the SSE lifecycle (headers, the six standard events, status transitions,
+// disconnect detection, and the headersSent-aware error path). Route-specific
+// business logic lives in the callbacks:
+//
+//   • collectMaterials — resolve the test's source + gather material units,
+//                        clear questions left from a previous run, and compute
+//                        the per-material question budget
+//   • processMaterial — MAP: turn one material unit into a bounded slice of
+//                       the requested questions
+
 router.post('/:id/generate', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+  const id = String(req.params.id);
 
-    const test = await db.query(
-      'SELECT source, course_id, config FROM practice_tests WHERE id = $1',
-      [id]
-    );
+  // Resolve the test up-front so a missing row yields a clean 404 before the
+  // SSE stream is opened (the pipeline flushes headers immediately).
+  const test = await db.query(
+    'SELECT source, course_id, config FROM practice_tests WHERE id = $1',
+    [id]
+  );
 
-    if (test.rows.length === 0) {
-      return res.status(404).json({ error: 'Test not found' });
-    }
+  if (test.rows.length === 0) {
+    return res.status(404).json({ error: 'Test not found' });
+  }
 
-    const { source, course_id, config } = test.rows[0];
+  const { source, course_id, config } = test.rows[0];
+  const numQuestions = config.numQuestions || 10;
+  const types = config.types || ['mcq', 'true_false', 'short_answer'];
 
-    // Update status to generating
-    await db.query(
-      'UPDATE practice_tests SET status = $1, error = NULL, updated_at = NOW() WHERE id = $2',
-      ['generating', id]
-    );
+  // Running position across the whole test (shared between collect and
+  // processMaterial) and the per-material question budget (set once the
+  // material count is known).
+  let position = 0;
+  let questionsPerMaterial = 0;
 
-    // Set up SSE
-    setSSEHeaders(res);
+  await runGeneration({
+    table: 'practice_tests',
+    id,
+    req,
+    res,
 
-    // Collect materials
-    let materials;
-    try {
-      materials =
+    // ── Gather source materials, clear prior questions, compute budget ──
+    collectMaterials: async () => {
+      const materials =
         source.type === 'course'
           ? await collectMaterials({ courseId: course_id })
           : await collectMaterials({ documentIds: source.ids });
-    } catch (error) {
-      console.error('Error collecting materials:', error);
-      send(res, {
-        type: 'error',
-        message: 'Failed to collect materials',
-      });
-      await db.query(
-        'UPDATE practice_tests SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-        ['error', 'Failed to collect materials', id]
-      );
-      res.end();
-      return;
-    }
 
-    if (materials.length === 0) {
-      send(res, { type: 'error', message: 'No materials found for this source' });
-      await db.query(
-        'UPDATE practice_tests SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-        ['error', 'No materials found for this source', id]
-      );
-      res.end();
-      return;
-    }
+      // Replace any questions from a previous generation and compute the
+      // per-material budget (ceil of total ÷ material count).
+      if (materials.length > 0) {
+        await db.query('DELETE FROM test_questions WHERE test_id = $1', [id]);
+        questionsPerMaterial = Math.ceil(numQuestions / materials.length);
+      }
 
-    send(res, { type: 'materials_collected', count: materials.length });
+      return materials;
+    },
 
-    // Replace any questions from a previous generation
-    await db.query('DELETE FROM test_questions WHERE test_id = $1', [id]);
-
-    // Generate questions
-    const numQuestions = config.numQuestions || 10;
-    const types = config.types || ['mcq', 'true_false', 'short_answer'];
-    let position = 0;
-    const questionsPerMaterial = Math.ceil(numQuestions / materials.length);
-
-    for (const material of materials) {
+    // ── MAP: generate a bounded slice of questions from one material ──
+    processMaterial: async (material) => {
       const questionsToGenerate = Math.min(
         questionsPerMaterial,
         numQuestions - position
       );
-      if (questionsToGenerate <= 0) break;
+      // Budget exhausted — stop generating.
+      if (questionsToGenerate <= 0) return 0;
 
-      send(res, {
-        type: 'material_start',
-        material: { id: material.documentId, title: material.title },
-      });
+      let produced = 0;
 
       try {
         const response = await callGLMJson<{
@@ -257,6 +239,7 @@ Respond with valid JSON: {
               ]
             );
             position++;
+            produced++;
           }
         }
       } catch (error) {
@@ -264,40 +247,9 @@ Respond with valid JSON: {
         // Continue with next material
       }
 
-      send(res, {
-        type: 'material_result',
-        material: { id: material.documentId },
-        questionCount: position,
-      });
-
-      if (req.closed) break;
-    }
-
-    send(res, { type: 'synthesizing' });
-
-    // Update status to done
-    await db.query(
-      'UPDATE practice_tests SET status = $1, updated_at = NOW() WHERE id = $2',
-      ['done', id]
-    );
-
-    send(res, { type: 'done', testId: id, questionCount: position });
-    res.end();
-  } catch (error) {
-    console.error('Error generating practice test:', error);
-    const testId = req.params.id;
-    await db.query(
-      'UPDATE practice_tests SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-      ['error', String(error), testId]
-    ).catch((err) => console.error('Error persisting failure status:', err));
-    // SSE headers may already be flushed; a 500 JSON body would corrupt the stream
-    if (res.headersSent) {
-      send(res, { type: 'error', message: 'Failed to generate practice test' });
-      res.end();
-    } else {
-      res.status(500).json({ error: 'Failed to generate practice test' });
-    }
-  }
+      return produced;
+    },
+  });
 });
 
 // POST /api/practice-tests/:id/attempts (grade synchronously)

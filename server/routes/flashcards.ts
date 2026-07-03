@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import db from '../db';
-import { setSSEHeaders, send } from '../src/sse';
 import { callGLMJson } from '../src/llm';
 import { collectMaterials } from '../src/materials';
+import { runGeneration, updateStatus, checkStale } from '../src/generationPipeline';
 
 const router = Router();
 
@@ -25,7 +25,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // GET /api/flashcard-decks/:id
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const deck = await db.query(
       `SELECT id, title, description, course_id, source, status, error, created_at, updated_at
        FROM flashcard_decks WHERE id = $1`,
@@ -38,22 +38,12 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const deckRow = deck.rows[0];
 
-    // Check staleness: if generating for > 10 min, report error
-    if (deckRow.status === 'generating') {
-      const updatedAt = new Date(deckRow.updated_at);
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-      if (updatedAt < tenMinutesAgo) {
-        await db.query(
-          `UPDATE flashcard_decks SET status = $1, error = $2, updated_at = NOW()
-           WHERE id = $3`,
-          ['error', 'Generation timed out', id]
-        );
-        return res.status(200).json({
-          ...deckRow,
-          status: 'error',
-          error: 'Generation timed out',
-        });
-      }
+    // Staleness guard: a deck stuck in `generating` for longer than the
+    // generation timeout is treated as errored (shared implementation).
+    if (deckRow.status === 'generating' && checkStale(deckRow)) {
+      await updateStatus('flashcard_decks', id, 'error', 'Generation timed out');
+      deckRow.status = 'error';
+      deckRow.error = 'Generation timed out';
     }
 
     res.json(deckRow);
@@ -95,78 +85,68 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/flashcard-decks/:id/generate
+//
+// Ported onto the shared `runGeneration` pipeline (US-009). The pipeline owns
+// the SSE lifecycle (headers, the six standard events, status transitions,
+// disconnect detection, and the headersSent-aware error path). Route-specific
+// business logic lives in the callbacks:
+//
+//   • collectMaterials — resolve the deck's source + gather material units,
+//                        then clear any cards left from a previous run
+//   • processMaterial — MAP: turn one material unit into flashcards, capped
+//                       at a 30-card deck total
+//
+// Flashcards have no REDUCE/synthesis step, so no `finalize` is supplied.
+
+// Hard cap on the number of cards a single deck may contain.
+const MAX_CARDS = 30;
+
 router.post('/:id/generate', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+  const id = String(req.params.id);
 
-    // Check if deck exists and update to generating
-    const deck = await db.query(
-      'SELECT source, course_id FROM flashcard_decks WHERE id = $1',
-      [id]
-    );
+  // Resolve the deck up-front so a missing row yields a clean 404 before the
+  // SSE stream is opened (the pipeline flushes headers immediately).
+  const deck = await db.query(
+    'SELECT source, course_id FROM flashcard_decks WHERE id = $1',
+    [id]
+  );
 
-    if (deck.rows.length === 0) {
-      return res.status(404).json({ error: 'Deck not found' });
-    }
+  if (deck.rows.length === 0) {
+    return res.status(404).json({ error: 'Deck not found' });
+  }
 
-    const { source, course_id } = deck.rows[0];
+  const { source, course_id } = deck.rows[0];
 
-    // Update status to generating
-    await db.query(
-      'UPDATE flashcard_decks SET status = $1, error = NULL, updated_at = NOW() WHERE id = $2',
-      ['generating', id]
-    );
+  // Running position across the whole deck; shared between collect (reset) and
+  // the per-material processing callback.
+  let position = 0;
 
-    // Set up SSE
-    setSSEHeaders(res);
+  await runGeneration({
+    table: 'flashcard_decks',
+    id,
+    req,
+    res,
 
-    // Collect materials based on source
-    let materials;
-    try {
-      materials =
+    // ── Gather source materials and clear any prior generation's cards ──
+    collectMaterials: async () => {
+      const materials =
         source.type === 'course'
           ? await collectMaterials({ courseId: course_id })
           : await collectMaterials({ documentIds: source.ids });
-    } catch (error) {
-      console.error('Error collecting materials:', error);
-      send(res, {
-        type: 'error',
-        message: 'Failed to collect materials',
-      });
-      await db.query(
-        'UPDATE flashcard_decks SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-        ['error', 'Failed to collect materials', id]
-      );
-      res.end();
-      return;
-    }
 
-    if (materials.length === 0) {
-      send(res, { type: 'error', message: 'No materials found for this source' });
-      await db.query(
-        'UPDATE flashcard_decks SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-        ['error', 'No materials found for this source', id]
-      );
-      res.end();
-      return;
-    }
+      // Replace any cards from a previous generation (only when we have new
+      // material to generate from — matches the original empty-source guard).
+      if (materials.length > 0) {
+        await db.query('DELETE FROM flashcards WHERE deck_id = $1', [id]);
+      }
 
-    send(res, { type: 'materials_collected', count: materials.length });
+      return materials;
+    },
 
-    // Replace any cards from a previous generation
-    await db.query('DELETE FROM flashcards WHERE deck_id = $1', [id]);
-
-    // MAP: Generate flashcards for each material
-    const maxCards = 30;
-    let position = 0;
-    for (const material of materials) {
-      if (position >= maxCards) break;
-
-      // Send start event
-      send(res, {
-        type: 'material_start',
-        material: { id: material.documentId, title: material.title },
-      });
+    // ── MAP: generate flashcards for a single material unit ──
+    processMaterial: async (material) => {
+      // Stop once the 30-card cap has been reached.
+      if (position >= MAX_CARDS) return 0;
 
       // Generate flashcards from material
       let cards: Array<{ front: string; back: string }> = [];
@@ -192,11 +172,11 @@ Respond with valid JSON: {"cards": [{"front": "question", "back": "answer"}, ...
         }
       } catch (error) {
         console.error('Error generating flashcards via LLM:', error);
-        // Continue with what we have
+        // Continue with whatever we have
       }
 
-      // Cap total cards
-      cards = cards.slice(0, Math.max(0, maxCards - position));
+      // Cap total cards across the deck.
+      cards = cards.slice(0, Math.max(0, MAX_CARDS - position));
 
       // Insert cards
       for (let i = 0; i < cards.length; i++) {
@@ -208,45 +188,9 @@ Respond with valid JSON: {"cards": [{"front": "question", "back": "answer"}, ...
       }
 
       position += cards.length;
-
-      send(res, {
-        type: 'material_result',
-        material: { id: material.documentId },
-        cardCount: cards.length,
-      });
-
-      // Check if client closed connection
-      if (req.closed) {
-        break;
-      }
-    }
-
-    // REDUCE: Persist final status
-    send(res, { type: 'synthesizing' });
-
-    // Update status to done
-    await db.query(
-      'UPDATE flashcard_decks SET status = $1, updated_at = NOW() WHERE id = $2',
-      ['done', id]
-    );
-
-    send(res, { type: 'done', deckId: id, cardCount: position });
-    res.end();
-  } catch (error) {
-    console.error('Error generating flashcards:', error);
-    const deckId = req.params.id;
-    await db.query(
-      'UPDATE flashcard_decks SET status = $1, error = $2, updated_at = NOW() WHERE id = $3',
-      ['error', String(error), deckId]
-    ).catch((err) => console.error('Error persisting failure status:', err));
-    // SSE headers may already be flushed; a 500 JSON body would corrupt the stream
-    if (res.headersSent) {
-      send(res, { type: 'error', message: 'Failed to generate flashcards' });
-      res.end();
-    } else {
-      res.status(500).json({ error: 'Failed to generate flashcards' });
-    }
-  }
+      return cards.length;
+    },
+  });
 });
 
 // GET /api/flashcard-decks/:id/cards
