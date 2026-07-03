@@ -21,7 +21,7 @@ interface MessageRow {
   created_at: string;
 }
 
-function rowToSession(row: SessionRow, messages: MessageRow[] = []) {
+function rowToSession(row: SessionRow, messages: ReturnType<typeof rowToMessage>[] = []) {
   return {
     id: row.id,
     documentId: row.document_id ?? undefined,
@@ -40,6 +40,22 @@ function rowToMessage(row: MessageRow) {
     citations: row.citations ?? undefined,
     timestamp: row.created_at,
   };
+}
+
+/**
+ * Truncate `text` to at most `maxLen` characters, cutting at the last
+ * whitespace boundary so a word is never split mid-token. When truncation
+ * occurs a single ellipsis character ("…", U+2026) is appended.
+ *
+ * If no whitespace boundary falls within the first `maxLen` characters the
+ * hard cut at `maxLen` is used so we never exceed the limit.
+ */
+function truncateTitle(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const slice = text.slice(0, maxLen);
+  const lastWs = Math.max(slice.lastIndexOf(' '), slice.lastIndexOf('\n'), slice.lastIndexOf('\t'));
+  const truncated = lastWs > 0 ? slice.slice(0, lastWs) : slice;
+  return `${truncated.replace(/\s+$/, '')}…`;
 }
 
 // GET / — list sessions without messages (lightweight)
@@ -154,9 +170,34 @@ router.post('/:id/generate-title', async (req: Request, res: Response) => {
         stream: false,
       }),
     });
+    // Upstream returned a non-2xx status — treat the LLM request itself as
+    // failed and surface a 500 (US-001).
+    if (!resp.ok) {
+      return res.status(500).json({ error: `Upstream LLM request failed with status ${resp.status}` });
+    }
     const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content?.trim();
-    const title = content && content.length > 0 ? content : null;
+    let title = content && content.length > 0 ? content : null;
+
+    // Fallback: when the LLM yields no usable content (empty / missing /
+    // whitespace-only), derive a title from the first user message of this
+    // chat session, truncated to 60 characters at a word boundary. This keeps
+    // the client from receiving a hard 500 for a soft "no title" outcome.
+    // (US-001)
+    if (!title) {
+      const { rows } = await pool.query(
+        'SELECT content FROM chat_messages WHERE session_id = $1 AND role = $2 ORDER BY created_at ASC LIMIT 1',
+        [req.params.id, 'user']
+      );
+      const dbFirst =
+        rows.length > 0 && typeof rows[0].content === 'string' ? rows[0].content.trim() : '';
+      const bodyMessage = typeof message === 'string' ? message.trim() : '';
+      const fallbackSource = dbFirst || bodyMessage;
+      if (fallbackSource.length > 0) {
+        title = truncateTitle(fallbackSource, 60);
+      }
+    }
+
     if (!title) return res.status(500).json({ error: 'Failed to generate title' });
     await pool.query('UPDATE chat_sessions SET title = $1, updated_at = now() WHERE id = $2', [title, req.params.id]);
     res.json({ title });
