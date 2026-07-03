@@ -21,7 +21,7 @@ interface MessageRow {
   created_at: string;
 }
 
-function rowToSession(row: SessionRow, messages: any[] = []) {
+function rowToSession(row: SessionRow, messages: MessageRow[] = []) {
   return {
     id: row.id,
     documentId: row.document_id ?? undefined,

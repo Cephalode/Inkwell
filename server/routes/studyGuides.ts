@@ -156,7 +156,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    let { title, courseId, documentId } = req.body as {
+    const { title, courseId, documentId } = req.body as {
       title?: string;
       courseId?: string;
       documentId?: string;
