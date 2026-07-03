@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { HiArrowLeft, HiRefresh } from 'react-icons/hi';
 import Spinner from '../components/shared/Spinner';
@@ -18,6 +18,28 @@ export default function FlashcardDetailPage() {
   const deck = useFlashcardStore((s) =>
     s.decks.find((d) => d.id === deckId)
   );
+
+  // Aggregate mastery across the whole deck (computed client-side from each
+  // card's review_stats). Recomputes reactively because the store updates the
+  // reviewed card in place, producing a new `cards` array reference.
+  const mastery = useMemo(() => {
+    const reviewedCount = cards.filter(
+      (c) => (c.review_stats?.timesReviewed ?? 0) > 0
+    ).length;
+    const totalReviewed = cards.reduce(
+      (sum, c) => sum + (c.review_stats?.timesReviewed ?? 0),
+      0
+    );
+    const totalCorrect = cards.reduce(
+      (sum, c) => sum + (c.review_stats?.timesCorrect ?? 0),
+      0
+    );
+    // Cards with timesReviewed === 0 contribute 0 to both sums, so they are
+    // naturally excluded from the denominator.
+    const correctRate =
+      totalReviewed > 0 ? Math.round((totalCorrect / totalReviewed) * 100) : 0;
+    return { reviewedCount, correctRate };
+  }, [cards]);
 
   if (!deckId) {
     return <div>Deck not found</div>;
@@ -104,6 +126,25 @@ export default function FlashcardDetailPage() {
           {deck.error || 'Generation failed'}
         </div>
       )}
+
+      {/* Mastery summary */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-700/50 bg-slate-800/40 px-4 py-3 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Reviewed</span>
+          <span className="font-semibold text-teal-300 tabular-nums">
+            {mastery.reviewedCount}
+            <span className="mx-1 text-slate-500">of</span>
+            {totalCards}
+          </span>
+        </div>
+        <div className="hidden sm:block h-4 w-px bg-slate-700/60" />
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Correct rate</span>
+          <span className="font-semibold text-teal-300 tabular-nums">
+            {mastery.correctRate}%
+          </span>
+        </div>
+      </div>
 
       {/* Study area */}
       <div className="space-y-4">
