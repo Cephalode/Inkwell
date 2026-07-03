@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { HiChevronLeft, HiChevronRight, HiZoomIn, HiZoomOut } from 'react-icons/hi';
 import Button from '../shared/Button';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -20,7 +20,8 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
   const [scale, setScale] = useState(1);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pdfReady, setPdfReady] = useState(false);
+  // Bumped after each successful PDF load so the render effect re-runs once the doc is ready.
+  const [pdfLoadCount, setPdfLoadCount] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderVersionRef = useRef(0);
   const cancelRenderRef = useRef<(() => void) | null>(null);
@@ -29,8 +30,6 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
 
   // Load and cache PDF document from blob — reuse ArrayBuffer across remounts
   useEffect(() => {
-    setPdfReady(false);
-
     if (!file) {
       pdfRef.current = null;
       arrayBufferRef.current = null;
@@ -49,14 +48,16 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
       const pdf = await pdfjsLib.getDocument({ data: arrayBufferRef.current.slice(0) }).promise;
       if (!cancelled) {
         pdfRef.current = pdf;
-        setPdfReady(true);
+        setPdfLoadCount((c) => c + 1);
       }
     })();
 
     return () => { cancelled = true; };
   }, [file]);
 
-  const renderPage = useCallback(async () => {
+  // Render the current page to canvas whenever inputs change or PDF finishes loading.
+  // All setState happens after the await so we don't trigger cascading renders.
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !file) return;
 
@@ -65,41 +66,31 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
     cancelRenderRef.current = null;
 
     const version = ++renderVersionRef.current;
-    setIsRendering(true);
-    setError(null);
+    let cancelled = false;
 
-    try {
+    (async () => {
       const pdf = pdfRef.current;
-      if (!pdf) {
-        // PDF not ready yet — clear isRendering so the spinner doesn't get stuck.
-        // renderPage will re-run via the pdfReady dependency once the load finishes.
-        setIsRendering(false);
-        return;
-      }
+      if (!pdf) return;
 
-      const cancel = await renderPDFPageToCanvas(canvas, pdf, currentPage + pageOffset, scale);
-      if (version === renderVersionRef.current) {
-        cancelRenderRef.current = cancel;
-        setIsRendering(false);
+      try {
+        const cancel = await renderPDFPageToCanvas(canvas, pdf, currentPage + pageOffset, scale);
+        if (!cancelled && version === renderVersionRef.current) {
+          cancelRenderRef.current = cancel;
+          setIsRendering(false);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled && version === renderVersionRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to render PDF page');
+          setIsRendering(false);
+        }
       }
-    } catch (err) {
-      if (version === renderVersionRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to render PDF page');
-        setIsRendering(false);
-      }
-    }
-  }, [file, currentPage, scale, pageOffset, pdfReady]);
+    })();
 
-  useEffect(() => {
-    renderPage();
-  }, [renderPage]);
-
-  // On unmount, just bump version — don't cancel completed renders
-  useEffect(() => {
     return () => {
-      renderVersionRef.current++;
+      cancelled = true;
     };
-  }, []);
+  }, [file, currentPage, scale, pageOffset, pdfLoadCount]);
 
   const handleZoomIn = () => setScale((s) => Math.min(3, s + 0.25));
   const handleZoomOut = () => setScale((s) => Math.max(0.5, s - 0.25));
