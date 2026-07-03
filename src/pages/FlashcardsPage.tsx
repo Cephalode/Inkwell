@@ -4,6 +4,7 @@ import { HiPlus, HiX, HiSparkles, HiTrash, HiBookOpen, HiExclamationCircle } fro
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { useFlashcards, useFlashcardGeneration } from '../hooks/useFlashcards';
 import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
@@ -38,6 +39,7 @@ export default function FlashcardsPage() {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedDocumentId, setSelectedDocumentId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCourses();
@@ -228,7 +230,7 @@ export default function FlashcardsPage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteDeck(deck.id);
+                    setConfirmDeleteId(deck.id);
                   }}
                   className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
                   title="Delete"
@@ -283,6 +285,18 @@ export default function FlashcardsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete deck?"
+        message={`Delete "${decks.find((d) => d.id === confirmDeleteId)?.title ?? 'this deck'}"? This can't be undone.`}
+        onConfirm={() => {
+          if (confirmDeleteId) deleteDeck(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }

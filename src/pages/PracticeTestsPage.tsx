@@ -4,6 +4,7 @@ import { HiPlus, HiX, HiSparkles, HiTrash, HiDocument, HiExclamationCircle } fro
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
+import ConfirmDialog from '../components/shared/ConfirmDialog';
 import { usePracticeTests, usePracticeTestGeneration } from '../hooks/usePracticeTests';
 import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
@@ -39,6 +40,7 @@ export default function PracticeTestsPage() {
   const [numQuestions, setNumQuestions] = useState(10);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['mcq', 'true_false', 'short_answer']);
   const [creating, setCreating] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCourses();
@@ -279,7 +281,7 @@ export default function PracticeTestsPage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    deleteTest(test.id);
+                    setConfirmDeleteId(test.id);
                   }}
                   className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
                   title="Delete"
@@ -334,6 +336,18 @@ export default function PracticeTestsPage() {
           </div>
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete test?"
+        message={`Delete "${tests.find((t) => t.id === confirmDeleteId)?.title ?? 'this test'}"? This can't be undone.`}
+        onConfirm={() => {
+          if (confirmDeleteId) deleteTest(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   );
 }
