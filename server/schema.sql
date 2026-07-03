@@ -111,3 +111,75 @@ CREATE TABLE IF NOT EXISTS study_guides (
 CREATE INDEX IF NOT EXISTS idx_study_guides_course ON study_guides(course_id);
 CREATE INDEX IF NOT EXISTS idx_study_guides_document ON study_guides(document_id);
 CREATE INDEX IF NOT EXISTS idx_study_guides_status ON study_guides(status);
+
+-- Flashcard Decks
+CREATE TABLE IF NOT EXISTS flashcard_decks (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  source JSONB NOT NULL,
+  status TEXT DEFAULT 'pending',
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_flashcard_decks_course ON flashcard_decks(course_id);
+CREATE INDEX IF NOT EXISTS idx_flashcard_decks_status ON flashcard_decks(status);
+
+-- Flashcards
+CREATE TABLE IF NOT EXISTS flashcards (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  deck_id TEXT NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+  front TEXT NOT NULL,
+  back TEXT NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  review_stats JSONB DEFAULT '{"timesReviewed":0,"timesCorrect":0,"lastReviewedAt":null}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_flashcards_deck ON flashcards(deck_id);
+CREATE INDEX IF NOT EXISTS idx_flashcards_position ON flashcards(deck_id, position);
+
+-- Practice Tests
+CREATE TABLE IF NOT EXISTS practice_tests (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  title TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  source JSONB NOT NULL,
+  config JSONB NOT NULL,
+  status TEXT DEFAULT 'pending',
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_practice_tests_course ON practice_tests(course_id);
+CREATE INDEX IF NOT EXISTS idx_practice_tests_status ON practice_tests(status);
+
+-- Test Questions
+CREATE TABLE IF NOT EXISTS test_questions (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  test_id TEXT NOT NULL REFERENCES practice_tests(id) ON DELETE CASCADE,
+  position INT NOT NULL DEFAULT 0,
+  qtype TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  options JSONB,
+  correct_answer JSONB NOT NULL,
+  explanation TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_test_questions_test ON test_questions(test_id);
+CREATE INDEX IF NOT EXISTS idx_test_questions_position ON test_questions(test_id, position);
+
+-- Test Attempts
+CREATE TABLE IF NOT EXISTS test_attempts (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  test_id TEXT NOT NULL REFERENCES practice_tests(id) ON DELETE CASCADE,
+  answers JSONB NOT NULL,
+  score DECIMAL(5,2),
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_test_attempts_test ON test_attempts(test_id);
+CREATE INDEX IF NOT EXISTS idx_test_attempts_completed ON test_attempts(completed_at DESC);

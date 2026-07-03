@@ -14,7 +14,7 @@ async function extractTextFromPDF(filePath: string): Promise<string> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    texts.push(content.items.map((item: { str: string }) => item.str).join(' '));
+    texts.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
   }
   return texts.join('\n');
 }
@@ -84,17 +84,21 @@ router.get('/', async (_req: Request, res: Response) => {
       'SELECT * FROM textbooks ORDER BY updated_at DESC',
     );
 
-    const result = [];
-    for (const tb of textbooks) {
-      const { rows: docs } = await pool.query(
-        'SELECT * FROM documents WHERE textbook_id = $1 ORDER BY created_at ASC',
-        [tb.id],
-      );
-      result.push({
-        ...rowToTextbook(tb as TextbookRow),
-        documents: (docs as DocRow[]).map(rowToDoc),
-      });
+    const { rows: allDocs } = await pool.query(
+      'SELECT * FROM documents WHERE textbook_id IS NOT NULL ORDER BY created_at ASC',
+    );
+    const docsByTextbook = new Map<string, DocRow[]>();
+    for (const doc of allDocs as DocRow[]) {
+      const key = doc.textbook_id as string;
+      const list = docsByTextbook.get(key) ?? [];
+      list.push(doc);
+      docsByTextbook.set(key, list);
     }
+
+    const result = textbooks.map((tb) => ({
+      ...rowToTextbook(tb as TextbookRow),
+      documents: (docsByTextbook.get((tb as TextbookRow).id) ?? []).map(rowToDoc),
+    }));
 
     res.json(result);
   } catch (err: unknown) {
@@ -189,9 +193,10 @@ router.post('/documents/:id/convert-to-textbook', async (req: Request, res: Resp
       }
 
       // Insert as a new document, reusing the chapter's file path
-      await pool.query(
+      const { rows: newDocRows } = await pool.query(
         `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, tags, file_path, textbook_id)
-         VALUES ($1, $2, 'pdf', 'application/pdf', $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, 'pdf', 'application/pdf', $3, $4, $5, $6, $7)
+         RETURNING *`,
         [
           docId,
           chapterName,
@@ -202,11 +207,7 @@ router.post('/documents/:id/convert-to-textbook', async (req: Request, res: Resp
           textbookId,
         ],
       );
-
-      const { rows: newDocRows } = await pool.query('SELECT * FROM documents WHERE id = $1', [docId]);
-      if (newDocRows.length > 0) {
-        createdDocs.push(rowToDoc(newDocRows[0] as DocRow));
-      }
+      createdDocs.push(rowToDoc(newDocRows[0] as DocRow));
     }
 
     // 5. Update courses: replace old document ID with textbook ID in document_ids

@@ -44,7 +44,6 @@ function ToolCallSummary() {
 
   if (pendingTools.length === 0) return null;
 
-  const doneCount = pendingTools.filter((t) => t.status === 'done').length;
   const errorCount = pendingTools.filter((t) => t.status === 'error').length;
   const stillRunning = pendingTools.some((t) => t.status === 'running');
 
@@ -269,6 +268,8 @@ export default function GlobalChat() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         e.preventDefault();
         toggle();
       }
@@ -342,12 +343,12 @@ export default function GlobalChat() {
         content: result.content,
         timestamp: Date.now(),
       });
-    } catch (err: any) {
+    } catch (err) {
       setPendingTools([]);
       addMessage({
         id: generateUUID(),
         role: 'assistant',
-        content: `Error: ${err.message}`,
+        content: `Error: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: Date.now(),
       });
     }

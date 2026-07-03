@@ -3,6 +3,8 @@ import type { Course } from '../../types/course';
 import type { ChatSession, ChatMessage } from '../../types/chat';
 import type { ChapterAnalysis } from '../../types/analysis';
 import type { StudyGuide } from '../../types/studyGuide';
+import type { FlashcardDeck, Flashcard } from '../../types/flashcards';
+import type { PracticeTest, TestQuestion, TestAttempt, TestAttemptResult } from '../../types/practiceTest';
 
 /**
  * Build an absolute API base URL so that `fetch()` always receives a
@@ -106,7 +108,7 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
   if (!res.ok) throw new Error(`Failed to update tags: ${res.status}`);
 }
 
-export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string }): Promise<void> {
+export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string | null; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string }): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -454,7 +456,7 @@ export async function generateChatTitle(sessionId: string, message: string): Pro
   return data.title;
 }
 
-export async function addChatMessage(sessionId: string, message: { id: string; role: string; content: string; citations?: any[] }): Promise<void> {
+export async function addChatMessage(sessionId: string, message: { id: string; role: string; content: string; citations?: unknown[] }): Promise<void> {
   const res = await fetch(`${API_BASE}/chat-sessions/${sessionId}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -477,7 +479,12 @@ export async function deleteChatSession(id: string): Promise<void> {
 // Study Guides API
 // ---------------------------------------------------------------------------
 
-function mapStudyGuide(r: any): StudyGuide {
+function mapStudyGuide(
+  r: Nullable<Omit<StudyGuide, 'createdAt' | 'updatedAt'>, 'courseId' | 'documentId' | 'content' | 'status' | 'error'> & {
+    createdAt: string;
+    updatedAt: string;
+  }
+): StudyGuide {
   return {
     id: r.id,
     courseId: r.courseId ?? null,
@@ -550,4 +557,182 @@ export async function generateStudyGuide(id: string, signal?: AbortSignal): Prom
 export async function deleteStudyGuide(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/study-guides/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error(`Failed to delete study guide: ${res.status}`);
+}
+
+// ---------------------------------------------------------------------------
+// Flashcards API
+// ---------------------------------------------------------------------------
+
+/** Server rows with nullable columns the client types as optional. */
+type Nullable<T, K extends keyof T> = Omit<T, K> & { [P in K]?: T[P] | null };
+
+function mapFlashcardDeck(r: Nullable<FlashcardDeck, 'description' | 'course_id' | 'status' | 'error'>): FlashcardDeck {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description ?? '',
+    course_id: r.course_id ?? undefined,
+    source: r.source,
+    status: r.status ?? 'pending',
+    error: r.error ?? undefined,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+function mapFlashcard(r: Flashcard): Flashcard {
+  return {
+    id: r.id,
+    deck_id: r.deck_id,
+    front: r.front,
+    back: r.back,
+    position: r.position,
+    review_stats: r.review_stats,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+export async function listFlashcardDecks(): Promise<FlashcardDeck[]> {
+  const res = await fetch(`${API_BASE}/flashcard-decks`);
+  if (!res.ok) throw new Error('Failed to list flashcard decks');
+  const data = await res.json();
+  return data.map(mapFlashcardDeck);
+}
+
+export async function getFlashcardDeck(id: string): Promise<FlashcardDeck> {
+  const res = await fetch(`${API_BASE}/flashcard-decks/${id}`);
+  if (!res.ok) throw new Error('Failed to get flashcard deck');
+  return mapFlashcardDeck(await res.json());
+}
+
+export async function createFlashcardDeck(params: {
+  title: string;
+  description?: string;
+  course_id?: string;
+  source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
+}): Promise<FlashcardDeck> {
+  const res = await fetch(`${API_BASE}/flashcard-decks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error('Failed to create flashcard deck');
+  return mapFlashcardDeck(await res.json());
+}
+
+export async function generateFlashcardDeck(id: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_BASE}/flashcard-decks/${id}/generate`, {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to start flashcard generation: ${res.status}`);
+  return res;
+}
+
+export async function getFlashcardDeckCards(id: string): Promise<Flashcard[]> {
+  const res = await fetch(`${API_BASE}/flashcard-decks/${id}/cards`);
+  if (!res.ok) throw new Error('Failed to get flashcard cards');
+  const data = await res.json();
+  return data.map(mapFlashcard);
+}
+
+export async function reviewFlashcard(cardId: string, correct: boolean): Promise<Flashcard> {
+  const res = await fetch(`${API_BASE}/flashcard-decks/cards/${cardId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ correct }),
+  });
+  if (!res.ok) throw new Error('Failed to review flashcard');
+  return mapFlashcard(await res.json());
+}
+
+export async function deleteFlashcardDeck(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/flashcard-decks/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) throw new Error(`Failed to delete flashcard deck: ${res.status}`);
+}
+
+// ---------------------------------------------------------------------------
+// Practice Tests API
+// ---------------------------------------------------------------------------
+
+function mapPracticeTest(r: Nullable<PracticeTest, 'description' | 'course_id' | 'status' | 'error'>): PracticeTest {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description ?? '',
+    course_id: r.course_id ?? undefined,
+    source: r.source,
+    config: r.config,
+    status: r.status ?? 'pending',
+    error: r.error ?? undefined,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+export async function listPracticeTests(): Promise<PracticeTest[]> {
+  const res = await fetch(`${API_BASE}/practice-tests`);
+  if (!res.ok) throw new Error('Failed to list practice tests');
+  const data = await res.json();
+  return data.map(mapPracticeTest);
+}
+
+export async function getPracticeTest(id: string, reveal?: boolean): Promise<PracticeTest & { questions: TestQuestion[] }> {
+  const url = new URL(`${API_BASE}/practice-tests/${id}`, window.location.origin);
+  if (reveal) url.searchParams.set('reveal', 'true');
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error('Failed to get practice test');
+  return await res.json();
+}
+
+export async function createPracticeTest(params: {
+  title: string;
+  description?: string;
+  course_id?: string;
+  source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
+  config: { numQuestions?: number; types?: string[] };
+}): Promise<PracticeTest> {
+  const res = await fetch(`${API_BASE}/practice-tests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error('Failed to create practice test');
+  return mapPracticeTest(await res.json());
+}
+
+export async function generatePracticeTest(id: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_BASE}/practice-tests/${id}/generate`, {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to start practice test generation: ${res.status}`);
+  return res;
+}
+
+export async function submitTestAttempt(
+  testId: string,
+  answers: Record<string, string | number | boolean>
+): Promise<TestAttemptResult> {
+  const res = await fetch(`${API_BASE}/practice-tests/${testId}/attempts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers }),
+  });
+  if (!res.ok) throw new Error('Failed to submit test attempt');
+  return await res.json();
+}
+
+export async function getTestAttempts(testId: string): Promise<Array<Omit<TestAttempt, 'answers'>>> {
+  const res = await fetch(`${API_BASE}/practice-tests/${testId}/attempts`);
+  if (!res.ok) throw new Error('Failed to get test attempts');
+  return await res.json();
+}
+
+export async function deletePracticeTest(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/practice-tests/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) throw new Error(`Failed to delete practice test: ${res.status}`);
 }

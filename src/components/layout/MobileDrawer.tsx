@@ -17,6 +17,8 @@ const navItems = [
   { to: '/courses', icon: HiBookOpen, label: 'Courses' },
   { to: '/textbook', icon: HiBookOpen, label: 'Textbook' },
   { to: '/study-guides', icon: HiAcademicCap, label: 'Study Guides' },
+  { to: '/flashcards', icon: HiAcademicCap, label: 'Flashcards' },
+  { to: '/tests', icon: HiAcademicCap, label: 'Tests' },
   { to: '/settings', icon: HiCog, label: 'Settings' },
 ];
 

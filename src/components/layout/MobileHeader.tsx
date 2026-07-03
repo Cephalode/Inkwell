@@ -18,6 +18,8 @@ const pathTitleMap: Record<string, string> = {
   '/courses': 'Courses',
   '/textbook': 'Textbook',
   '/study-guides': 'Study Guides',
+  '/flashcards': 'Flashcards',
+  '/tests': 'Tests',
   '/settings': 'Settings',
 };
 

@@ -242,7 +242,7 @@ export async function fetchYouTubeTranscript(
 
   // 1. Primary: Innertube ANDROID player API (ungated caption URLs).
   const tracks = await innertubeAndroidPlayer(videoId);
-  const captionTracks = tracks.tracks;
+  let captionTracks = tracks.tracks;
   let title = tracks.title;
 
   // 2. Fallback: scrape the watch page if Innertube returned no tracks.

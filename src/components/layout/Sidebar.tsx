@@ -7,7 +7,10 @@ const navItems = [
   { to: '/', icon: HiHome, label: 'Dashboard' },
   { to: '/documents', icon: HiDocumentText, label: 'Documents' },
   { to: '/textbook', icon: HiBookOpen, label: 'Textbook' },
+  { to: '/courses', icon: HiAcademicCap, label: 'Courses' },
   { to: '/study-guides', icon: HiAcademicCap, label: 'Study Guides' },
+  { to: '/flashcards', icon: HiAcademicCap, label: 'Flashcards' },
+  { to: '/tests', icon: HiAcademicCap, label: 'Tests' },
   { to: '/settings', icon: HiCog, label: 'Settings' },
 ];
 

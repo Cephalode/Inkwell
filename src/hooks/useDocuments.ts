@@ -65,7 +65,7 @@ export function useDocuments() {
       // Persist parsed text to DB first — classify endpoint reads parsed_text from DB
       await updateDoc(doc.id, {
         parsedText: parsed.text,
-        thumbnail: parsed.thumbnail ?? undefined,
+        thumbnail: parsed.thumbnail ?? null,
         chapterMarkers: parsed.chapters ?? [],
       }).catch((err) => console.error('Failed to persist parsed data:', err));
 

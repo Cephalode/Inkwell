@@ -9,6 +9,8 @@ import chatSessionsRouter from './routes/chatSessions.js';
 import chapterAnalysisRouter from './routes/chapterAnalysis.js';
 import textbooksRouter from './routes/textbooks.js';
 import studyGuidesRouter from './routes/studyGuides.js';
+import flashcardsRouter from './routes/flashcards.js';
+import practiceTestsRouter from './routes/practiceTests.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -78,6 +80,8 @@ app.use('/api/chat-sessions', chatSessionsRouter);
 app.use('/api', chapterAnalysisRouter);
 app.use('/api/textbooks', textbooksRouter);
 app.use('/api/study-guides', studyGuidesRouter);
+app.use('/api/flashcard-decks', flashcardsRouter);
+app.use('/api/practice-tests', practiceTestsRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {
