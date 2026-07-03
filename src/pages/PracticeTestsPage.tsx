@@ -272,9 +272,9 @@ export default function PracticeTestsPage() {
                   ) : (
                     <Badge color="gray">Pending</Badge>
                   )}
-                  {isGenerating && prog?.questionsGenerated ? (
+                  {isGenerating && prog?.itemsGenerated ? (
                     <span className="text-xs text-teal-400">
-                      {prog.questionsGenerated} questions
+                      {prog.itemsGenerated} questions
                     </span>
                   ) : (
                     <span className="text-xs text-slate-500">

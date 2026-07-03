@@ -67,7 +67,8 @@ export function usePracticeTestGeneration() {
       const message = err instanceof Error ? err.message : 'Generation failed';
       setError(message);
       setGenerationProgress(testId, {
-        stage: 'done',
+        stage: 'error',
+        itemsGenerated: 0,
         error: message,
       });
     } finally {

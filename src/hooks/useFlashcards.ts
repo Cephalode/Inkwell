@@ -69,7 +69,8 @@ export function useFlashcardGeneration() {
       const message = err instanceof Error ? err.message : 'Generation failed';
       setError(message);
       setGenerationProgress(deckId, {
-        stage: 'done',
+        stage: 'error',
+        itemsGenerated: 0,
         error: message,
       });
     } finally {

@@ -62,10 +62,8 @@ export interface TestAttemptResult {
   totalQuestions: number;
 }
 
-export interface GenerationProgress {
-  stage: 'collecting' | 'materials_collected' | 'generating' | 'synthesizing' | 'done';
-  materialsCount?: number;
-  currentMaterial?: { id: string; title: string };
-  questionsGenerated?: number;
-  error?: string;
-}
+// GenerationProgress now lives in a single shared module so both the flashcard
+// and practice-test pipelines use one type + one SSE-event reducer.
+export type { GenerationProgress, GenerationStage } from './generation';
+export { reduceGenerationEvent, initialProgress } from './generation';
+export type { GenerationEvent } from './generation';

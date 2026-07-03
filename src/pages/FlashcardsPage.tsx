@@ -223,8 +223,8 @@ export default function FlashcardsPage() {
                   ) : (
                     <Badge color="gray">Pending</Badge>
                   )}
-                  {isGenerating && prog?.cardsGenerated ? (
-                    <span className="text-xs text-amber-400">{prog.cardsGenerated} cards</span>
+                  {isGenerating && prog?.itemsGenerated ? (
+                    <span className="text-xs text-amber-400">{prog.itemsGenerated} cards</span>
                   ) : (
                     <span className="text-xs text-slate-500">
                       {new Date(deck.updated_at).toLocaleDateString()}

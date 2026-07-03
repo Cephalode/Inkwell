@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { FlashcardDeck, Flashcard, GenerationProgress } from '../types/flashcards';
+import type { FlashcardDeck, Flashcard } from '../types/flashcards';
+import {
+  reduceGenerationEvent,
+  initialProgress,
+  type GenerationEvent,
+  type GenerationProgress,
+} from '../types/generation';
 import * as api from '../services/api/client';
 import { consumeSSE } from '../utils/sse';
 
@@ -84,30 +90,21 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       set((state) => ({
         generationProgress: {
           ...state.generationProgress,
-          [deckId]: { stage: 'collecting' },
+          [deckId]: { ...initialProgress, stage: 'collecting' },
         },
       }));
 
       const response = await api.generateFlashcardDeck(deckId, signal);
-      await consumeSSE<{
-        type: GenerationProgress['stage'];
-        count?: number;
-        material?: { id: string; title: string };
-        cardCount?: number;
-        error?: string;
-      }>(response, (event) => {
-        set((state) => ({
-          generationProgress: {
-            ...state.generationProgress,
-            [deckId]: {
-              stage: event.type,
-              materialsCount: event.count ?? state.generationProgress[deckId]?.materialsCount,
-              currentMaterial: event.material ?? state.generationProgress[deckId]?.currentMaterial,
-              cardsGenerated: event.cardCount ?? state.generationProgress[deckId]?.cardsGenerated,
-              error: event.error,
+      await consumeSSE<GenerationEvent>(response, (event) => {
+        set((state) => {
+          const prev = state.generationProgress[deckId] ?? initialProgress;
+          return {
+            generationProgress: {
+              ...state.generationProgress,
+              [deckId]: reduceGenerationEvent(prev, event),
             },
-          },
-        }));
+          };
+        });
       });
 
       // Refresh deck info and cards
@@ -124,7 +121,8 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
         generationProgress: {
           ...state.generationProgress,
           [deckId]: {
-            stage: 'done',
+            stage: 'error',
+            itemsGenerated: state.generationProgress[deckId]?.itemsGenerated ?? 0,
             error: String(error),
           },
         },

@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import type {
   PracticeTest,
-  GenerationProgress,
   TestAttemptResult,
   TestAttempt,
   TestQuestion,
 } from '../types/practiceTest';
+import {
+  reduceGenerationEvent,
+  initialProgress,
+  type GenerationEvent,
+  type GenerationProgress,
+} from '../types/generation';
 import * as api from '../services/api/client';
 import { consumeSSE } from '../utils/sse';
 
@@ -86,30 +91,21 @@ export const usePracticeTestStore = create<PracticeTestState>((set, get) => ({
       set((state) => ({
         generationProgress: {
           ...state.generationProgress,
-          [testId]: { stage: 'collecting' },
+          [testId]: { ...initialProgress, stage: 'collecting' },
         },
       }));
 
       const response = await api.generatePracticeTest(testId, signal);
-      await consumeSSE<{
-        type: GenerationProgress['stage'];
-        count?: number;
-        material?: { id: string; title: string };
-        questionCount?: number;
-        error?: string;
-      }>(response, (event) => {
-        set((state) => ({
-          generationProgress: {
-            ...state.generationProgress,
-            [testId]: {
-              stage: event.type,
-              materialsCount: event.count ?? state.generationProgress[testId]?.materialsCount,
-              currentMaterial: event.material ?? state.generationProgress[testId]?.currentMaterial,
-              questionsGenerated: event.questionCount ?? state.generationProgress[testId]?.questionsGenerated,
-              error: event.error,
+      await consumeSSE<GenerationEvent>(response, (event) => {
+        set((state) => {
+          const prev = state.generationProgress[testId] ?? initialProgress;
+          return {
+            generationProgress: {
+              ...state.generationProgress,
+              [testId]: reduceGenerationEvent(prev, event),
             },
-          },
-        }));
+          };
+        });
       });
 
       // Fetch updated test info
@@ -126,7 +122,8 @@ export const usePracticeTestStore = create<PracticeTestState>((set, get) => ({
         generationProgress: {
           ...state.generationProgress,
           [testId]: {
-            stage: 'done',
+            stage: 'error',
+            itemsGenerated: state.generationProgress[testId]?.itemsGenerated ?? 0,
             error: String(error),
           },
         },
