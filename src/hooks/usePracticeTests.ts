@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePracticeTestStore } from '../store/practiceTestStore';
 
 export function usePracticeTests() {
@@ -6,6 +6,7 @@ export function usePracticeTests() {
   const [error, setError] = useState<string | null>(null);
   const tests = usePracticeTestStore((state) => state.tests);
   const fetchTests = usePracticeTestStore((state) => state.fetchTests);
+  const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     const load = async () => {
@@ -19,10 +20,13 @@ export function usePracticeTests() {
         setLoading(false);
       }
     };
+    loadRef.current = load;
     load();
   }, [fetchTests]);
 
-  return { tests, loading, error };
+  const refetch = useCallback(() => loadRef.current(), []);
+
+  return { tests, loading, error, refetch };
 }
 
 export function usePracticeTest(testId: string) {

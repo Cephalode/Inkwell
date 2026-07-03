@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiPlus, HiX, HiSparkles, HiTrash, HiBookOpen } from 'react-icons/hi';
+import { HiPlus, HiX, HiSparkles, HiTrash, HiBookOpen, HiExclamationCircle } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
@@ -9,9 +9,22 @@ import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
 import { useFlashcardStore } from '../store/flashcardStore';
 
+/**
+ * Server caps flashcard generation at 30 cards per deck
+ * (see `server/routes/flashcards.ts` → `maxCards`). Used to compute the
+ * progress-bar width from `itemsGenerated`.
+ */
+const FLASHCARD_TARGET = 30;
+
+/**
+ * Generation stages that count as "actively generating" (vs. idle / done /
+ * error). The card should show "Generating…" for any of these, not "Pending".
+ */
+const ACTIVE_GENERATION_STAGES = ['collecting', 'generating', 'synthesizing'] as const;
+
 export default function FlashcardsPage() {
   const navigate = useNavigate();
-  const { decks, loading } = useFlashcards();
+  const { decks, loading, error, refetch } = useFlashcards();
   const { generationProgress } = useFlashcardGeneration();
   const { courses, loadCourses } = useCourses();
   const documents = useDocumentStore((s) => s.documents);
@@ -169,7 +182,7 @@ export default function FlashcardsPage() {
         <div className="flex justify-center py-10">
           <Spinner />
         </div>
-      ) : decks.length === 0 ? (
+      ) : decks.length === 0 && !error ? (
         <EmptyState
           icon={<HiBookOpen className="w-12 h-12" />}
           title="No decks yet"
@@ -177,12 +190,34 @@ export default function FlashcardsPage() {
           action={{ label: 'Create Deck', onClick: () => setShowCreateForm(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-4">
+          {/* Fetch error banner */}
+          {error && (
+            <div className="bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg p-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <HiExclamationCircle className="w-5 h-5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">Couldn't load flashcard decks</p>
+                  <p className="text-sm text-red-400/80 truncate">{error}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => void refetch()}
+                className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {decks.map((deck) => {
             const course = courses.find((c) => c.id === deck.course_id);
             const sourceName = course?.name ?? 'Untitled';
             const prog = generationProgress[deck.id];
-            const isGenerating = deck.status === 'generating' || prog?.stage === 'generating';
+            const isGenerating =
+              deck.status === 'generating' ||
+              (prog != null &&
+                ACTIVE_GENERATION_STAGES.includes(prog.stage as (typeof ACTIVE_GENERATION_STAGES)[number]));
 
             return (
               <div
@@ -234,12 +269,18 @@ export default function FlashcardsPage() {
 
                 {isGenerating && prog && (
                   <div className="mt-2 h-1.5 w-full rounded-full bg-slate-700/60 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500 w-1/2" />
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, (prog.itemsGenerated / FLASHCARD_TARGET) * 100)}%`,
+                      }}
+                    />
                   </div>
                 )}
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>

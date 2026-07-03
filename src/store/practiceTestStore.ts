@@ -53,6 +53,7 @@ export const usePracticeTestStore = create<PracticeTestState>((set, get) => ({
       set({ tests });
     } catch (error) {
       console.error('Error fetching practice tests:', error);
+      throw error;
     }
   },
 
@@ -70,6 +71,7 @@ export const usePracticeTestStore = create<PracticeTestState>((set, get) => ({
       }));
     } catch (error) {
       console.error('Error fetching practice test:', error);
+      throw error;
     }
   },
 

@@ -42,6 +42,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       set({ decks });
     } catch (error) {
       console.error('Error fetching flashcard decks:', error);
+      throw error;
     }
   },
 
@@ -69,6 +70,7 @@ export const useFlashcardStore = create<FlashcardState>((set, get) => ({
       }));
     } catch (error) {
       console.error('Error fetching flashcard cards:', error);
+      throw error;
     }
   },
 

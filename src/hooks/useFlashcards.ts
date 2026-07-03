@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFlashcardStore } from '../store/flashcardStore';
 
 export function useFlashcards() {
@@ -6,6 +6,7 @@ export function useFlashcards() {
   const [error, setError] = useState<string | null>(null);
   const decks = useFlashcardStore((state) => state.decks);
   const fetchDecks = useFlashcardStore((state) => state.fetchDecks);
+  const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     const load = async () => {
@@ -19,10 +20,13 @@ export function useFlashcards() {
         setLoading(false);
       }
     };
+    loadRef.current = load;
     load();
   }, [fetchDecks]);
 
-  return { decks, loading, error };
+  const refetch = useCallback(() => loadRef.current(), []);
+
+  return { decks, loading, error, refetch };
 }
 
 export function useFlashcardDeck(deckId: string) {
