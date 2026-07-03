@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        # tsconfig.node.json includes the server/ directory, so its deps
+        # (@types/multer, @types/pg, express, etc.) must be installed for
+        # `tsc -b` to resolve the server types.
+        run: npm ci
+        working-directory: server
+
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Build
+        run: npm run build
