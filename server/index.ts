@@ -3,6 +3,7 @@ import cors from 'cors';
 import { API_KEY, UPSTREAM } from './config.js';
 import pool from './db.js';
 import { GENERATION_TIMEOUT_MS } from './src/generationPipeline.js';
+import { runMigrations } from './migrations/run.js';
 import documentsRouter from './routes/documents.js';
 import videoDocumentsRouter from './routes/videoDocuments.js';
 import chaptersRouter from './routes/chapters.js';
@@ -192,14 +193,26 @@ async function reapStuckGenerations(): Promise<void> {
 }
 
 // ── Start ───────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🚀 Inkwell AI backend running on http://localhost:${PORT}`);
-  console.log(`   Model: ${MODEL}`);
-  console.log(`   Health: http://localhost:${PORT}/api/health`);
+// Migrations run BEFORE app.listen() so routes never accept traffic against an
+// out-of-date schema. If a migration fails the server refuses to start.
+//
+// To add a new migration: create server/migrations/NNN_description.sql
+// (where NNN is the next number) and it will be applied automatically on next boot.
+void runMigrations()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Inkwell AI backend running on http://localhost:${PORT}`);
+      console.log(`   Model: ${MODEL}`);
+      console.log(`   Health: http://localhost:${PORT}/api/health`);
 
-  // Kick off the background reaper. `unref()` so it does not keep the event
-  // loop (and therefore the process) alive on shutdown.
-  const reaperInterval = setInterval(reapStuckGenerations, REAPER_INTERVAL_MS);
-  reaperInterval.unref();
-  console.log(`   Reaper: every ${REAPER_INTERVAL_MS / 1000}s (timeout ${GENERATION_TIMEOUT_MS}ms)`);
-});
+      // Kick off the background reaper. `unref()` so it does not keep the event
+      // loop (and therefore the process) alive on shutdown.
+      const reaperInterval = setInterval(reapStuckGenerations, REAPER_INTERVAL_MS);
+      reaperInterval.unref();
+      console.log(`   Reaper: every ${REAPER_INTERVAL_MS / 1000}s (timeout ${GENERATION_TIMEOUT_MS}ms)`);
+    });
+  })
+  .catch((err: unknown) => {
+    console.error('[startup] Migration failed, refusing to start:', err);
+    process.exit(1);
+  });
