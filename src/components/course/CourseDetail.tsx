@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { HiArrowLeft, HiDocumentText, HiX, HiPlus, HiChevronDown, HiChevronUp } from 'react-icons/hi';
-import Card from '../shared/Card';
+import { HiArrowLeft, HiDocumentText, HiX, HiPlus, HiChevronUp } from 'react-icons/hi';
 import EmptyState from '../shared/EmptyState';
 import { Course } from '../../types/course';
 import { DocumentFile } from '../../types/document';

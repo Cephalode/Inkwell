@@ -18,7 +18,7 @@ import Card from '../components/shared/Card';
 import Spinner from '../components/shared/Spinner';
 import { useStudyGuides } from '../hooks/useStudyGuides';
 import { useStudyGuideGeneration } from '../hooks/useStudyGuideGeneration';
-import type { StudyGuide, StudyGuideStatus, StudyGuideContent } from '../types/studyGuide';
+import type { StudyGuideStatus, StudyGuideContent } from '../types/studyGuide';
 
 // ── Animation variants ─────────────────────────────────────────────────────
 const sectionVariants = {

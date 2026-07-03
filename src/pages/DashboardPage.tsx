@@ -8,9 +8,7 @@ import {
   HiSparkles,
   HiArrowRight,
   HiPlus,
-  HiBookOpen,
   HiChatBubbleLeftRight,
-  HiDocumentPlus,
 } from 'react-icons/hi2';
 import { HiDocumentAdd, HiPlay } from 'react-icons/hi';
 

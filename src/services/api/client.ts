@@ -1,4 +1,4 @@
-import type { DocumentFile, ChapterDocument, Textbook } from '../../types/document';
+import type { DocumentFile, ChapterDocument, Textbook, DocumentType, ClassifyStatus, Chapter, VideoSummary } from '../../types/document';
 import type { Course } from '../../types/course';
 import type { ChatSession, ChatMessage } from '../../types/chat';
 import type { ChapterAnalysis } from '../../types/analysis';
@@ -27,8 +27,88 @@ function toEpoch(iso: string): number {
   return new Date(iso).getTime();
 }
 
+// ---------------------------------------------------------------------------
+// Backend response row types
+// ---------------------------------------------------------------------------
+
+/** Raw document row from the backend API. */
+interface DocumentRow {
+  id: string;
+  name: string;
+  type: DocumentType;
+  mimeType: string;
+  size: number;
+  parsedText?: string | null;
+  thumbnail?: string | null;
+  chapterMarkers?: Chapter[] | null;
+  tags?: string[] | null;
+  classifyStatus?: ClassifyStatus | null;
+  videoSummary?: VideoSummary | null;
+  filePath?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw chapter row from the backend API. */
+interface ChapterRow {
+  id: string;
+  parentId: string;
+  chapterTitle: string;
+  chapterIndex: number;
+  startPage: number;
+  endPage: number;
+  parsedText?: string | null;
+  tags?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw textbook row from the backend API. */
+interface TextbookRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  documents?: DocumentRow[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw course row from the backend API. */
+interface CourseRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  documentIds?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Raw chat message row from the backend API. */
+interface ChatMessageRow {
+  id: string;
+  role: ChatMessage['role'];
+  content: string;
+  citations?: ChatMessage['citations'] | null;
+  timestamp: string;
+}
+
+/** Raw chat session row from the backend API. */
+interface ChatSessionRow {
+  id: string;
+  documentId?: string | null;
+  title?: string | null;
+  messages?: ChatMessageRow[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Document API
+// ---------------------------------------------------------------------------
+
 /** Map a backend document response to the frontend DocumentFile type. */
-function mapDocument(r: any): DocumentFile {
+function mapDocument(r: DocumentRow): DocumentFile {
   return {
     id: r.id,
     name: r.name,
@@ -49,7 +129,7 @@ function mapDocument(r: any): DocumentFile {
 }
 
 /** Map a backend chapter response to the frontend ChapterDocument type. */
-function mapChapter(r: any): ChapterDocument {
+function mapChapter(r: ChapterRow): ChapterDocument {
   return {
     id: r.id,
     parentId: r.parentId,
@@ -82,7 +162,7 @@ export async function uploadDocument(file: File): Promise<DocumentFile> {
 export async function listDocuments(): Promise<DocumentFile[]> {
   const res = await fetch(`${API_BASE}/documents`);
   if (!res.ok) throw new Error(`Failed to list documents: ${res.status}`);
-  const json: any[] = await res.json();
+  const json: DocumentRow[] = await res.json();
   return json.map(mapDocument);
 }
 
@@ -168,7 +248,7 @@ export async function fetchVideoSummary(docId: string): Promise<Response> {
 // Textbook API
 // ---------------------------------------------------------------------------
 
-function mapTextbook(r: any): Textbook {
+function mapTextbook(r: TextbookRow): Textbook {
   return {
     id: r.id,
     name: r.name,
@@ -209,7 +289,7 @@ export async function deleteTextbook(id: string): Promise<void> {
 export async function listChapters(parentId: string): Promise<ChapterDocument[]> {
   const res = await fetch(`${API_BASE}/documents/${parentId}/chapters`);
   if (!res.ok) throw new Error(`Failed to list chapters: ${res.status}`);
-  const json: any[] = await res.json();
+  const json: ChapterRow[] = await res.json();
   return json.map(mapChapter);
 }
 
@@ -238,7 +318,7 @@ export async function uploadChapters(
     body: form,
   });
   if (!res.ok) throw new Error(`Failed to upload chapters: ${res.status}`);
-  const json: any[] = await res.json();
+  const json: ChapterRow[] = await res.json();
   return json.map(mapChapter);
 }
 
@@ -262,7 +342,7 @@ export async function uploadSingleChapter(
     body: form,
   });
   if (!res.ok) throw new Error(`Failed to upload chapter: ${res.status}`);
-  const json: any[] = await res.json();
+  const json: ChapterRow[] = await res.json();
   return json.map(mapChapter)[0];
 }
 
@@ -315,7 +395,7 @@ export async function getChapterAnalysis(chapterId: string): Promise<ChapterAnal
 // Courses API
 // ---------------------------------------------------------------------------
 
-function mapCourse(r: any): Course {
+function mapCourse(r: CourseRow): Course {
   return {
     id: r.id,
     name: r.name,
@@ -383,7 +463,7 @@ export async function deleteCourse(id: string): Promise<void> {
 // Chat Sessions API
 // ---------------------------------------------------------------------------
 
-function mapChatSession(r: any): ChatSession {
+function mapChatSession(r: ChatSessionRow): ChatSession {
   return {
     id: r.id,
     documentId: r.documentId ?? undefined,
@@ -394,7 +474,7 @@ function mapChatSession(r: any): ChatSession {
   };
 }
 
-function mapChatMessage(r: any): ChatMessage {
+function mapChatMessage(r: ChatMessageRow): ChatMessage {
   return {
     id: r.id,
     role: r.role,
@@ -408,7 +488,7 @@ export async function listChatSessions(): Promise<ChatSession[]> {
   const res = await fetch(`${API_BASE}/chat-sessions`);
   if (!res.ok) throw new Error('Failed to list chat sessions');
   const data = await res.json();
-  return data.map((r: any) => mapChatSession({ ...r, messages: [] }));
+  return data.map((r: ChatSessionRow) => mapChatSession({ ...r, messages: [] }));
 }
 
 export async function getChatSession(id: string): Promise<ChatSession> {

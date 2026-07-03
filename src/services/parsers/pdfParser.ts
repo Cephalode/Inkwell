@@ -13,7 +13,7 @@ export async function parsePDF(file: File | Blob): Promise<ParsedDocument> {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const text = content.items.map((item: any) => item.str).join(' ');
+    const text = content.items.map((item) => 'str' in item ? item.str : '').join(' ');
     pages.push({ pageNumber: i, text });
     fullText += text + '\n';
   }
@@ -33,7 +33,7 @@ export async function extractPageRange(
   for (let i = Math.max(1, startPage); i <= Math.min(endPage, pdf.numPages); i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    texts.push(content.items.map((item: any) => item.str).join(' '));
+    texts.push(content.items.map((item) => 'str' in item ? item.str : '').join(' '));
   }
 
   return texts.join('\n\n');
@@ -58,7 +58,7 @@ export async function renderPDFPage(
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d')!;
-  await page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any).promise;
+  await page.render({ canvas, canvasContext: ctx, viewport }).promise;
   return canvas.toDataURL('image/jpeg', 0.7);
 }
 
@@ -75,7 +75,7 @@ export async function renderPDFPageToCanvas(
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const task = page.render({ canvas: canvas as any, canvasContext: ctx, viewport } as any);
+  const task = page.render({ canvas, canvasContext: ctx, viewport });
   await task.promise;
   return () => task.cancel();
 }

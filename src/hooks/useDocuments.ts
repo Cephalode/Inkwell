@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { parseFile } from '../services/parsers/index';
-import { classifyDocument, createDocumentFromUrl, getDocument, listDocuments, updateDocumentTags, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
-import type { DocumentFile, DocumentType } from '../types/document';
-import { SUPPORTED_MIME_TYPES, SUPPORTED_EXTENSIONS } from '../types/document';
+import { classifyDocument, createDocumentFromUrl, getDocument, listDocuments, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
+import type { DocumentFile, ClassifyStatus } from '../types/document';
 
 export function useDocuments() {
   const { documents, setDocuments, addDocument, removeDocument, updateDocument, setLoading, isLoading } = useDocumentStore();
@@ -19,6 +18,20 @@ export function useDocuments() {
     }
   }, [setDocuments, setLoading]);
 
+  const triggerClassify = useCallback((id: string) => {
+    updateDocument(id, { classifyStatus: 'classifying' as ClassifyStatus });
+    classifyDocument(id)
+      .then(async () => {
+        // Re-fetch the doc to get updated tags + name + status
+        const updated = await getDocument(id);
+        updateDocument(id, { tags: updated.tags ?? [], name: updated.name, classifyStatus: updated.classifyStatus });
+      })
+      .catch((err) => {
+        console.error('Classification failed:', err);
+        updateDocument(id, { classifyStatus: 'skipped' as ClassifyStatus });
+      });
+  }, [updateDocument]);
+
   // Resume stuck classifications on mount
   useEffect(() => {
     if (resumedRef.current || documents.length === 0) return;
@@ -28,21 +41,7 @@ export function useDocuments() {
     for (const doc of pending) {
       triggerClassify(doc.id);
     }
-  }, [documents]);
-
-  const triggerClassify = (id: string) => {
-    updateDocument(id, { classifyStatus: 'classifying' as any });
-    classifyDocument(id)
-      .then(async () => {
-        // Re-fetch the doc to get updated tags + name + status
-        const updated = await getDocument(id);
-        updateDocument(id, { tags: updated.tags ?? [], name: updated.name, classifyStatus: updated.classifyStatus });
-      })
-      .catch((err) => {
-        console.error('Classification failed:', err);
-        updateDocument(id, { classifyStatus: 'skipped' as any });
-      });
-  };
+  }, [documents, triggerClassify]);
 
   const uploadFile = useCallback(async (file: File) => {
     setLoading(true);
@@ -77,7 +76,7 @@ export function useDocuments() {
         })
         .catch((err) => {
           console.error('Classification failed:', err);
-          updateDocument(doc.id, { classifyStatus: 'skipped' as any });
+          updateDocument(doc.id, { classifyStatus: 'skipped' as ClassifyStatus });
         });
 
       return enrichedDoc;
@@ -123,11 +122,4 @@ export function useDocuments() {
   }, [removeDocument]);
 
   return { documents, isLoading, loadDocuments, uploadFile, uploadVideoUrl, deleteDocumentById };
-}
-
-function getDocType(file: File): DocumentType {
-  if (SUPPORTED_MIME_TYPES[file.type]) return SUPPORTED_MIME_TYPES[file.type];
-  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-  if (ext && SUPPORTED_EXTENSIONS[ext]) return SUPPORTED_EXTENSIONS[ext];
-  return 'txt';
 }

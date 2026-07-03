@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { ChatMessage, ChatSession } from '../types/chat';
 import { listChatSessions, getChatSession, createChatSession, updateChatSession, addChatMessage, deleteChatSession, generateChatTitle } from '../services/api/client';
-import { generateUUID } from '../utils/uuid';
 
 interface PendingTool {
   name: string;

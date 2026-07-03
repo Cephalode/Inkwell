@@ -9,10 +9,24 @@
 import fromKapsule from 'react-kapsule';
 import ForceGraphKapsule from 'force-graph';
 
+/** Instance type exposed by the force-graph kapsule component. */
+export type ForceGraphInstance = InstanceType<typeof ForceGraphKapsule>;
+
+/**
+ * Props accepted by the ForceGraph2D shim.  react-kapsule's inferred type
+ * only captures `ref`; we widen the prop bag with an index signature so the
+ * consumer can pass all force-graph props (graphData, callbacks, etc.)
+ * through without per prop duplication.
+ */
+interface ForceGraph2DProps {
+  ref?: React.Ref<ForceGraphInstance>;
+  [key: string]: unknown;
+}
+
 // force-graph is a Kapsule-style component but ships class-based .d.ts;
-// the `as any` cast bridges the gap between the two type declarations.
+// the `unknown` cast bridges the gap between the two type declarations.
 const ForceGraph2D = fromKapsule(
-  ForceGraphKapsule as any,
+  ForceGraphKapsule as unknown as Parameters<typeof fromKapsule>[0],
   {
     methodNames: [
       'emitParticle',
@@ -33,6 +47,4 @@ const ForceGraph2D = fromKapsule(
 
 (ForceGraph2D as React.FC).displayName = 'ForceGraph2D';
 
-// react-kapsule's inferred props type only captures `ref`; cast to a permissive
-// FC so the consumer can pass through force-graph props (graphData, etc.).
-export default ForceGraph2D as unknown as React.FC<any>;
+export default ForceGraph2D as unknown as React.FC<ForceGraph2DProps>;

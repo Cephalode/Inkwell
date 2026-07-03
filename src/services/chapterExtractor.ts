@@ -37,25 +37,25 @@ const BODY_CHAPTER_PATTERNS = [
 
 interface OutlineItem {
   title: string;
-  dest: any;
+  dest: string | unknown[] | null;
   items?: OutlineItem[];
 }
 
 const PART_PATTERNS = [/^(part|book|volume|unit)\s/i, /^[IVXLC]+(\s|$)/i];
 
-async function resolvePageIdx(pdf: any, item: OutlineItem): Promise<number | null> {
+async function resolvePageIdx(pdf: pdfjsLib.PDFDocumentProxy, item: OutlineItem): Promise<number | null> {
   if (!item.dest) return null;
   try {
-    if (Array.isArray(item.dest)) return pdf.getPageIndex(item.dest[0]);
+    if (Array.isArray(item.dest)) return pdf.getPageIndex(item.dest[0] as pdfjsLib.RefProxy);
     const dest = await pdf.getDestination(item.dest);
-    return dest ? pdf.getPageIndex(dest[0]) : null;
+    return dest ? pdf.getPageIndex(dest[0] as pdfjsLib.RefProxy) : null;
   } catch {
     return null;
   }
 }
 
 async function detectChaptersFromOutline(
-  pdf: any,
+  pdf: pdfjsLib.PDFDocumentProxy,
   totalPages: number,
 ): Promise<Chapter[] | null> {
   const outline = await pdf.getOutline();
@@ -133,21 +133,20 @@ function cleanTitle(text: string): string {
 
 interface PageLine { text: string; fontSize: number }
 
-async function getPageLines(pdf: any, pageNum: number): Promise<PageLine[]> {
+async function getPageLines(pdf: pdfjsLib.PDFDocumentProxy, pageNum: number): Promise<PageLine[]> {
   const page = await pdf.getPage(pageNum);
   const content = await page.getTextContent();
   const lineMap = new Map<number, { parts: string[]; maxFont: number }>();
 
   for (const item of content.items) {
     if (!('str' in item) || !('transform' in item)) continue;
-    const ti = item as any;
-    const str = ti.str.trim();
+    const str = item.str.trim();
     if (!str) continue;
-    const y = Math.round(ti.transform[5] / 2) * 2;
+    const y = Math.round(item.transform[5] / 2) * 2;
     if (!lineMap.has(y)) lineMap.set(y, { parts: [], maxFont: 0 });
     const line = lineMap.get(y)!;
     line.parts.push(str);
-    const fs = Math.abs(ti.transform[3]);
+    const fs = Math.abs(item.transform[3]);
     if (fs > line.maxFont) line.maxFont = fs;
   }
 
@@ -160,16 +159,16 @@ async function getPageLines(pdf: any, pageNum: number): Promise<PageLine[]> {
   return lines;
 }
 
-async function findStandalonePageNumber(pdf: any, pageNum: number): Promise<number | null> {
+async function findStandalonePageNumber(pdf: pdfjsLib.PDFDocumentProxy, pageNum: number): Promise<number | null> {
   const page = await pdf.getPage(pageNum);
   const content = await page.getTextContent();
   const lineMap = new Map<number, string[]>();
 
   for (const item of content.items) {
     if (!('str' in item) || !('transform' in item)) continue;
-    const str = (item as any).str.trim();
+    const str = item.str.trim();
     if (!str) continue;
-    const y = Math.round((item as any).transform[5] / 2) * 2;
+    const y = Math.round(item.transform[5] / 2) * 2;
     if (!lineMap.has(y)) lineMap.set(y, []);
     lineMap.get(y)!.push(str);
   }
@@ -183,7 +182,7 @@ async function findStandalonePageNumber(pdf: any, pageNum: number): Promise<numb
 }
 
 async function detectChaptersFromTOC(
-  pdf: any,
+  pdf: pdfjsLib.PDFDocumentProxy,
   totalPages: number,
 ): Promise<Chapter[] | null> {
   // Method A: look for a "Contents" / "Table of Contents" heading
@@ -263,7 +262,7 @@ async function detectChaptersFromTOC(
 // ── Font-size heuristic fallback — Method 2 ──
 
 async function detectChaptersByFontSize(
-  pdf: any,
+  pdf: pdfjsLib.PDFDocumentProxy,
   totalPages: number,
 ): Promise<Chapter[]> {
   const chapters: Array<{ page: number; text: string }> = [];

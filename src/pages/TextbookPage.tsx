@@ -10,13 +10,13 @@ import Spinner from '../components/shared/Spinner';
 import { useTextbook } from '../hooks/useTextbook';
 import { useChapters } from '../hooks/useChapters';
 import { useDocumentStore } from '../store/documentStore';
-import { downloadDocumentFile, convertToTextbook, listTextbooks, getDocument } from '../services/api/client';
+import { downloadDocumentFile, convertToTextbook, listTextbooks } from '../services/api/client';
 import type { Chapter, Textbook, DocumentFile } from '../types/document';
 
 export default function TextbookPage() {
   const { documents, currentDocument, setCurrentDocument } = useDocumentStore();
   const pdfs = documents.filter((d) => d.type === 'pdf');
-  const { pageCount, startPage, endPage, loadPDF, selectPageRange, setStartPage, setEndPage } = useTextbook();
+  const { pageCount, endPage, loadPDF, selectPageRange, setStartPage, setEndPage } = useTextbook();
   const { chapters, isExtracting, isSaving, savingIndex, savedCount, savedChapters, savedChapterDocs, error: chapterError, extractChapters, clearChapters, initChapters, saveSingleChapter, saveAllChapters } = useChapters(currentDocument);
   const [pageLoaded, setPageLoaded] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,7 +41,7 @@ export default function TextbookPage() {
       .catch(() => {});
   }, [pageLoaded]);
 
-  const handleSelectPDF = async (doc: any) => {
+  const handleSelectPDF = async (doc: DocumentFile) => {
     setCurrentDocument(doc);
     setLoadedTextbook(null);
     setSelectedChapter(null);

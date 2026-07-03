@@ -31,7 +31,7 @@ export interface ToolDefinition {
   function: {
     name: string;
     description: string;
-    parameters: Record<string, any>; // JSON Schema object
+    parameters: Record<string, unknown>; // JSON Schema object
   };
 }
 
@@ -152,7 +152,7 @@ async function handleSearchDocuments(args: Record<string, unknown>): Promise<str
 
 async function handleGetCurrentContext(): Promise<string> {
   // Determine which page/view the user is currently on
-  let page = 'unknown';
+  let page: string;
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   if (pathname.startsWith('/document') || pathname.startsWith('/textbook')) {

@@ -33,8 +33,9 @@ export default function TextbookChat({ onAsk, startPage, endPage, isLoading }: T
     try {
       const answer = await onAsk(question);
       setMessages((prev) => [...prev, { role: 'assistant', content: answer }]);
-    } catch (err: any) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${message}` }]);
     }
   };
 

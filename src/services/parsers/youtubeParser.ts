@@ -1,5 +1,11 @@
 import type { ParsedDocument } from '../../types/document';
 
+/** Minimal shape of a YouTube caption track. */
+interface CaptionTrack {
+  languageCode: string;
+  baseUrl: string;
+}
+
 export async function parseYouTube(url: string): Promise<ParsedDocument> {
   const videoId = extractVideoId(url);
   if (!videoId) {
@@ -15,7 +21,7 @@ export async function parseYouTube(url: string): Promise<ParsedDocument> {
     const captionsMatch = html.match(/"captionTracks":\[(.*?)\]/);
     if (captionsMatch) {
       const tracks = JSON.parse(`[${captionsMatch[1]}]`);
-      const enTrack = tracks.find((t: any) => t.languageCode === 'en') || tracks[0];
+      const enTrack = tracks.find((t: CaptionTrack) => t.languageCode === 'en') || tracks[0];
       if (enTrack?.baseUrl) {
         const captionsRes = await fetch(enTrack.baseUrl);
         const captionsXml = await captionsRes.text();
