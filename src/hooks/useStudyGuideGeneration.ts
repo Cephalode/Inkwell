@@ -1,5 +1,6 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { generateStudyGuide } from '../services/api/client';
+import { consumeSSE } from '../utils/sse';
 import { useStudyGuideStore, type GenerationProgress } from '../store/studyGuideStore';
 import type { StudyGuideContent } from '../types/studyGuide';
 
@@ -96,124 +97,91 @@ export function useStudyGuideGeneration(guideId?: string): UseStudyGuideGenerati
           throw new Error(`Generation request failed: ${response.status}`);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+        // Read the stream via the shared SSE parser.
+        await consumeSSE<GuideGenEvent>(response, (evt) => {
+          // --- Dispatch event → state update ---
+          switch (evt.type) {
+            case 'status':
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'collecting',
+                message: evt.message ?? '',
+              }));
+              break;
 
-        // Read the stream, splitting on the SSE record delimiter `\n\n`.
-        while (true) {
-          if (controller.signal.aborted) {
-            reader.cancel().catch(() => {});
-            return;
-          }
-          const { done, value } = await reader.read();
-          if (done) break;
+            case 'materials_collected':
+              totalRef.current = evt.count ?? 0;
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'analyzing',
+                total: evt.count ?? 0,
+                current: 0,
+                message: `Analyzing ${evt.count ?? 0} materials…`,
+              }));
+              break;
 
-          buffer += decoder.decode(value, { stream: true });
-
-          let sep: number;
-          while ((sep = buffer.indexOf('\n\n')) !== -1) {
-            const rawEvent = buffer.slice(0, sep);
-            buffer = buffer.slice(sep + 2);
-
-            // Find the `data: ` line within the event.
-            const dataLine = rawEvent
-              .split('\n')
-              .map((l) => l.trim())
-              .find((l) => l.startsWith('data: '));
-            if (!dataLine) continue;
-
-            const payload = dataLine.slice(6);
-            let evt: GuideGenEvent;
-            try {
-              evt = JSON.parse(payload) as GuideGenEvent;
-            } catch {
-              continue; // skip malformed events
+            case 'material_start': {
+              // The shared pipeline nests the title under `material.title`;
+              // fall back to the legacy top-level `title` for older streams.
+              const materialTitle = evt.material?.title ?? evt.title ?? '';
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'analyzing',
+                current: (evt.index ?? 0) + 1,
+                total: totalRef.current,
+                currentTitle: materialTitle,
+                message: `Analyzing: ${materialTitle}`,
+              }));
+              break;
             }
 
-            // --- Dispatch event → state update ---
-            switch (evt.type) {
-              case 'status':
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'collecting',
-                  message: evt.message ?? '',
-                }));
-                break;
+            case 'material_result':
+              // Progress already advanced in material_start; nothing extra to store.
+              break;
 
-              case 'materials_collected':
-                totalRef.current = evt.count ?? 0;
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'analyzing',
-                  total: evt.count ?? 0,
-                  current: 0,
-                  message: `Analyzing ${evt.count ?? 0} materials…`,
-                }));
-                break;
+            case 'synthesizing':
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'synthesizing',
+                current: totalRef.current,
+                total: totalRef.current,
+                message: evt.message ?? 'Synthesizing study guide…',
+              }));
+              break;
 
-              case 'material_start':
-                // The shared pipeline nests the title under `material.title`;
-                // fall back to the legacy top-level `title` for older streams.
-                const materialTitle = evt.material?.title ?? evt.title ?? '';
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'analyzing',
-                  current: (evt.index ?? 0) + 1,
-                  total: totalRef.current,
-                  currentTitle: materialTitle,
-                  message: `Analyzing: ${materialTitle}`,
-                }));
-                break;
+            case 'guide':
+              if (evt.guide) {
+                updateGuide(id, { content: evt.guide, status: 'done', error: null });
+              }
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'done',
+                message: 'Study guide generated successfully.',
+              }));
+              break;
 
-              case 'material_result':
-                // Progress already advanced in material_start; nothing extra to store.
-                break;
+            case 'done':
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'done',
+                message: 'Study guide generated successfully.',
+              }));
+              break;
 
-              case 'synthesizing':
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'synthesizing',
-                  current: totalRef.current,
-                  total: totalRef.current,
-                  message: evt.message ?? 'Synthesizing study guide…',
-                }));
-                break;
+            case 'error':
+              setProgress(id, (prev) => ({
+                ...(prev ?? DEFAULT_PROGRESS),
+                status: 'error',
+                error: evt.message ?? 'Generation failed',
+                message: evt.message ?? 'Generation failed',
+              }));
+              updateGuide(id, { status: 'error', error: evt.message ?? 'Generation failed' });
+              break;
 
-              case 'guide':
-                if (evt.guide) {
-                  updateGuide(id, { content: evt.guide, status: 'done', error: null });
-                }
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'done',
-                  message: 'Study guide generated successfully.',
-                }));
-                break;
-
-              case 'done':
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'done',
-                  message: 'Study guide generated successfully.',
-                }));
-                break;
-
-              case 'error':
-                setProgress(id, (prev) => ({
-                  ...(prev ?? DEFAULT_PROGRESS),
-                  status: 'error',
-                  error: evt.message ?? 'Generation failed',
-                  message: evt.message ?? 'Generation failed',
-                }));
-                updateGuide(id, { status: 'error', error: evt.message ?? 'Generation failed' });
-                break;
-
-              default:
-                break;
-            }
+            default:
+              break;
           }
-        }
+        }, controller.signal);
       } catch (err) {
         // Aborts are not errors — just stop quietly.
         if (controller.signal.aborted) return;

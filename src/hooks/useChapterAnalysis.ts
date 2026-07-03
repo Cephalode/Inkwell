@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { analyzeChapter as startAnalysisStream, getChapterAnalysis } from '../services/api/client';
+import { consumeSSE } from '../utils/sse';
 import type { AnalysisStatus, SubsectionAnalysis, DetectedSubsection } from '../types/analysis';
 
 /**
@@ -116,104 +117,70 @@ export function useChapterAnalysis(): UseChapterAnalysis {
         throw new Error(`Analysis request failed: ${response.status}`);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Read the stream, splitting on the SSE record delimiter `\n\n`.
-      while (true) {
-        if (controller.signal.aborted) {
-          reader.cancel().catch(() => {});
-          return;
-        }
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let sep: number;
-        while ((sep = buffer.indexOf('\n\n')) !== -1) {
-          const rawEvent = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-
-          // Find the `data: ` line within the event.
-          const dataLine = rawEvent
-            .split('\n')
-            .map((l) => l.trim())
-            .find((l) => l.startsWith('data: '));
-          if (!dataLine) continue;
-
-          const payload = dataLine.slice(6);
-          let evt: AnalysisEvent;
-          try {
-            evt = JSON.parse(payload) as AnalysisEvent;
-          } catch {
-            continue; // skip malformed events
+      // Read the stream via the shared SSE parser.
+      await consumeSSE<AnalysisEvent>(response, (evt) => {
+        // --- Dispatch event → state update ---
+        switch (evt.type) {
+          case 'extracting':
+            setStatus('extracting');
+            break;
+          case 'detecting_subsections':
+            setStatus('detecting');
+            break;
+          case 'subsections_detected': {
+            const detected: DetectedSubsection[] = (evt.subsections ?? []).map((s) => ({
+              title: s.title,
+              startPage: s.pages[0],
+              endPage: s.pages[1],
+            }));
+            subsectionsRef.current = detected;
+            setSubsections(detected);
+            setTotalSubsections(evt.count ?? detected.length);
+            setStatus('analyzing');
+            break;
           }
-
-          // --- Dispatch event → state update ---
-          switch (evt.type) {
-            case 'extracting':
-              setStatus('extracting');
-              break;
-            case 'detecting_subsections':
-              setStatus('detecting');
-              break;
-            case 'subsections_detected': {
-              const detected: DetectedSubsection[] = (evt.subsections ?? []).map((s) => ({
-                title: s.title,
-                startPage: s.pages[0],
-                endPage: s.pages[1],
-              }));
-              subsectionsRef.current = detected;
-              setSubsections(detected);
-              setTotalSubsections(evt.count ?? detected.length);
-              setStatus('analyzing');
-              break;
-            }
-            case 'subsection_start':
-              setCurrentSubsection(evt.index ?? 0);
-              break;
-            case 'subsection_result': {
-              const idx = evt.index ?? 0;
-              const meta = subsectionsRef.current[idx];
-              const result: SubsectionAnalysis = {
-                title: evt.title ?? meta?.title ?? '',
-                startPage: meta?.startPage ?? 0,
-                endPage: meta?.endPage ?? 0,
-                summary: evt.summary ?? '',
-                keyPoints: evt.keyPoints ?? [],
-                formulas: evt.formulas ?? [],
-                definitions: evt.definitions ?? [],
-              };
-              // Place by index so ordering is always correct even if events
-              // arrive out of order.
-              setResults((prev) => {
-                const next = [...prev];
-                next[idx] = result;
-                return next;
-              });
-              break;
-            }
-            case 'synthesizing':
-              setStatus('synthesizing');
-              break;
-            case 'chapter_synthesis':
-              setChapterNotes(evt.notes ?? '');
-              break;
-            case 'done':
-              setStatus('done');
-              setTotalSubsections(evt.totalSubsections ?? subsectionsRef.current.length);
-              break;
-            case 'error':
-              setStatus('error');
-              setError(evt.message ?? 'Analysis failed');
-              break;
-            default:
-              break;
+          case 'subsection_start':
+            setCurrentSubsection(evt.index ?? 0);
+            break;
+          case 'subsection_result': {
+            const idx = evt.index ?? 0;
+            const meta = subsectionsRef.current[idx];
+            const result: SubsectionAnalysis = {
+              title: evt.title ?? meta?.title ?? '',
+              startPage: meta?.startPage ?? 0,
+              endPage: meta?.endPage ?? 0,
+              summary: evt.summary ?? '',
+              keyPoints: evt.keyPoints ?? [],
+              formulas: evt.formulas ?? [],
+              definitions: evt.definitions ?? [],
+            };
+            // Place by index so ordering is always correct even if events
+            // arrive out of order.
+            setResults((prev) => {
+              const next = [...prev];
+              next[idx] = result;
+              return next;
+            });
+            break;
           }
+          case 'synthesizing':
+            setStatus('synthesizing');
+            break;
+          case 'chapter_synthesis':
+            setChapterNotes(evt.notes ?? '');
+            break;
+          case 'done':
+            setStatus('done');
+            setTotalSubsections(evt.totalSubsections ?? subsectionsRef.current.length);
+            break;
+          case 'error':
+            setStatus('error');
+            setError(evt.message ?? 'Analysis failed');
+            break;
+          default:
+            break;
         }
-      }
+      }, controller.signal);
     } catch (err) {
       // Aborts are not errors — just stop quietly.
       if (controller.signal.aborted) return;

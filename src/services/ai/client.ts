@@ -1,4 +1,5 @@
 import type { AIConfig } from '../../types/settings';
+import { consumeSSE } from '../../utils/sse';
 import { useSettingsStore } from '../../store/settingsStore';
 
 export function getAIConfig(): AIConfig {
@@ -110,31 +111,14 @@ export async function streamingChatCompletion(
 
   if (!response.ok) throw new Error(`API error: ${response.status}`);
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
+  // Stream the response via the shared SSE parser. The OpenAI `[DONE]`
+  // sentinel is not valid JSON, so it is silently skipped; onDone() is
+  // called once the stream closes naturally.
+  await consumeSSE<{ choices?: Array<{ delta?: { content?: string } }> }>(response, (json) => {
+    const content = json.choices?.[0]?.delta?.content;
+    if (content) onChunk(content);
+  });
 
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data: ')) continue;
-      const data = trimmed.slice(6);
-      if (data === '[DONE]') { onDone(); return; }
-      try {
-        const json = JSON.parse(data);
-        const content = json.choices?.[0]?.delta?.content;
-        if (content) onChunk(content);
-      } catch { /* skip */ }
-    }
-  }
   onDone();
 }
 

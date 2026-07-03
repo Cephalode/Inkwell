@@ -12,8 +12,22 @@ import Spinner from '../shared/Spinner';
 import Badge from '../shared/Badge';
 import Markdown from '../shared/Markdown';
 import { fetchVideoSummary } from '../../services/api/client';
+import { consumeSSE } from '../../utils/sse';
 import { useTTSStore } from '../../store/ttsStore';
 import type { VideoSummary } from '../../types/document';
+
+/**
+ * Shape of a raw SSE event from the video-summary endpoint.
+ */
+interface VideoSummaryEvent {
+  type: string;
+  message?: string;
+  summary?: string;
+  keyPoints?: string[];
+  formulas?: string[];
+  definitions?: string[];
+  topics?: string[];
+}
 
 interface VideoSummaryPanelProps {
   docId: string;
@@ -100,67 +114,35 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
         throw new Error(`Request failed: ${response.status}`);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        if (controller.signal.aborted) {
-          reader.cancel().catch(() => {});
-          return;
-        }
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let sep: number;
-        while ((sep = buffer.indexOf('\n\n')) !== -1) {
-          const rawEvent = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-
-          const dataLine = rawEvent
-            .split('\n')
-            .map((l) => l.trim())
-            .find((l) => l.startsWith('data: '));
-          if (!dataLine) continue;
-
-          const payload = dataLine.slice(6);
-          let evt: any;
-          try {
-            evt = JSON.parse(payload);
-          } catch {
-            continue;
+      // Read the stream via the shared SSE parser.
+      await consumeSSE<VideoSummaryEvent>(response, (evt) => {
+        switch (evt.type) {
+          case 'analyzing':
+            setAnalyzingMessage(evt.message ?? 'Analyzing transcript…');
+            break;
+          case 'result': {
+            const result: VideoSummary = {
+              summary: evt.summary ?? '',
+              keyPoints: evt.keyPoints ?? [],
+              formulas: evt.formulas ?? [],
+              definitions: evt.definitions ?? [],
+              topics: evt.topics ?? [],
+            };
+            setSummary(result);
+            setStatus('done');
+            break;
           }
-
-          switch (evt.type) {
-            case 'analyzing':
-              setAnalyzingMessage(evt.message ?? 'Analyzing transcript…');
-              break;
-            case 'result': {
-              const result: VideoSummary = {
-                summary: evt.summary ?? '',
-                keyPoints: evt.keyPoints ?? [],
-                formulas: evt.formulas ?? [],
-                definitions: evt.definitions ?? [],
-                topics: evt.topics ?? [],
-              };
-              setSummary(result);
-              setStatus('done');
-              break;
-            }
-            case 'done':
-              setStatus('done');
-              break;
-            case 'error':
-              setStatus('error');
-              setError(evt.message ?? 'Summary generation failed');
-              break;
-            default:
-              break;
-          }
+          case 'done':
+            setStatus('done');
+            break;
+          case 'error':
+            setStatus('error');
+            setError(evt.message ?? 'Summary generation failed');
+            break;
+          default:
+            break;
         }
-      }
+      }, controller.signal);
     } catch (err) {
       if (controller.signal.aborted) return;
       setStatus('error');
