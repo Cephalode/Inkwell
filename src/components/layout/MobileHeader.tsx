@@ -11,17 +11,7 @@ import {
 } from 'react-icons/hi2';
 import { useTheme } from '../../hooks/useTheme';
 import { useCourses } from '../../hooks/useCourses';
-
-const pathTitleMap: Record<string, string> = {
-  '/': 'Dashboard',
-  '/documents': 'Documents',
-  '/courses': 'Courses',
-  '/textbook': 'Textbook',
-  '/study-guides': 'Study Guides',
-  '/flashcards': 'Flashcards',
-  '/tests': 'Tests',
-  '/settings': 'Settings',
-};
+import { PATH_TITLES } from '../../config/navigation';
 
 export default function MobileHeader() {
   const { theme, toggleTheme } = useTheme();
@@ -61,7 +51,7 @@ export default function MobileHeader() {
 
   // Dynamic page title with course name lookup
   const pageTitle = (() => {
-    if (pathTitleMap[location.pathname]) return pathTitleMap[location.pathname];
+    if (PATH_TITLES[location.pathname]) return PATH_TITLES[location.pathname];
     // Match /courses/:id and look up course name
     const courseMatch = location.pathname.match(/^\/courses\/(.+)$/);
     if (courseMatch) {
@@ -71,7 +61,7 @@ export default function MobileHeader() {
       return 'Course';
     }
     // Try matching prefix for other nested routes
-    const match = Object.entries(pathTitleMap).find(
+    const match = Object.entries(PATH_TITLES).find(
       ([path]) => path !== '/' && location.pathname.startsWith(path)
     );
     return match ? match[1] : 'Inkwell';

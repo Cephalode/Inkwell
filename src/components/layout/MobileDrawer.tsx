@@ -1,26 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  HiHome,
-  HiDocumentText,
-  HiBookOpen,
-  HiCog,
-  HiXMark,
-  HiAcademicCap,
-} from 'react-icons/hi2';
+import { HiXMark } from 'react-icons/hi2';
+import { NAV_ITEMS } from '../../config/navigation';
 import { useUIStore } from '../../store/uiStore';
 import InkwellLogo from '../shared/InkwellLogo';
-
-const navItems = [
-  { to: '/', icon: HiHome, label: 'Dashboard' },
-  { to: '/documents', icon: HiDocumentText, label: 'Documents' },
-  { to: '/courses', icon: HiBookOpen, label: 'Courses' },
-  { to: '/textbook', icon: HiBookOpen, label: 'Textbook' },
-  { to: '/study-guides', icon: HiAcademicCap, label: 'Study Guides' },
-  { to: '/flashcards', icon: HiAcademicCap, label: 'Flashcards' },
-  { to: '/tests', icon: HiAcademicCap, label: 'Tests' },
-  { to: '/settings', icon: HiCog, label: 'Settings' },
-];
 
 export default function MobileDrawer() {
   const { mobileDrawerOpen, setMobileDrawerOpen } = useUIStore();
@@ -74,12 +57,12 @@ export default function MobileDrawer() {
 
             {/* Navigation */}
             <nav className="mt-4 space-y-1 px-2 overflow-y-auto flex-1">
-              {navItems.map(({ to, icon: Icon, label }) => {
-                const isActive = location.pathname === to;
+              {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
+                const isActive = location.pathname === path;
                 return (
                   <button
-                    key={to}
-                    onClick={() => handleNavClick(to)}
+                    key={path}
+                    onClick={() => handleNavClick(path)}
                     className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive
                         ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30'
