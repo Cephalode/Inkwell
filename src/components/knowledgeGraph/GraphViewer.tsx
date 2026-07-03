@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import ForceGraph2D from '../../lib/ForceGraph2D';
+import ForceGraph2D, { type ForceGraphInstance } from '../../lib/ForceGraph2D';
 import type { KGNode, KGGraph, KGNodeType } from '../../types/knowledgeGraph';
 import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
 
@@ -62,6 +62,32 @@ const MAX_INIT_ZOOM = 4;
 /** Floor; matches the component's minZoom prop. */
 const MIN_INIT_ZOOM = 0.1;
 
+/** A KGNode augmented with the x/y coordinates the D3 force simulation
+ *  attaches to node objects at runtime (mirrors force-graph's NodeObject). */
+interface SimNode extends KGNode {
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+/** Runtime shape of a graph link/edge. The D3 force simulation mutates the
+ *  initial string endpoint IDs into live node-object references. */
+interface SimLink {
+  source: string | SimNode;
+  target: string | SimNode;
+  label?: string;
+  type?: string;
+}
+
+/** Extract the id from a link endpoint, which the D3 force simulation may
+ *  have mutated from a plain string into a live node-object reference. */
+function endpointId(endpoint: unknown): string {
+  return typeof endpoint === 'object' && endpoint !== null
+    ? (endpoint as SimNode).id
+    : String(endpoint);
+}
+
 interface GraphViewerProps {
   graph: KGGraph;
   onNodeClick?: (node: KGNode) => void;
@@ -69,7 +95,7 @@ interface GraphViewerProps {
 
 export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<any>(null);
+  const graphRef = useRef<ForceGraphInstance | null>(null);
   const didInitialFitRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -126,8 +152,8 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     const connected = new Set<string>();
     connected.add(hoveredNodeId);
     for (const edge of filteredGraph.edges) {
-      const src = typeof edge.source === 'object' ? (edge.source as any).id : edge.source;
-      const tgt = typeof edge.target === 'object' ? (edge.target as any).id : edge.target;
+      const src = endpointId(edge.source);
+      const tgt = endpointId(edge.target);
       if (src === hoveredNodeId) connected.add(tgt);
       if (tgt === hoveredNodeId) connected.add(src);
     }
@@ -195,8 +221,8 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
       degrees[node.id] = 0;
     }
     for (const edge of filteredGraph.edges) {
-      const src = typeof edge.source === 'object' ? (edge.source as any).id : edge.source;
-      const tgt = typeof edge.target === 'object' ? (edge.target as any).id : edge.target;
+      const src = endpointId(edge.source);
+      const tgt = endpointId(edge.target);
       if (degrees[src] !== undefined) degrees[src]++;
       if (degrees[tgt] !== undefined) degrees[tgt]++;
     }
@@ -204,18 +230,17 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   }, [filteredGraph]);
 
   const handleNodeClick = useCallback(
-    (node: any) => {
+    (node: SimNode) => {
       if (onNodeClick && node) {
-        onNodeClick(node as KGNode);
+        onNodeClick(node);
       }
     },
     [onNodeClick],
   );
 
-  const handleNodeHover = useCallback((node: any) => {
-    const kgNode = node ? (node as KGNode) : null;
-    setHoveredNodeId(kgNode?.id ?? null);
-    setHoveredNode(kgNode);
+  const handleNodeHover = useCallback((node: SimNode | null) => {
+    setHoveredNodeId(node?.id ?? null);
+    setHoveredNode(node);
   }, [setHoveredNode]);
 
   // ── Initial fit-to-view (runs once when the force simulation settles) ──
@@ -234,13 +259,12 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     const vh = container?.clientHeight ?? dimensions.height;
     if (vw <= 0 || vh <= 0) return;
 
-    let bbox: { x: [number, number]; y: [number, number] } | null = null;
+    let bbox: { x: [number, number]; y: [number, number] };
     try {
       bbox = fg.getGraphBbox();
     } catch {
-      bbox = null;
+      return;
     }
-    if (!bbox) return;
 
     const bw = bbox.x[1] - bbox.x[0];
     const bh = bbox.y[1] - bbox.y[0];
@@ -299,8 +323,9 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   );
 
   const nodeCanvasObject = useCallback(
-    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const kgNode = node as KGNode;
+    (node: SimNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const kgNode: KGNode = node;
+      const { x = 0, y = 0 } = node;
       const color = NODE_COLORS[kgNode.type] || '#6b7280';
       const radius = getNodeRadius(kgNode);
 
@@ -310,7 +335,7 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
 
       // Draw circle
       ctx.beginPath();
-      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+      ctx.arc(x, y, radius, 0, 2 * Math.PI);
       ctx.fillStyle = isDimmed
         ? color + '26' // ~15% alpha hex
         : color;
@@ -334,18 +359,19 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
         ctx.fillStyle = isDimmed
           ? 'rgba(255,255,255,0.1)'
           : 'rgba(255,255,255,0.85)';
-        ctx.fillText(label, node.x, node.y + radius + 2);
+        ctx.fillText(label, x, y + radius + 2);
       }
     },
     [connectedNodes, getNodeRadius],
   );
 
   const nodePointerAreaPaint = useCallback(
-    (node: any, color: string, ctx: CanvasRenderingContext2D) => {
-      const kgNode = node as KGNode;
+    (node: SimNode, color: string, ctx: CanvasRenderingContext2D) => {
+      const kgNode: KGNode = node;
+      const { x = 0, y = 0 } = node;
       const radius = getNodeRadius(kgNode);
       ctx.beginPath();
-      ctx.arc(node.x, node.y, radius + 2, 0, 2 * Math.PI);
+      ctx.arc(x, y, radius + 2, 0, 2 * Math.PI);
       ctx.fillStyle = color;
       ctx.fill();
     },
@@ -353,13 +379,13 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   );
 
   const getLinkColor = useCallback(
-    (link: any) => {
-      const edgeType = (link as any).type as string | undefined;
+    (link: SimLink) => {
+      const edgeType = link.type;
       const base = EDGE_COLORS[edgeType || ''] || 'rgba(148,163,184,0.2)';
 
       if (hoveredNodeId) {
-        const src = typeof link.source === 'object' ? (link.source as any).id : link.source;
-        const tgt = typeof link.target === 'object' ? (link.target as any).id : link.target;
+        const src = endpointId(link.source);
+        const tgt = endpointId(link.target);
         const isConnected = src === hoveredNodeId || tgt === hoveredNodeId;
         if (!isConnected) return 'rgba(148,163,184,0.05)';
       }
