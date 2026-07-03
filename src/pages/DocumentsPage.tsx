@@ -20,7 +20,7 @@ import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook } from 
 import { buildKnowledgeGraph } from '../utils/buildKnowledgeGraph';
 
 import { useNavigate } from 'react-router-dom';
-import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash } from 'react-icons/hi';
+import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash, HiExclamationCircle } from 'react-icons/hi';
 import { HiOutlineListBullet } from 'react-icons/hi2';
 import type { KGNode } from '../types/knowledgeGraph';
 import type { ChapterDocument, Textbook } from '../types/document';
@@ -36,6 +36,7 @@ export default function DocumentsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const [chapters, setChapters] = useState<ChapterDocument[]>([]);
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
+  const [textbookError, setTextbookError] = useState(false);
   const [expandedTextbooks, setExpandedTextbooks] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadDocuments(); loadCourses(); }, [loadDocuments, loadCourses]);
@@ -55,12 +56,20 @@ export default function DocumentsPage() {
     return () => { cancelled = true; };
   }, [documents]);
 
-  // Fetch textbooks
-  useEffect(() => {
+  // Fetch textbooks (extracted so it can be retried on failure)
+  const loadTextbooks = useCallback(() => {
+    setTextbookError(false);
     listTextbooks()
       .then(setTextbooks)
-      .catch(console.error);
-  }, [documents]);
+      .catch((err) => {
+        console.error(err);
+        setTextbookError(true);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadTextbooks();
+  }, [documents, loadTextbooks]);
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
     for (const file of files) {
@@ -216,7 +225,7 @@ export default function DocumentsPage() {
             </>
           )}
         </div>
-      ) : documents.length === 0 && textbooks.length === 0 ? (
+      ) : documents.length === 0 && textbooks.length === 0 && !textbookError ? (
         <EmptyState
           icon="📂"
           title="No documents yet"
@@ -224,6 +233,24 @@ export default function DocumentsPage() {
         />
       ) : (
         <div className="space-y-2">
+          {/* Textbook fetch error banner */}
+          {textbookError && (
+            <div className="bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg p-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <HiExclamationCircle className="w-5 h-5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-medium">Couldn't load textbooks</p>
+                  <p className="text-sm text-red-400/80">Something went wrong fetching your textbooks.</p>
+                </div>
+              </div>
+              <button
+                onClick={loadTextbooks}
+                className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {/* Textbook cards */}
           {textbooks.map((tb) => {
             const expanded = expandedTextbooks.has(tb.id);
