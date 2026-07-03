@@ -1,6 +1,8 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { API_KEY, UPSTREAM } from './config.js';
+import pool from './db.js';
+import { GENERATION_TIMEOUT_MS } from './src/generationPipeline.js';
 import documentsRouter from './routes/documents.js';
 import videoDocumentsRouter from './routes/videoDocuments.js';
 import chaptersRouter from './routes/chapters.js';
@@ -154,9 +156,50 @@ app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRe
   }
 });
 
+// ── Background reaper (US-010) ──────────────────────────────────────────────
+// Every 60s, mark rows that have been stuck in `generating` longer than the
+// generation timeout as `error`. This catches generations wedged by a crashed
+// worker, a dead client, or any other path that left the DB row dangling.
+//
+// The read-time staleness checks in the GET routes (US-007–US-009) remain as a
+// fallback for clients that poll before the next reaper tick.
+//
+// Allow-listed table names (cannot be parameterised in SQL) — these match the
+// `VALID_TABLES` set in generationPipeline.ts and the schema in schema.sql.
+const REAPABLE_TABLES = ['study_guides', 'flashcard_decks', 'practice_tests'] as const;
+const REAPER_INTERVAL_MS = 60_000;
+
+async function reapStuckGenerations(): Promise<void> {
+  for (const table of REAPABLE_TABLES) {
+    try {
+      const result = await pool.query(
+        `UPDATE ${table}
+         SET status = 'error', error = 'Generation timed out', updated_at = NOW()
+         WHERE status = 'generating'
+           AND updated_at < NOW() - ($1 || ' milliseconds')::interval
+         RETURNING id`,
+        [GENERATION_TIMEOUT_MS],
+      );
+      if (result.rows.length > 0) {
+        const ids = result.rows.map((r: { id: string }) => r.id).join(', ');
+        console.log(`[reaper] Marked ${result.rows.length} stuck ${table} as error: ${ids}`);
+      }
+    } catch (err) {
+      // A transient DB error must not kill the interval.
+      console.error(`[reaper] Failed to reap ${table}:`, err);
+    }
+  }
+}
+
 // ── Start ───────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`🚀 Inkwell AI backend running on http://localhost:${PORT}`);
   console.log(`   Model: ${MODEL}`);
   console.log(`   Health: http://localhost:${PORT}/api/health`);
+
+  // Kick off the background reaper. `unref()` so it does not keep the event
+  // loop (and therefore the process) alive on shutdown.
+  const reaperInterval = setInterval(reapStuckGenerations, REAPER_INTERVAL_MS);
+  reaperInterval.unref();
+  console.log(`   Reaper: every ${REAPER_INTERVAL_MS / 1000}s (timeout ${GENERATION_TIMEOUT_MS}ms)`);
 });
