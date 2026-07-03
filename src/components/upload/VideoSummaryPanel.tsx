@@ -49,6 +49,9 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
   const [error, setError] = useState<string | null>(null);
   const [analyzingMessage, setAnalyzingMessage] = useState('Analyzing transcript…');
   const abortRef = useRef<AbortController | null>(null);
+  // Track the last-seen existingSummary so we can sync state during render
+  // instead of inside an effect (avoids cascading renders).
+  const [prevExistingSummary, setPrevExistingSummary] = useState(existingSummary);
 
   // ── Global TTS store ─────────────────────────────────────────────────
   const ttsIsSpeaking = useTTSStore((s) => s.isSpeaking);
@@ -81,13 +84,15 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
   }, [summary, reading, ttsIsSpeaking, ttsStop, ttsSpeak, buildSummarySpeech]);
 
   // Keep in sync if the parent passes a freshly-loaded summary (e.g. after
-  // polling completes in the hook).
-  useEffect(() => {
+  // polling completes in the hook). Adjust state during render to avoid
+  // calling setState inside an effect.
+  if (existingSummary !== prevExistingSummary) {
+    setPrevExistingSummary(existingSummary);
     if (existingSummary) {
       setSummary(existingSummary);
       setStatus('done');
     }
-  }, [existingSummary]);
+  }
 
   // Abort any in-flight stream on unmount.
   useEffect(() => {

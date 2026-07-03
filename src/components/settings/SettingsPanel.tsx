@@ -11,6 +11,7 @@ export default function SettingsPanel() {
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [useCustomKey, setUseCustomKey] = useState(!!settings.ai.apiKey);
+  const [prevApiKey, setPrevApiKey] = useState(settings.ai.apiKey);
 
   // Check if the backend is reachable
   useEffect(() => {
@@ -19,10 +20,12 @@ export default function SettingsPanel() {
     return () => clearInterval(interval);
   }, []);
 
-  // Sync toggle with settings
-  useEffect(() => {
+  // Sync toggle with settings — adjust during render when the API key changes
+  // externally (e.g. cleared by another part of the app).
+  if (settings.ai.apiKey !== prevApiKey) {
+    setPrevApiKey(settings.ai.apiKey);
     setUseCustomKey(!!settings.ai.apiKey);
-  }, [settings.ai.apiKey]);
+  }
 
   const testApiKey = async () => {
     setTestStatus('testing');

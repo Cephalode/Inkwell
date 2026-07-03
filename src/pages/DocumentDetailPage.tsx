@@ -22,30 +22,39 @@ export default function DocumentDetailPage() {
   const [tab, setTab] = useState<Tab>('summary');
   const [isLoading, setIsLoading] = useState(false);
   const [chapters, setChapters] = useState<ChapterDocument[]>([]);
-  const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [chaptersLoading, setChaptersLoading] = useState(!!id);
+  const [prevChaptersId, setPrevChaptersId] = useState(id);
+  const [prevTabDocId, setPrevTabDocId] = useState<string | undefined>(currentDocument?.id);
 
   useEffect(() => {
     const doc = documents.find((d) => d.id === id);
     if (doc) setCurrentDocument(doc);
   }, [id, documents, setCurrentDocument]);
 
-  // Default to the Video Summary tab when a YouTube doc is first opened.
-  useEffect(() => {
-    if (currentDocument?.type === 'youtube' && tab === 'summary') {
-      setTab('video');
-    }
-  }, [currentDocument, tab]);
-
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setChaptersLoading(true);
     listChapters(id)
       .then((ch) => { if (!cancelled) setChapters(ch); })
       .catch(console.error)
       .finally(() => { if (!cancelled) setChaptersLoading(false); });
     return () => { cancelled = true; };
   }, [id]);
+
+  // Default to the Video Summary tab when a YouTube doc is opened, and reset
+  // chapter loading state when the document ID changes. These adjustments are
+  // done during render to avoid calling setState inside an effect.
+  if (id !== prevChaptersId) {
+    setPrevChaptersId(id);
+    setChapters([]);
+    setChaptersLoading(!!id);
+  }
+  if (currentDocument?.id !== prevTabDocId) {
+    setPrevTabDocId(currentDocument?.id);
+    if (currentDocument?.type === 'youtube') {
+      setTab('video');
+    }
+  }
 
   if (!currentDocument) {
     return <div className="text-center py-20"><Spinner /><p className="mt-4 text-slate-400">Loading document...</p></div>;

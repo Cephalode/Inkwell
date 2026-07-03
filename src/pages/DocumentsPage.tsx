@@ -23,14 +23,15 @@ import { useNavigate } from 'react-router-dom';
 import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash, HiExclamationCircle } from 'react-icons/hi';
 import { HiOutlineListBullet } from 'react-icons/hi2';
 import type { KGNode } from '../types/knowledgeGraph';
-import type { ChapterDocument, Textbook } from '../types/document';
+import type { ChapterDocument, Textbook, DocumentFile } from '../types/document';
 
 export default function DocumentsPage() {
   const { documents, isLoading, loadDocuments, uploadFile, uploadVideoUrl, deleteDocumentById } = useDocuments();
   const updateDocument = useDocumentStore((s) => s.updateDocument);
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const { courses, loadCourses, addDocumentToCourse } = useCourses();
-  const sessions = useChatStore((s) => s.sessions) ?? [];
+  const sessions = useChatStore((s) => s.sessions);
+  const safeSessions = useMemo(() => sessions ?? [], [sessions]);
   const setSelectedNode = useKnowledgeGraphStore((s) => s.setSelectedNode);
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
@@ -43,10 +44,6 @@ export default function DocumentsPage() {
 
   // Fetch chapters from backend API for each document
   useEffect(() => {
-    if (documents.length === 0) {
-      setChapters([]);
-      return;
-    }
     let cancelled = false;
     Promise.all(documents.map(doc => listChapters(doc.id)))
       .then(results => {
@@ -58,9 +55,11 @@ export default function DocumentsPage() {
 
   // Fetch textbooks (extracted so it can be retried on failure)
   const loadTextbooks = useCallback(() => {
-    setTextbookError(false);
     listTextbooks()
-      .then(setTextbooks)
+      .then((result) => {
+        setTextbooks(result);
+        setTextbookError(false);
+      })
       .catch((err) => {
         console.error(err);
         setTextbookError(true);
@@ -77,7 +76,7 @@ export default function DocumentsPage() {
     }
   }, [uploadFile]);
 
-  const handleSelectDoc = useCallback((doc: any) => {
+  const handleSelectDoc = useCallback((doc: DocumentFile) => {
     setCurrentDocument(doc);
     navigate(`/documents/${doc.id}`);
   }, [setCurrentDocument, navigate]);
@@ -115,8 +114,8 @@ export default function DocumentsPage() {
   }, [chapters]);
 
   const graph = useMemo(
-    () => buildKnowledgeGraph(documents, courses, sessions, chapters),
-    [documents, courses, sessions, chapters],
+    () => buildKnowledgeGraph(documents, courses, safeSessions, chapters),
+    [documents, courses, safeSessions, chapters],
   );
 
   const handleGraphNodeClick = useCallback(

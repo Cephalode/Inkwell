@@ -66,7 +66,7 @@ export function useChapters(parentDoc: DocumentFile | null) {
     storeUpdateDocument(parentDoc.id, { chapterMarkers: [] });
     await updateDocument(parentDoc.id, { chapterMarkers: [] }).catch(() => {});
     await deleteChapters(parentDoc.id).catch(() => {});
-  }, [parentDoc]);
+  }, [parentDoc, storeUpdateDocument]);
 
   const saveChapter = useCallback(async (chapterIndex: number, totalPages: number) => {
     if (!parentDoc) throw new Error('No PDF data available');

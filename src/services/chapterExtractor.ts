@@ -43,12 +43,22 @@ interface OutlineItem {
 
 const PART_PATTERNS = [/^(part|book|volume|unit)\s/i, /^[IVXLC]+(\s|$)/i];
 
+/**
+ * Minimal structural shape of a PDF object reference.
+ * Mirrors pdfjs-dist's `RefProxy` type ({ num, gen }) which is not re-exported
+ * from the top-level pdf namespace.
+ */
+interface RefProxy {
+  num: number;
+  gen: number;
+}
+
 async function resolvePageIdx(pdf: pdfjsLib.PDFDocumentProxy, item: OutlineItem): Promise<number | null> {
   if (!item.dest) return null;
   try {
-    if (Array.isArray(item.dest)) return pdf.getPageIndex(item.dest[0] as pdfjsLib.RefProxy);
+    if (Array.isArray(item.dest)) return pdf.getPageIndex(item.dest[0] as RefProxy);
     const dest = await pdf.getDestination(item.dest);
-    return dest ? pdf.getPageIndex(dest[0] as pdfjsLib.RefProxy) : null;
+    return dest ? pdf.getPageIndex(dest[0] as RefProxy) : null;
   } catch {
     return null;
   }
