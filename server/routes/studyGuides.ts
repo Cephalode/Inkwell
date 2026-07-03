@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import pool from '../db.js';
 import { callGLMJson } from '../src/llm.js';
-import { send, setSSEHeaders } from '../src/sse.js';
 import { collectMaterials } from '../src/materials.js';
+import { runGeneration, updateStatus, checkStale } from '../src/generationPipeline.js';
 
 const router = Router();
 
@@ -73,30 +73,6 @@ function rowToGuide(row: StudyGuideRow) {
   };
 }
 
-/** Update a guide's status in the DB (fire-and-forget, errors logged). */
-async function updateStatus(
-  id: string,
-  status: string,
-  error: string | null = null,
-  content: unknown = null,
-): Promise<void> {
-  try {
-    if (content) {
-      await pool.query(
-        'UPDATE study_guides SET status = $1, error = $2, content = $3::jsonb, updated_at = now() WHERE id = $4',
-        [status, error, JSON.stringify(content), id],
-      );
-    } else {
-      await pool.query(
-        'UPDATE study_guides SET status = $1, error = $2, updated_at = now() WHERE id = $3',
-        [status, error, id],
-      );
-    }
-  } catch (err) {
-    console.error(`Failed to update study guide status for ${id}:`, err);
-  }
-}
-
 // ── GET / — list guides (optionally filter by courseId/documentId) ───────────
 
 router.get('/', async (req: Request, res: Response) => {
@@ -135,14 +111,11 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Study guide not found' });
     const row = rows[0] as StudyGuideRow;
 
-    // Staleness guard: 'generating' for > 10 minutes ⇒ treat as error.
-    if (row.status === 'generating') {
-      const updatedAt = new Date(row.updated_at).getTime();
-      if (Date.now() - updatedAt > 10 * 60 * 1000) {
-        await updateStatus(row.id, 'error', 'Generation timed out');
-        row.status = 'error';
-        row.error = 'Generation timed out';
-      }
+    // Staleness guard: 'generating' for > GENERATION_TIMEOUT_MS ⇒ treat as error.
+    if (row.status === 'generating' && checkStale(row)) {
+      await updateStatus('study_guides', row.id, 'error', 'Generation timed out');
+      row.status = 'error';
+      row.error = 'Generation timed out';
     }
 
     res.json(rowToGuide(row));
@@ -203,62 +176,43 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // ── POST /:id/generate — SSE generation pipeline ───────────────────────────
+//
+// Ported onto the shared `runGeneration` pipeline (US-008). The pipeline owns
+// the SSE lifecycle (headers, the six standard events, status transitions,
+// disconnect detection, and the headersSent-aware error path). Route-specific
+// business logic lives in the three callbacks:
+//
+//   • collectMaterials — resolve the guide row + gather source material units
+//   • processMaterial — MAP: turn one material unit into a MaterialDigest
+//   • finalize        — REDUCE: synthesize the full guide, persist content,
+//                       and emit the studyGuide-specific `guide` event
 
 router.post('/:id/generate', async (req: Request, res: Response) => {
   const id = String(req.params.id);
 
-  setSSEHeaders(res);
+  // Per-material digests accumulated during the MAP phase; consumed by the
+  // REDUCE/synthesis step in `finalize`.
+  const digests: MaterialDigest[] = [];
 
-  // Keep the connection alive if the client disconnects early.
-  let closed = false;
-  req.on('close', () => {
-    closed = true;
-  });
+  await runGeneration({
+    table: 'study_guides',
+    id,
+    req,
+    res,
 
-  const fail = async (message: string) => {
-    await updateStatus(id, 'error', message);
-    if (!closed) {
-      send(res, { type: 'error', message });
-      res.end();
-    }
-  };
-
-  try {
-    // 1. Fetch the guide.
-    const { rows } = await pool.query('SELECT * FROM study_guides WHERE id = $1', [id]);
-    if (rows.length === 0) return await fail('Study guide not found');
-    const guide = rows[0] as StudyGuideRow;
-
-    // 2. Mark as generating.
-    await updateStatus(id, 'generating');
-    send(res, { type: 'status', message: 'Collecting source materials…' });
-
-    // 3. Collect materials.
-    const materials = await collectMaterials({
-      courseId: guide.course_id ?? undefined,
-      documentIds: guide.document_id ? [guide.document_id] : undefined,
-    });
-
-    if (materials.length === 0) {
-      return await fail('No source materials found for this study guide');
-    }
-
-    send(res, { type: 'materials_collected', count: materials.length });
-
-    // 4. MAP PHASE — analyze each material unit.
-    const digests: MaterialDigest[] = [];
-
-    for (let i = 0; i < materials.length; i++) {
-      if (closed) return;
-      const unit = materials[i];
-
-      send(res, {
-        type: 'material_start',
-        index: i,
-        total: materials.length,
-        title: unit.title,
+    // ── Resolve the guide and gather its source materials ──
+    collectMaterials: async () => {
+      const { rows } = await pool.query('SELECT * FROM study_guides WHERE id = $1', [id]);
+      if (rows.length === 0) throw new Error('Study guide not found');
+      const guide = rows[0] as StudyGuideRow;
+      return collectMaterials({
+        courseId: guide.course_id ?? undefined,
+        documentIds: guide.document_id ? [guide.document_id] : undefined,
       });
+    },
 
+    // ── MAP: analyze a single material unit into a digest ──
+    processMaterial: async (unit) => {
       let digest: MaterialDigest;
 
       if (unit.source === 'chapter-analysis') {
@@ -317,40 +271,30 @@ ${unit.text}`,
       }
 
       digests.push(digest);
+      return 1; // one digest produced per material unit
+    },
 
-      send(res, {
-        type: 'material_result',
-        index: i,
-        title: digest.title,
-        summary: digest.summary,
-        keyPoints: digest.keyPoints,
-        formulas: digest.formulas,
-        definitions: digest.definitions,
-      });
-    }
+    // ── REDUCE: synthesize the full study guide from collected digests ──
+    // This is the studyGuide-specific synthesis step (flashcards/tests omit it).
+    finalize: async (_materials, emit) => {
+      const digestsInput = digests.map((d) => ({
+        title: d.title,
+        summary: d.summary,
+        keyPoints: d.keyPoints,
+        formulas: d.formulas,
+        definitions: d.definitions,
+      }));
 
-    // 5. REDUCE PHASE — synthesize the full study guide.
-    if (closed) return;
-    send(res, { type: 'synthesizing', message: 'Synthesizing study guide…' });
-
-    const digestsInput = digests.map((d) => ({
-      title: d.title,
-      summary: d.summary,
-      keyPoints: d.keyPoints,
-      formulas: d.formulas,
-      definitions: d.definitions,
-    }));
-
-    const synthesis = await callGLMJson<SynthesisResult>(
-      [
-        {
-          role: 'system',
-          content:
-            'You are an expert academic tutor creating a comprehensive study guide from pre-analyzed course materials.',
-        },
-        {
-          role: 'user',
-          content: `Here are analyses of individual course materials. Create a comprehensive study guide. Provide a JSON response with:
+      const synthesis = await callGLMJson<SynthesisResult>(
+        [
+          {
+            role: 'system',
+            content:
+              'You are an expert academic tutor creating a comprehensive study guide from pre-analyzed course materials.',
+          },
+          {
+            role: 'user',
+            content: `Here are analyses of individual course materials. Create a comprehensive study guide. Provide a JSON response with:
 - overview: 3-5 sentence overview of the entire course/topic
 - prerequisites: array of prerequisite knowledge students should have
 - conceptRoadmap: array of {concept, description, dependsOn (array of concept names it builds on)}
@@ -362,61 +306,57 @@ Respond with ONLY a JSON object, no markdown fences.
 
 Material analyses:
 ${JSON.stringify(digestsInput)}`,
-        },
-      ],
-      { temperature: 0.5, maxTokens: 8192 },
-    );
+          },
+        ],
+        { temperature: 0.5, maxTokens: 8192 },
+      );
 
-    // 6. Assemble the full guide content.
-    const content: StudyGuideContent = {
-      overview:
-        (typeof synthesis?.overview === 'string' ? synthesis.overview : '') ||
-        'Study guide overview unavailable.',
-      prerequisites: Array.isArray(synthesis?.prerequisites)
-        ? synthesis!.prerequisites.map(String)
-        : [],
-      conceptRoadmap: Array.isArray(synthesis?.conceptRoadmap)
-        ? synthesis!.conceptRoadmap
-            .filter((c) => c && typeof c.concept === 'string')
-            .map((c) => ({
-              concept: String(c.concept),
-              description: typeof c.description === 'string' ? c.description : '',
-              dependsOn: Array.isArray(c.dependsOn) ? c.dependsOn.map(String) : [],
-            }))
-        : [],
-      perMaterial: digests,
-      keyFormulas: Array.isArray(synthesis?.keyFormulas) ? synthesis!.keyFormulas.map(String) : [],
-      keyDefinitions: Array.isArray(synthesis?.keyDefinitions)
-        ? synthesis!.keyDefinitions.map(String)
-        : [],
-      suggestedOrder: Array.isArray(synthesis?.suggestedOrder)
-        ? synthesis!.suggestedOrder
-            .filter((s) => s && typeof s.title === 'string')
-            .map((s) => ({
-              title: String(s.title),
-              documentId: typeof s.documentId === 'string' ? s.documentId : undefined,
-              chapterId: typeof s.chapterId === 'string' ? s.chapterId : undefined,
-              reason: typeof s.reason === 'string' ? s.reason : '',
-            }))
-        : [],
-      generatedAt: new Date().toISOString(),
-    };
+      // Assemble the full guide content.
+      const content: StudyGuideContent = {
+        overview:
+          (typeof synthesis?.overview === 'string' ? synthesis.overview : '') ||
+          'Study guide overview unavailable.',
+        prerequisites: Array.isArray(synthesis?.prerequisites)
+          ? synthesis!.prerequisites.map(String)
+          : [],
+        conceptRoadmap: Array.isArray(synthesis?.conceptRoadmap)
+          ? synthesis!.conceptRoadmap
+              .filter((c) => c && typeof c.concept === 'string')
+              .map((c) => ({
+                concept: String(c.concept),
+                description: typeof c.description === 'string' ? c.description : '',
+                dependsOn: Array.isArray(c.dependsOn) ? c.dependsOn.map(String) : [],
+              }))
+          : [],
+        perMaterial: digests,
+        keyFormulas: Array.isArray(synthesis?.keyFormulas) ? synthesis!.keyFormulas.map(String) : [],
+        keyDefinitions: Array.isArray(synthesis?.keyDefinitions)
+          ? synthesis!.keyDefinitions.map(String)
+          : [],
+        suggestedOrder: Array.isArray(synthesis?.suggestedOrder)
+          ? synthesis!.suggestedOrder
+              .filter((s) => s && typeof s.title === 'string')
+              .map((s) => ({
+                title: String(s.title),
+                documentId: typeof s.documentId === 'string' ? s.documentId : undefined,
+                chapterId: typeof s.chapterId === 'string' ? s.chapterId : undefined,
+                reason: typeof s.reason === 'string' ? s.reason : '',
+              }))
+          : [],
+        generatedAt: new Date().toISOString(),
+      };
 
-    // 7. Persist to DB.
-    await pool.query(
-      'UPDATE study_guides SET status = $1, error = NULL, content = $2::jsonb, updated_at = now() WHERE id = $3',
-      ['done', JSON.stringify(content), id],
-    );
+      // Persist the synthesized content. Status/error are owned by the pipeline
+      // — it marks the row `done` (with error = NULL) immediately after this
+      // callback returns.
+      await pool.query(
+        'UPDATE study_guides SET content = $1::jsonb, updated_at = now() WHERE id = $2',
+        [JSON.stringify(content), id],
+      );
 
-    // 8. Emit the guide and done.
-    send(res, { type: 'guide', guide: content });
-    send(res, { type: 'done' });
-    res.end();
-  } catch (err: unknown) {
-    console.error('Study guide generation error:', err);
-    const message = err instanceof Error ? err.message : String(err);
-    await fail(message);
-  }
+      emit('guide', { guide: content });
+    },
+  });
 });
 
 export default router;

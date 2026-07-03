@@ -13,6 +13,8 @@ interface GuideGenEvent {
   index?: number;
   total?: number;
   title?: string;
+  /** Nested title, emitted by the shared generation pipeline's `material_start`. */
+  material?: { id?: string; title?: string };
   summary?: string;
   keyPoints?: string[];
   formulas?: string[];
@@ -151,13 +153,16 @@ export function useStudyGuideGeneration(guideId?: string): UseStudyGuideGenerati
                 break;
 
               case 'material_start':
+                // The shared pipeline nests the title under `material.title`;
+                // fall back to the legacy top-level `title` for older streams.
+                const materialTitle = evt.material?.title ?? evt.title ?? '';
                 setProgress(id, (prev) => ({
                   ...(prev ?? DEFAULT_PROGRESS),
                   status: 'analyzing',
                   current: (evt.index ?? 0) + 1,
                   total: totalRef.current,
-                  currentTitle: evt.title ?? '',
-                  message: `Analyzing: ${evt.title ?? ''}`,
+                  currentTitle: materialTitle,
+                  message: `Analyzing: ${materialTitle}`,
                 }));
                 break;
 
