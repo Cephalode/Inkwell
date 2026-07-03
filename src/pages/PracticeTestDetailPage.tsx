@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { HiArrowLeft } from 'react-icons/hi';
 import Spinner from '../components/shared/Spinner';
@@ -13,6 +13,17 @@ export default function PracticeTestDetailPage() {
   const { test, loading } = usePracticeTest(testId || '');
   const { generate, generating, generationProgress } = usePracticeTestGeneration();
   const { submit } = useTestAttempt();
+
+  const attempts = usePracticeTestStore((state) =>
+    testId ? state.testAttempts[testId] ?? [] : [],
+  );
+  const fetchAttempts = usePracticeTestStore((state) => state.fetchAttempts);
+
+  useEffect(() => {
+    if (testId) {
+      fetchAttempts(testId);
+    }
+  }, [testId, fetchAttempts]);
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | number | boolean>>({});
@@ -326,6 +337,39 @@ export default function PracticeTestDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Previous attempts */}
+      {attempts.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+            Previous Attempts
+          </h3>
+          <div className="space-y-2">
+            {[...attempts]
+              .sort(
+                (a, b) =>
+                  new Date(b.completed_at ?? b.started_at).getTime() -
+                  new Date(a.completed_at ?? a.started_at).getTime(),
+              )
+              .map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="flex items-center justify-between bg-slate-800/50 border border-slate-700/50 rounded-lg px-4 py-3"
+                >
+                  <span className="text-sm text-slate-400">
+                    {new Date(attempt.completed_at ?? attempt.started_at).toLocaleDateString(
+                      'en-US',
+                      { month: 'short', day: 'numeric', year: 'numeric' },
+                    )}
+                  </span>
+                  <span className="text-sm font-semibold text-teal-400">
+                    {Math.round(attempt.score)}%
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
