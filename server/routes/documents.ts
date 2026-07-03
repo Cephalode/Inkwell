@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // ── Helper: snake_case → camelCase ──────────────────────────────────────────
-interface DocRow {
+export interface DocRow {
   id: string;
   name: string;
   type: string;
@@ -37,11 +37,13 @@ interface DocRow {
   tags: unknown;
   file_path: string | null;
   classify_status: string;
+  video_summary: unknown;
+  textbook_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-function rowToDoc(row: DocRow) {
+export function rowToDoc(row: DocRow) {
   return {
     id: row.id,
     name: row.name,
@@ -54,6 +56,8 @@ function rowToDoc(row: DocRow) {
     tags: row.tags,
     filePath: row.file_path,
     classifyStatus: row.classify_status,
+    videoSummary: row.video_summary,
+    textbookId: row.textbook_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -94,8 +98,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 // ── GET / — List all documents ─────────────────────────────────────────────
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM documents ORDER BY created_at DESC');
-    res.json(rows.map((r) => rowToDoc(r as DocRow)));
+    // Exclude documents that belong to a textbook (they're fetched via /api/textbooks/:id)
+    const { rows } = await pool.query('SELECT * FROM documents WHERE textbook_id IS NULL ORDER BY created_at DESC');
+    res.json((rows as DocRow[]).map(rowToDoc));
   } catch (err: unknown) {
     console.error('Error fetching documents:', err);
     res.status(500).json({ error: 'Failed to fetch documents' });

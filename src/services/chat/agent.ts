@@ -57,7 +57,7 @@ export function buildSystemMessage(context: SystemMessageContext): string {
     : 'No specific document is currently open.';
 
   const toolDescriptions = toolDefinitions
-    .map((t) => `- ${t.name}: ${t.description}`)
+    .map((t) => `- ${t.function.name}: ${t.function.description}`)
     .join('\n');
 
   return `You are Inkwell AI, an expert study assistant integrated into the Inkwell application. You help students understand their course materials, create study aids, and answer questions based on the provided content. Always cite specific parts of the source material when answering.
@@ -183,7 +183,7 @@ export async function runAgentTurn(
     // Append the assistant's tool-call message to conversation
     messages.push({
       role: 'assistant',
-      content: data.choices?.[0]?.message?.content ?? '',
+      content: extractContent(data),
       tool_calls: toolCalls,
     });
 

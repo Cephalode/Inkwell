@@ -1,49 +1,11 @@
-import { useState, useRef, useEffect, useCallback, type ComponentPropsWithoutRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock } from 'react-icons/hi';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import Markdown from '../shared/Markdown';
 import { useChatStore } from '../../store/chatStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { runAgentTurn, type SystemMessageContext } from '../../services/chat/agent';
 import { generateUUID } from '../../utils/uuid';
 import type { ChatMessage, ChatSession } from '../../types/chat';
-
-// ── Markdown prose renderer ─────────────────────────────────────────────────
-
-const markdownComponents: ComponentPropsWithoutRef<typeof ReactMarkdown>['components'] = {
-  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-2 space-y-0.5">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-2 space-y-0.5">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  h1: ({ children }) => <h1 className="text-base font-bold mb-1 mt-2">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-sm font-bold mb-1 mt-2">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-1">{children}</h3>,
-  blockquote: ({ children }) => <blockquote className="border-l-2 border-slate-500 pl-3 my-2 text-slate-300 italic">{children}</blockquote>,
-  code: ({ children, className }) => {
-    const isBlock = className?.includes('language-');
-    if (isBlock) {
-      return <code className={`${className} block bg-slate-800 rounded-lg p-3 my-2 text-xs overflow-x-auto`}>{children}</code>;
-    }
-    return <code className="bg-slate-600/50 px-1 py-0.5 rounded text-xs font-mono">{children}</code>;
-  },
-  pre: ({ children }) => <pre className="my-2">{children}</pre>,
-  a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">{children}</a>,
-  table: ({ children }) => <table className="w-full border-collapse my-2 text-xs">{children}</table>,
-  th: ({ children }) => <th className="border border-slate-600 px-2 py-1 bg-slate-700/50 font-semibold text-left">{children}</th>,
-  td: ({ children }) => <td className="border border-slate-600 px-2 py-1">{children}</td>,
-  hr: () => <hr className="border-slate-600 my-3" />,
-  strong: ({ children }) => <strong className="font-bold text-slate-100">{children}</strong>,
-};
-
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <div className="prose-invert max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-}
 
 // ── Tool display labels ────────────────────────────────────────────────────
 
@@ -307,8 +269,6 @@ export default function GlobalChat() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         e.preventDefault();
         toggle();
       }
@@ -482,7 +442,7 @@ export default function GlobalChat() {
                     : 'bg-slate-700 text-slate-200'
                 }`}
               >
-                {msg.role === 'user' ? msg.content : <MarkdownContent content={msg.content} />}
+                {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
               </div>
             </div>
           ))}

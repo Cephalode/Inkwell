@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { parseFile } from '../services/parsers/index';
-import { classifyDocument, getDocument, listDocuments, updateDocumentTags, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
+import { classifyDocument, createDocumentFromUrl, getDocument, listDocuments, updateDocumentTags, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
 import type { DocumentFile, DocumentType } from '../types/document';
 import { SUPPORTED_MIME_TYPES, SUPPORTED_EXTENSIONS } from '../types/document';
 
@@ -65,7 +65,7 @@ export function useDocuments() {
       // Persist parsed text to DB first — classify endpoint reads parsed_text from DB
       await updateDoc(doc.id, {
         parsedText: parsed.text,
-        thumbnail: parsed.thumbnail ?? null,
+        thumbnail: parsed.thumbnail ?? undefined,
         chapterMarkers: parsed.chapters ?? [],
       }).catch((err) => console.error('Failed to persist parsed data:', err));
 
@@ -89,12 +89,40 @@ export function useDocuments() {
     }
   }, [addDocument, setLoading, updateDocument]);
 
+  const uploadVideoUrl = useCallback(async (url: string) => {
+    setLoading(true);
+    try {
+      const doc = await createDocumentFromUrl(url);
+      addDocument(doc);
+      // Classification happens server-side automatically — poll for completion
+      setTimeout(async () => {
+        try {
+          const updated = await getDocument(doc.id);
+          updateDocument(doc.id, {
+            tags: updated.tags ?? [],
+            name: updated.name,
+            classifyStatus: updated.classifyStatus,
+            videoSummary: updated.videoSummary,
+          });
+        } catch {
+          /* classification may still be in-flight; non-fatal */
+        }
+      }, 5000);
+      return doc;
+    } catch (err) {
+      console.error('Video URL processing failed:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [addDocument, updateDocument, setLoading]);
+
   const deleteDocumentById = useCallback(async (id: string) => {
     await deleteDoc(id);
     removeDocument(id);
   }, [removeDocument]);
 
-  return { documents, isLoading, loadDocuments, uploadFile, deleteDocumentById };
+  return { documents, isLoading, loadDocuments, uploadFile, uploadVideoUrl, deleteDocumentById };
 }
 
 function getDocType(file: File): DocumentType {

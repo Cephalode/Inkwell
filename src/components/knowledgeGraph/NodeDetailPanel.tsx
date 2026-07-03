@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { HiXMark, HiOutlineDocumentText, HiOutlineHashtag, HiOutlineAcademicCap, HiOutlineChatBubbleLeftRight, HiOutlineTag, HiOutlineBookOpen } from 'react-icons/hi2';
+import { HiXMark, HiOutlineDocumentText, HiOutlineHashtag, HiOutlineAcademicCap, HiOutlineChatBubbleLeftRight, HiOutlineTag, HiOutlineBookOpen, HiOutlineDocumentDuplicate } from 'react-icons/hi2';
 import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
 import type { KGGraph, KGNode, KGNodeType } from '../../types/knowledgeGraph';
 
@@ -15,6 +15,7 @@ const typeColors: Record<KGNodeType, string> = {
   course: '#f59e0b',
   subject: '#22c55e',
   chat: '#6b7280',
+  chapter: '#06b6d4',
 };
 
 const typeLabels: Record<KGNodeType, string> = {
@@ -24,6 +25,7 @@ const typeLabels: Record<KGNodeType, string> = {
   course: 'Course',
   subject: 'Subject',
   chat: 'Chat',
+  chapter: 'Chapter',
 };
 
 const typeIcons: Record<KGNodeType, React.ReactNode> = {
@@ -33,6 +35,7 @@ const typeIcons: Record<KGNodeType, React.ReactNode> = {
   course: <HiOutlineAcademicCap className="w-3.5 h-3.5" />,
   subject: <HiOutlineBookOpen className="w-3.5 h-3.5" />,
   chat: <HiOutlineChatBubbleLeftRight className="w-3.5 h-3.5" />,
+  chapter: <HiOutlineDocumentDuplicate className="w-3.5 h-3.5" />,
 };
 
 function getConnectedNodes(node: KGNode, graph: KGGraph): KGNode[] {

@@ -29,7 +29,7 @@ function rowToCourse(row: CourseRow) {
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const { rows } = await pool.query('SELECT * FROM courses ORDER BY updated_at DESC');
-    res.json(rows.map((r) => rowToCourse(r as CourseRow)));
+    res.json(rows.map((r: CourseRow) => rowToCourse(r)));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

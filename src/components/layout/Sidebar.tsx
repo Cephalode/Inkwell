@@ -1,11 +1,13 @@
 import { NavLink } from 'react-router-dom';
-import { HiHome, HiDocumentText, HiBookOpen, HiCog } from 'react-icons/hi';
+import { HiHome, HiDocumentText, HiBookOpen, HiCog, HiAcademicCap } from 'react-icons/hi';
 import { useUIStore } from '../../store/uiStore';
+import InkwellLogo from '../shared/InkwellLogo';
 
 const navItems = [
   { to: '/', icon: HiHome, label: 'Dashboard' },
   { to: '/documents', icon: HiDocumentText, label: 'Documents' },
   { to: '/textbook', icon: HiBookOpen, label: 'Textbook' },
+  { to: '/study-guides', icon: HiAcademicCap, label: 'Study Guides' },
   { to: '/settings', icon: HiCog, label: 'Settings' },
 ];
 
@@ -15,7 +17,7 @@ export default function Sidebar() {
   return (
     <aside className={`fixed left-0 top-0 h-full bg-slate-900/95 border-r border-slate-700/50 backdrop-blur-sm transition-all duration-300 z-40 ${sidebarOpen ? 'w-56' : 'w-16'}`}>
       <div className="flex items-center h-16 px-4 border-b border-slate-700/50">
-        <div className="text-2xl">🧠</div>
+        <InkwellLogo className="w-7 h-7 text-cyan-400" />
         {sidebarOpen && <span className="ml-3 text-lg font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">Inkwell</span>}
       </div>
       <nav className="mt-4 space-y-1 px-2">

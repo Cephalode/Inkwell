@@ -1,6 +1,8 @@
-import type { DocumentFile, ChapterDocument } from '../../types/document';
+import type { DocumentFile, ChapterDocument, Textbook } from '../../types/document';
 import type { Course } from '../../types/course';
 import type { ChatSession, ChatMessage } from '../../types/chat';
+import type { ChapterAnalysis } from '../../types/analysis';
+import type { StudyGuide } from '../../types/studyGuide';
 
 /**
  * Build an absolute API base URL so that `fetch()` always receives a
@@ -37,6 +39,8 @@ function mapDocument(r: any): DocumentFile {
     chapterMarkers: r.chapterMarkers ?? undefined,
     tags: r.tags ?? [],
     classifyStatus: r.classifyStatus ?? undefined,
+    videoSummary: r.videoSummary ?? undefined,
+    filePath: r.filePath ?? undefined,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };
@@ -122,6 +126,80 @@ export async function classifyDocument(id: string): Promise<{ label: string; sub
   return await res.json();
 }
 
+/**
+ * Create a document from a video URL (YouTube etc.). The backend fetches the
+ * transcript, creates the document, and triggers background classification.
+ */
+export async function createDocumentFromUrl(url: string): Promise<DocumentFile> {
+  const res = await fetch(`${API_BASE}/documents/from-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch transcript');
+  }
+  const json = await res.json();
+  return mapDocument(json);
+}
+
+/**
+ * Fetch an AI-generated video summary via an SSE stream. Returns the raw
+ * `Response` whose `body` is the stream; the caller parses the events.
+ *
+ * SSE events:
+ *   {"type":"analyzing","message":"Analyzing transcript…"}
+ *   {"type":"result","summary":"...","keyPoints":[...],"formulas":[...],...}
+ *   {"type":"done"}
+ *   {"type":"error","message":"..."}
+ */
+export async function fetchVideoSummary(docId: string): Promise<Response> {
+  const res = await fetch(`${API_BASE}/documents/${docId}/video-summary`, {
+    headers: { Accept: 'text/event-stream' },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch video summary: ${res.status}`);
+  return res;
+}
+
+// ---------------------------------------------------------------------------
+// Textbook API
+// ---------------------------------------------------------------------------
+
+function mapTextbook(r: any): Textbook {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? '',
+    documents: (r.documents ?? []).map(mapDocument),
+    createdAt: toEpoch(r.createdAt),
+    updatedAt: toEpoch(r.updatedAt),
+  };
+}
+
+export async function listTextbooks(): Promise<Textbook[]> {
+  const res = await fetch(`${API_BASE}/textbooks`);
+  if (!res.ok) throw new Error('Failed to list textbooks');
+  const data = await res.json();
+  return data.map(mapTextbook);
+}
+
+export async function convertToTextbook(documentId: string): Promise<Textbook> {
+  const res = await fetch(`${API_BASE}/documents/${documentId}/convert-to-textbook`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || `Failed to convert: ${res.status}`);
+  }
+  return mapTextbook(await res.json());
+}
+
+export async function deleteTextbook(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/textbooks/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) throw new Error(`Failed to delete textbook: ${res.status}`);
+}
+
 // ---------------------------------------------------------------------------
 // Chapter API
 // ---------------------------------------------------------------------------
@@ -196,6 +274,39 @@ export async function getChapter(id: string): Promise<ChapterDocument> {
   if (!res.ok) throw new Error(`Failed to get chapter: ${res.status}`);
   const json = await res.json();
   return mapChapter(json);
+}
+
+// ---------------------------------------------------------------------------
+// Chapter Analysis API
+// ---------------------------------------------------------------------------
+
+/**
+ * Kick off an AI analysis for a chapter. Returns the raw `Response` whose
+ * `body` is an SSE stream of progress/result events. The caller is
+ * responsible for reading and parsing the stream.
+ *
+ * @param chapterId The saved chapter ID to analyze.
+ * @param signal    Optional AbortSignal to cancel the request / stream.
+ */
+export async function analyzeChapter(chapterId: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_BASE}/chapters/${chapterId}/analyze`, {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to start analysis: ${res.status}`);
+  return res;
+}
+
+/**
+ * Fetch a previously-computed (cached) chapter analysis. Returns `null` when
+ * no analysis has been cached yet (HTTP 404).
+ */
+export async function getChapterAnalysis(chapterId: string): Promise<ChapterAnalysis | null> {
+  const res = await fetch(`${API_BASE}/chapters/${chapterId}/analysis`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to get analysis: ${res.status}`);
+  return (await res.json()) as ChapterAnalysis;
 }
 
 // ---------------------------------------------------------------------------
@@ -360,4 +471,83 @@ export async function addChatMessage(sessionId: string, message: { id: string; r
 export async function deleteChatSession(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/chat-sessions/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete chat session');
+}
+
+// ---------------------------------------------------------------------------
+// Study Guides API
+// ---------------------------------------------------------------------------
+
+function mapStudyGuide(r: any): StudyGuide {
+  return {
+    id: r.id,
+    courseId: r.courseId ?? null,
+    documentId: r.documentId ?? null,
+    title: r.title,
+    content: r.content ?? null,
+    status: r.status ?? 'pending',
+    error: r.error ?? null,
+    createdAt: toEpoch(r.createdAt),
+    updatedAt: toEpoch(r.updatedAt),
+  };
+}
+
+export async function listStudyGuides(courseId?: string, documentId?: string): Promise<StudyGuide[]> {
+  const params = new URLSearchParams();
+  if (courseId) params.set('courseId', courseId);
+  if (documentId) params.set('documentId', documentId);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/study-guides${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('Failed to list study guides');
+  const data = await res.json();
+  return data.map(mapStudyGuide);
+}
+
+export async function getStudyGuide(id: string): Promise<StudyGuide> {
+  const res = await fetch(`${API_BASE}/study-guides/${id}`);
+  if (!res.ok) throw new Error('Failed to get study guide');
+  return mapStudyGuide(await res.json());
+}
+
+export async function createStudyGuide(params: {
+  title?: string;
+  courseId?: string;
+  documentId?: string;
+}): Promise<StudyGuide> {
+  const res = await fetch(`${API_BASE}/study-guides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error('Failed to create study guide');
+  return mapStudyGuide(await res.json());
+}
+
+/**
+ * Kick off AI generation for a study guide. Returns the raw `Response` whose
+ * `body` is an SSE stream of progress/result events. The caller is responsible
+ * for reading and parsing the stream.
+ *
+ * SSE events:
+ *   {"type":"status","message":"…"}
+ *   {"type":"materials_collected","count":N}
+ *   {"type":"material_start","index":N,"total":N,"title":"…"}
+ *   {"type":"material_result","index":N,"title":"…","summary":"…","keyPoints":[…],…}
+ *   {"type":"synthesizing","message":"…"}
+ *   {"type":"guide","guide":{…full StudyGuideContent…}}
+ *   {"type":"done"}
+ *   {"type":"error","message":"…"}
+ */
+export async function generateStudyGuide(id: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_BASE}/study-guides/${id}/generate`, {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to start study guide generation: ${res.status}`);
+  return res;
+}
+
+export async function deleteStudyGuide(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/study-guides/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) throw new Error(`Failed to delete study guide: ${res.status}`);
 }

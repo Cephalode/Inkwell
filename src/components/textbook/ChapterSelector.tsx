@@ -57,7 +57,7 @@ export default function ChapterSelector({
       ) : error ? (
         <div className="text-center py-6">
           <p className="text-sm text-red-400 mb-3">{error}</p>
-          <Button onClick={onExtractChapters} variant="outline" size="sm">
+          <Button onClick={onExtractChapters} variant="secondary" size="sm">
             Retry
           </Button>
         </div>
@@ -79,7 +79,7 @@ export default function ChapterSelector({
                     >
                       <HiDocumentText className="w-4 h-4 shrink-0 opacity-60" />
                       <span className="truncate">{ch.title}</span>
-                      <Badge color="slate" className="shrink-0">
+                      <Badge color="gray" className="shrink-0">
                         pp. {ch.page}–{endPage}
                       </Badge>
                     </button>
@@ -106,7 +106,7 @@ export default function ChapterSelector({
             <Button
               onClick={onSaveAllChapters}
               disabled={isSaving || savedCount === chapters.length}
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="w-full"
             >

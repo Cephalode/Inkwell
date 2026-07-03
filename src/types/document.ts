@@ -20,6 +20,14 @@ export interface ParsedDocument {
 
 export type ClassifyStatus = 'pending' | 'classifying' | 'done' | 'skipped';
 
+export interface VideoSummary {
+  summary: string;
+  keyPoints: string[];
+  formulas: string[];
+  definitions: string[];
+  topics: string[];
+}
+
 export interface DocumentFile {
   id: string;
   name: string;
@@ -33,6 +41,20 @@ export interface DocumentFile {
   thumbnail?: string;
   tags: string[];
   classifyStatus?: ClassifyStatus;
+  videoSummary?: VideoSummary | null;
+  /** Server-side path or, for YouTube docs, the source URL. */
+  filePath?: string | null;
+  /** If this document is a chapter inside a textbook, this is the textbook ID. */
+  textbookId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Textbook {
+  id: string;
+  name: string;
+  description: string;
+  documents: DocumentFile[];
   createdAt: number;
   updatedAt: number;
 }

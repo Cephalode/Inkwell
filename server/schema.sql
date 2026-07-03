@@ -11,9 +11,13 @@ CREATE TABLE IF NOT EXISTS documents (
   thumbnail TEXT DEFAULT '',
   tags JSONB DEFAULT '[]'::jsonb,
   file_path TEXT,
+  video_summary JSONB DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Add video_summary column to pre-existing databases (idempotent).
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS video_summary JSONB DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS chapters (
   id TEXT PRIMARY KEY,
@@ -25,11 +29,15 @@ CREATE TABLE IF NOT EXISTS chapters (
   parsed_text TEXT DEFAULT '',
   tags JSONB DEFAULT '[]'::jsonb,
   file_path TEXT,
+  analysis JSONB DEFAULT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_chapters_parent ON chapters(parent_id);
+
+-- Add analysis column to pre-existing databases (idempotent).
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS analysis JSONB DEFAULT NULL;
 
 CREATE TABLE IF NOT EXISTS embeddings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,6 +49,18 @@ CREATE TABLE IF NOT EXISTS embeddings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_document ON embeddings(document_id);
+
+-- Textbooks (virtual containers for chapter-based documents)
+CREATE TABLE IF NOT EXISTS textbooks (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Add textbook_id column to documents (nullable FK)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS textbook_id TEXT REFERENCES textbooks(id) ON DELETE CASCADE;
 
 -- Courses
 CREATE TABLE IF NOT EXISTS courses (
@@ -75,3 +95,19 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+
+-- Study Guides
+CREATE TABLE IF NOT EXISTS study_guides (
+  id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()::text),
+  course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
+  document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  content JSONB,
+  status TEXT DEFAULT 'pending',
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_study_guides_course ON study_guides(course_id);
+CREATE INDEX IF NOT EXISTS idx_study_guides_document ON study_guides(document_id);
+CREATE INDEX IF NOT EXISTS idx_study_guides_status ON study_guides(status);

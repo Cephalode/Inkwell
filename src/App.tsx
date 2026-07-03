@@ -14,6 +14,8 @@ const TextbookPage = lazy(() => import('./pages/TextbookPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const CoursesPage = lazy(() => import('./pages/CoursesPage'));
 const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'));
+const StudyGuidesPage = lazy(() => import('./pages/StudyGuidesPage'));
+const StudyGuideDetailPage = lazy(() => import('./pages/StudyGuideDetailPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
@@ -43,6 +45,8 @@ export default function App() {
             <Route path="/documents/:id" element={<DocumentDetailPage />} />
             <Route path="/courses" element={<SuspenseWrapper><CoursesPage /></SuspenseWrapper>} />
             <Route path="/courses/:id" element={<SuspenseWrapper><CourseDetailPage /></SuspenseWrapper>} />
+            <Route path="/study-guides" element={<SuspenseWrapper><StudyGuidesPage /></SuspenseWrapper>} />
+            <Route path="/study-guides/:id" element={<SuspenseWrapper><StudyGuideDetailPage /></SuspenseWrapper>} />
             <Route path="/textbook" element={<SuspenseWrapper><TextbookPage /></SuspenseWrapper>} />
             <Route path="/settings" element={<SuspenseWrapper><SettingsPage /></SuspenseWrapper>} />
           </Route>

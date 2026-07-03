@@ -7,6 +7,7 @@ import MobileTabBar from './MobileTabBar';
 import MobileDrawer from './MobileDrawer';
 import MobileHeader from './MobileHeader';
 import GlobalChat from '../chat/GlobalChat';
+import TTSOverlay from '../shared/TTSOverlay';
 
 export default function Layout() {
   const { sidebarOpen } = useUIStore();
@@ -22,6 +23,7 @@ export default function Layout() {
         </main>
         <MobileTabBar />
         <GlobalChat />
+        <TTSOverlay />
       </div>
     );
   }
@@ -36,6 +38,7 @@ export default function Layout() {
         </main>
       </div>
       <GlobalChat />
+      <TTSOverlay />
     </div>
   );
 }

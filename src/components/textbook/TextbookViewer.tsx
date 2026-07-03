@@ -20,6 +20,7 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
   const [scale, setScale] = useState(1);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfReady, setPdfReady] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderVersionRef = useRef(0);
   const cancelRenderRef = useRef<(() => void) | null>(null);
@@ -28,6 +29,8 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
 
   // Load and cache PDF document from blob — reuse ArrayBuffer across remounts
   useEffect(() => {
+    setPdfReady(false);
+
     if (!file) {
       pdfRef.current = null;
       arrayBufferRef.current = null;
@@ -46,6 +49,7 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
       const pdf = await pdfjsLib.getDocument({ data: arrayBufferRef.current.slice(0) }).promise;
       if (!cancelled) {
         pdfRef.current = pdf;
+        setPdfReady(true);
       }
     })();
 
@@ -66,7 +70,12 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
 
     try {
       const pdf = pdfRef.current;
-      if (!pdf) return;
+      if (!pdf) {
+        // PDF not ready yet — clear isRendering so the spinner doesn't get stuck.
+        // renderPage will re-run via the pdfReady dependency once the load finishes.
+        setIsRendering(false);
+        return;
+      }
 
       const cancel = await renderPDFPageToCanvas(canvas, pdf, currentPage + pageOffset, scale);
       if (version === renderVersionRef.current) {
@@ -79,7 +88,7 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
         setIsRendering(false);
       }
     }
-  }, [file, currentPage, scale, pageOffset]);
+  }, [file, currentPage, scale, pageOffset, pdfReady]);
 
   useEffect(() => {
     renderPage();

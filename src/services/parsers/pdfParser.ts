@@ -65,7 +65,7 @@ export async function renderPDFPage(
 /** Render a PDF page onto an existing canvas. Returns a cancel function. */
 export async function renderPDFPageToCanvas(
   canvas: HTMLCanvasElement,
-  pdf: Awaited<ReturnType<typeof pdfjsLib.getDocument>>['promise'],
+  pdf: pdfjsLib.PDFDocumentProxy,
   pageNumber: number,
   scale: number = 1.0,
 ): Promise<() => void> {

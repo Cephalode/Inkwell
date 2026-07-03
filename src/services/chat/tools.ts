@@ -117,7 +117,7 @@ async function handleClassifyDocument(args: Record<string, unknown>): Promise<st
 async function handleSummarize(args: Record<string, unknown>): Promise<string> {
   let text = args.text as string;
   if (!text) return 'Error: "text" parameter is required.';
-  if (text.length > 8000) text = text.slice(0, 8000) + `... [truncated from ${args.text.length} chars]`;
+  if (text.length > 8000) text = text.slice(0, 8000) + `... [truncated from ${text.length} chars]`;
   const type = (args.type as 'tldr' | 'keypoints' | 'detailed') || 'keypoints';
 
   const promptFn = SUMMARY_PROMPTS[type] ?? SUMMARY_PROMPTS.keypoints;

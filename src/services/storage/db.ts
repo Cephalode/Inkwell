@@ -93,25 +93,11 @@ export async function getDB(): Promise<IDBPDatabase<InkwellDB>> {
 
         db.createObjectStore('settings', { keyPath: 'ai' });
       }
-      // Version 5: remove studySessions object store (no longer used)
-      if (oldVersion < 5 && db.objectStoreNames.contains('studySessions')) {
-        db.deleteObjectStore('studySessions');
-      }
-      // Version 6: remove flashcards and quizzes object stores (no longer used)
-      if (oldVersion < 6) {
-        if (db.objectStoreNames.contains('flashcards')) {
-          db.deleteObjectStore('flashcards');
-        }
-        if (db.objectStoreNames.contains('quizzes')) {
-          db.deleteObjectStore('quizzes');
-        }
-      }
-      // Version 7: remove chatSessions, chapters, courses object stores (migrated to Postgres)
-      if (oldVersion < 7) {
-        if (db.objectStoreNames.contains('chatSessions')) db.deleteObjectStore('chatSessions');
-        if (db.objectStoreNames.contains('courses')) db.deleteObjectStore('courses');
-        if (db.objectStoreNames.contains('chapters')) db.deleteObjectStore('chapters');
-      }
+      // Note: Legacy StudyForge object stores (studySessions, flashcards, quizzes,
+      // chatSessions, courses, chapters) were removed when the app migrated from
+      // IndexedDB to Postgres. Any orphaned stores left in older user DBs are
+      // harmless and intentionally not cleaned up here (they reference store names
+      // that no longer exist in the InkwellDB schema union).
     },
     blocked() {
       console.warn('IndexedDB open blocked — closing stale connections');

@@ -6,14 +6,17 @@ import {
   HiBookOpen,
   HiCog,
   HiXMark,
+  HiAcademicCap,
 } from 'react-icons/hi2';
 import { useUIStore } from '../../store/uiStore';
+import InkwellLogo from '../shared/InkwellLogo';
 
 const navItems = [
   { to: '/', icon: HiHome, label: 'Dashboard' },
   { to: '/documents', icon: HiDocumentText, label: 'Documents' },
   { to: '/courses', icon: HiBookOpen, label: 'Courses' },
   { to: '/textbook', icon: HiBookOpen, label: 'Textbook' },
+  { to: '/study-guides', icon: HiAcademicCap, label: 'Study Guides' },
   { to: '/settings', icon: HiCog, label: 'Settings' },
 ];
 
@@ -54,7 +57,7 @@ export default function MobileDrawer() {
             {/* Header */}
             <div className="flex items-center justify-between h-16 px-4 border-b border-slate-700/50">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">🧠</span>
+                <InkwellLogo className="w-7 h-7 text-cyan-400" />
                 <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">
                   Inkwell
                 </span>

@@ -17,6 +17,7 @@ const pathTitleMap: Record<string, string> = {
   '/documents': 'Documents',
   '/courses': 'Courses',
   '/textbook': 'Textbook',
+  '/study-guides': 'Study Guides',
   '/settings': 'Settings',
 };
 

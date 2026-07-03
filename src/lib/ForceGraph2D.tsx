@@ -33,4 +33,6 @@ const ForceGraph2D = fromKapsule(
 
 (ForceGraph2D as React.FC).displayName = 'ForceGraph2D';
 
-export default ForceGraph2D;
+// react-kapsule's inferred props type only captures `ref`; cast to a permissive
+// FC so the consumer can pass through force-graph props (graphData, etc.).
+export default ForceGraph2D as unknown as React.FC<any>;

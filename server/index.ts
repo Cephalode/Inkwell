@@ -2,9 +2,13 @@ import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { API_KEY, UPSTREAM } from './config.js';
 import documentsRouter from './routes/documents.js';
+import videoDocumentsRouter from './routes/videoDocuments.js';
 import chaptersRouter from './routes/chapters.js';
 import coursesRouter from './routes/courses.js';
 import chatSessionsRouter from './routes/chatSessions.js';
+import chapterAnalysisRouter from './routes/chapterAnalysis.js';
+import textbooksRouter from './routes/textbooks.js';
+import studyGuidesRouter from './routes/studyGuides.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -67,9 +71,13 @@ app.get('/api/health', (_req: Request, res: Response) => {
 
 // ── Document & Chapter CRUD ────────────────────────────────────────────────
 app.use('/api/documents', documentsRouter);
+app.use('/api', videoDocumentsRouter);
 app.use('/api', chaptersRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/chat-sessions', chatSessionsRouter);
+app.use('/api', chapterAnalysisRouter);
+app.use('/api/textbooks', textbooksRouter);
+app.use('/api/study-guides', studyGuidesRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {

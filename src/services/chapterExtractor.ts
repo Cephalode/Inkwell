@@ -18,7 +18,9 @@ export async function splitPDF(
   const pages = await newDoc.copyPages(srcDoc, indices);
   pages.forEach((p) => newDoc.addPage(p));
   const pdfBytes = await newDoc.save();
-  return new Blob([pdfBytes], { type: 'application/pdf' });
+  // Cast needed: TS 5.7+ types Uint8Array as Uint8Array<ArrayBufferLike>, which
+  // is not assignable to BlobPart (expects ArrayBuffer-backed view).
+  return new Blob([pdfBytes as BlobPart], { type: 'application/pdf' });
 }
 
 // Patterns for chapter headings in body text (font-size fallback)

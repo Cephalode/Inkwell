@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { DocumentFile, Chapter } from '../types/document';
+import { DocumentFile, Chapter, ChapterDocument } from '../types/document';
 import { detectChapters, splitPDF } from '../services/chapterExtractor';
 import { useDocumentStore } from '../store/documentStore';
 import { uploadSingleChapter, listChapters, deleteChapters, updateDocument, downloadDocumentFile } from '../services/api/client';
@@ -14,6 +14,7 @@ async function getPDFPageCount(blob: Blob): Promise<number> {
 export function useChapters(parentDoc: DocumentFile | null) {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [savedChapters, setSavedChapters] = useState<Set<number>>(new Set());
+  const [savedChapterDocs, setSavedChapterDocs] = useState<ChapterDocument[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [savingIndex, setSavingIndex] = useState(-1);
@@ -26,6 +27,7 @@ export function useChapters(parentDoc: DocumentFile | null) {
     try {
       const serverChapters = await listChapters(parentDoc.id);
       setSavedChapters(new Set(serverChapters.map((c) => c.chapterIndex)));
+      setSavedChapterDocs(serverChapters);
       setSavedCount(serverChapters.length);
     } catch {
       // No saved chapters yet — fine
@@ -60,6 +62,7 @@ export function useChapters(parentDoc: DocumentFile | null) {
     setChapters([]);
     setSavedCount(0);
     setSavedChapters(new Set());
+    setSavedChapterDocs([]);
     storeUpdateDocument(parentDoc.id, { chapterMarkers: [] });
     await updateDocument(parentDoc.id, { chapterMarkers: [] }).catch(() => {});
     await deleteChapters(parentDoc.id).catch(() => {});
@@ -97,12 +100,14 @@ export function useChapters(parentDoc: DocumentFile | null) {
       await saveChapter(chapterIndex, totalPages);
       setSavedChapters((prev) => new Set([...prev, chapterIndex]));
       setSavedCount((c) => c + 1);
+      // Refresh the saved-chapter documents so the new chapter ID is available.
+      loadSavedChapters();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save chapter');
     } finally {
       setSavingIndex(-1);
     }
-  }, [saveChapter]);
+  }, [saveChapter, loadSavedChapters]);
 
   const saveAllChapters = useCallback(async (totalPages: number) => {
     setIsSaving(true);
@@ -142,16 +147,18 @@ export function useChapters(parentDoc: DocumentFile | null) {
         setSavedChapters(new Set(newlySaved));
       }
       setSavedCount(newlySaved.size);
+      // Refresh saved-chapter documents so newly-saved IDs are available.
+      loadSavedChapters();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save chapters');
     } finally {
       setIsSaving(false);
       setSavingIndex(-1);
     }
-  }, [chapters, savedChapters, parentDoc]);
+  }, [chapters, savedChapters, parentDoc, loadSavedChapters]);
 
   return {
-    chapters, isExtracting, isSaving, savingIndex, savedCount, savedChapters,
+    chapters, isExtracting, isSaving, savingIndex, savedCount, savedChapters, savedChapterDocs,
     error, extractChapters, clearChapters, initChapters,
     saveSingleChapter, saveAllChapters,
   };

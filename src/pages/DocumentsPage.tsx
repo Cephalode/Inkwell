@@ -16,16 +16,17 @@ import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
 import { useChatStore } from '../store/chatStore';
 import { useKnowledgeGraphStore } from '../store/knowledgeGraphStore';
-import { updateDocumentTags, listChapters } from '../services/api/client';
+import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook } from '../services/api/client';
 import { buildKnowledgeGraph } from '../utils/buildKnowledgeGraph';
 
 import { useNavigate } from 'react-router-dom';
-import { HiOutlineListBullet, HiOutlineShare } from 'react-icons/hi2';
+import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash } from 'react-icons/hi';
+import { HiOutlineListBullet } from 'react-icons/hi2';
 import type { KGNode } from '../types/knowledgeGraph';
-import type { ChapterDocument } from '../types/document';
+import type { ChapterDocument, Textbook } from '../types/document';
 
 export default function DocumentsPage() {
-  const { documents, isLoading, loadDocuments, uploadFile, deleteDocumentById } = useDocuments();
+  const { documents, isLoading, loadDocuments, uploadFile, uploadVideoUrl, deleteDocumentById } = useDocuments();
   const updateDocument = useDocumentStore((s) => s.updateDocument);
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
   const { courses, loadCourses, addDocumentToCourse } = useCourses();
@@ -34,6 +35,8 @@ export default function DocumentsPage() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
   const [chapters, setChapters] = useState<ChapterDocument[]>([]);
+  const [textbooks, setTextbooks] = useState<Textbook[]>([]);
+  const [expandedTextbooks, setExpandedTextbooks] = useState<Set<string>>(new Set());
 
   useEffect(() => { loadDocuments(); loadCourses(); }, [loadDocuments, loadCourses]);
 
@@ -50,6 +53,13 @@ export default function DocumentsPage() {
       })
       .catch(console.error);
     return () => { cancelled = true; };
+  }, [documents]);
+
+  // Fetch textbooks
+  useEffect(() => {
+    listTextbooks()
+      .then(setTextbooks)
+      .catch(console.error);
   }, [documents]);
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
@@ -71,6 +81,29 @@ export default function DocumentsPage() {
     await updateDocumentTags(docId, tags);
     updateDocument(docId, { tags });
   }, [updateDocument]);
+
+  const toggleTextbook = useCallback((id: string) => {
+    setExpandedTextbooks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteTextbook = useCallback(async (id: string) => {
+    await deleteTextbook(id);
+    setTextbooks((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Build a parentId -> chapter count lookup
+  const chapterCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const ch of chapters) {
+      counts[ch.parentId] = (counts[ch.parentId] ?? 0) + 1;
+    }
+    return counts;
+  }, [chapters]);
 
   const graph = useMemo(
     () => buildKnowledgeGraph(documents, courses, sessions, chapters),
@@ -138,7 +171,7 @@ export default function DocumentsPage() {
       </div>
 
       {viewMode === 'list' && (
-        <UploadZone onFilesSelected={handleFilesSelected} isLoading={isLoading} />
+        <UploadZone onFilesSelected={handleFilesSelected} onUrlSubmit={uploadVideoUrl} isLoading={isLoading} />
       )}
 
       {isLoading && documents.length === 0 ? (
@@ -183,21 +216,74 @@ export default function DocumentsPage() {
             </>
           )}
         </div>
-      ) : documents.length === 0 ? (
+      ) : documents.length === 0 && textbooks.length === 0 ? (
         <EmptyState
           icon="📂"
           title="No documents yet"
           description="Upload your first study material to get started"
         />
       ) : (
-        <FileList
-          documents={documents}
-          onDelete={deleteDocumentById}
-          onSelect={handleSelectDoc}
-          courses={courses.map(c => ({ id: c.id, name: c.name, documentIds: c.documentIds }))}
-          onMoveToCourse={handleMoveToCourse}
-          onUpdateTags={handleUpdateTags}
-        />
+        <div className="space-y-2">
+          {/* Textbook cards */}
+          {textbooks.map((tb) => {
+            const expanded = expandedTextbooks.has(tb.id);
+            return (
+              <div
+                key={tb.id}
+                className="rounded-xl border border-slate-700/50 bg-slate-800/40 overflow-hidden"
+              >
+                {/* Textbook header row */}
+                <div
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-800/70 transition-colors"
+                  onClick={() => toggleTextbook(tb.id)}
+                >
+                  {expanded
+                    ? <HiChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+                    : <HiChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                  }
+                  <HiBookOpen className="w-5 h-5 text-cyan-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-200 truncate">{tb.name}</p>
+                    <p className="text-xs text-slate-500">{tb.documents.length} chapter{tb.documents.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteTextbook(tb.id); }}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-700/50 transition-colors"
+                    title="Delete textbook"
+                  >
+                    <HiTrash className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Expanded chapter list */}
+                {expanded && (
+                  <div className="border-t border-slate-700/30 bg-slate-900/30 px-3 py-2">
+                    <FileList
+                      documents={tb.documents}
+                      onDelete={undefined}
+                      onSelect={handleSelectDoc}
+                      courses={[]}
+                      onMoveToCourse={undefined}
+                      onUpdateTags={handleUpdateTags}
+                      chapterCounts={{}}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Regular documents */}
+          <FileList
+            documents={documents}
+            onDelete={deleteDocumentById}
+            onSelect={handleSelectDoc}
+            courses={courses.map(c => ({ id: c.id, name: c.name, documentIds: c.documentIds }))}
+            onMoveToCourse={handleMoveToCourse}
+            onUpdateTags={handleUpdateTags}
+            chapterCounts={chapterCounts}
+          />
+        </div>
       )}
     </div>
   );

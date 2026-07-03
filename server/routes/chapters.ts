@@ -2,7 +2,6 @@ import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { unlinkSync, renameSync } from 'fs';
-import { readdirSync } from 'fs';
 import pool from '../db.js';
 
 const router = Router();
@@ -60,7 +59,7 @@ router.get('/documents/:parentId/chapters', async (req: Request, res: Response) 
       'SELECT * FROM chapters WHERE parent_id = $1 ORDER BY chapter_index',
       [req.params.parentId],
     );
-    res.json(rows.map((r) => rowToChapter(r as ChapterRow)));
+    res.json(rows.map((r: ChapterRow) => rowToChapter(r)));
   } catch (err: unknown) {
     console.error('Error fetching chapters:', err);
     res.status(500).json({ error: 'Failed to fetch chapters' });

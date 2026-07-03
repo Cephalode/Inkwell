@@ -48,7 +48,7 @@ router.get('/', async (_req: Request, res: Response) => {
     const { rows } = await pool.query(
       'SELECT id, document_id, title, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC'
     );
-    res.json(rows.map((r) => rowToSession(r as SessionRow)));
+    res.json(rows.map((r: SessionRow) => rowToSession(r)));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -63,7 +63,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       'SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC',
       [req.params.id]
     );
-    res.json(rowToSession(sessionRows[0] as SessionRow, msgRows.map((r) => rowToMessage(r as MessageRow))));
+    res.json(rowToSession(sessionRows[0] as SessionRow, msgRows.map((r: MessageRow) => rowToMessage(r))));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -150,12 +150,13 @@ router.post('/:id/generate-title', async (req: Request, res: Response) => {
           { role: 'user', content: message },
         ],
         temperature: 0.3,
-        max_tokens: 50,
+        max_tokens: 500,
         stream: false,
       }),
     });
-    const data = await resp.json();
-    const title = data.choices?.[0]?.message?.content?.trim() || data.choices?.[0]?.message?.reasoning_content?.trim();
+    const data = (await resp.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content?.trim();
+    const title = content && content.length > 0 ? content : null;
     if (!title) return res.status(500).json({ error: 'Failed to generate title' });
     await pool.query('UPDATE chat_sessions SET title = $1, updated_at = now() WHERE id = $2', [title, req.params.id]);
     res.json({ title });

@@ -36,11 +36,13 @@ const CATEGORY_COLORS: Record<string, BadgeProps['color']> = {
 interface FileCardProps {
   doc: DocumentFile;
   isClassifying?: boolean;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
   onSelect: (doc: DocumentFile) => void;
   courses: Array<{ id: string; name: string; documentIds: string[] }>;
-  onMoveToCourse: (docId: string, courseId: string) => void;
+  onMoveToCourse?: (docId: string, courseId: string) => void;
   onUpdateTags: (docId: string, tags: string[]) => void;
+  docCourses?: string[];
+  subdocCount?: number;
 }
 
 type BadgeProps = React.ComponentProps<typeof Badge>;
@@ -53,6 +55,8 @@ export default function FileCard({
   courses,
   onMoveToCourse,
   onUpdateTags,
+  docCourses = [],
+  subdocCount = 0,
 }: FileCardProps) {
   const [category] = doc.tags;
   const badgeColor = category && CATEGORY_COLORS[category] ? CATEGORY_COLORS[category] : 'gray';
@@ -141,7 +145,7 @@ export default function FileCard({
   };
 
   function handleDelete() {
-    onDelete(doc.id);
+    onDelete?.(doc.id);
     closeDropdown();
   }
 
@@ -171,6 +175,19 @@ export default function FileCard({
           <p className="text-xs text-slate-500 mt-2">
             {new Date(doc.createdAt).toLocaleDateString()}
           </p>
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            {docCourses.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-cyan-400/80">
+                <HiAcademicCap className="w-3 h-3" />
+                {docCourses.join(', ')}
+              </span>
+            )}
+            {subdocCount > 0 && (
+              <span className="text-xs text-slate-500">
+                {subdocCount} subdoc{subdocCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         </div>
         {/* Ellipsis menu */}
         <div className="flex-shrink-0">
@@ -290,7 +307,7 @@ export default function FileCard({
                           <button
                             key={course.id}
                             onClick={() => {
-                              onMoveToCourse(doc.id, course.id);
+                              onMoveToCourse?.(doc.id, course.id);
                               closeDropdown();
                             }}
                             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-700 cursor-pointer transition-colors w-full text-left"
