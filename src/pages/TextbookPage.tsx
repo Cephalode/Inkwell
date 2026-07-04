@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { HiSparkles, HiBookOpen } from 'react-icons/hi';
+import { HiSparkles, HiBookOpen, HiDocumentText } from 'react-icons/hi';
 import TextbookViewer from '../components/textbook/TextbookViewer';
 import ChapterSelector from '../components/textbook/ChapterSelector';
 import ChapterAnalysisPanel from '../components/textbook/ChapterAnalysisPanel';
@@ -174,9 +174,9 @@ export default function TextbookPage() {
                 {serverTextbooks.map((tb) => (
                   <Card key={tb.id} onClick={() => handleSelectServerTextbook(tb)} className="hover:scale-[1.02] transition-transform cursor-pointer">
                     <div className="flex items-center gap-3">
-                      <span className="text-3xl">📖</span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-200">{tb.name}</p>
+                      <span className="text-3xl shrink-0">📖</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-200 truncate">{tb.name}</p>
                         <p className="text-xs text-slate-500">{tb.documents.length} chapter{tb.documents.length !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
@@ -195,9 +195,9 @@ export default function TextbookPage() {
                 {pdfs.map((doc) => (
                   <Card key={doc.id} onClick={() => handleSelectPDF(doc)} className="hover:scale-[1.02] transition-transform cursor-pointer">
                     <div className="flex items-center gap-3">
-                      <span className="text-3xl">📄</span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-200">{doc.name}</p>
+                      <span className="text-3xl shrink-0">📄</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-200 truncate">{doc.name}</p>
                         <p className="text-xs text-slate-500">{(doc.size / 1024 / 1024).toFixed(1)} MB</p>
                       </div>
                     </div>
@@ -340,29 +340,46 @@ export default function TextbookPage() {
               )}
             </>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-300">
                 {loadedTextbook.documents.length} chapter{loadedTextbook.documents.length !== 1 ? 's' : ''}
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {loadedTextbook.documents.map((doc) => (
-                  <Card
-                    key={doc.id}
-                    onClick={() => handleSelectChapterDocument(doc)}
-                    className="hover:scale-[1.02] transition-transform cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">📑</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-200 truncate">{doc.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {doc.size > 0 ? `${(doc.size / 1024).toFixed(0)} KB` : ''}
-                          {doc.parsedText ? ` · ${doc.parsedText.length.toLocaleString()} chars` : ''}
-                        </p>
+              <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                {/* Table header */}
+                <div className="grid grid-cols-[3rem_1fr_4.5rem_6rem] gap-3 px-4 py-2.5 text-[11px] font-medium text-slate-500 uppercase tracking-wider border-b border-slate-700/50 bg-slate-800/30">
+                  <div>#</div>
+                  <div>Title</div>
+                  <div className="text-right">Size</div>
+                  <div className="text-right">Chars</div>
+                </div>
+                {/* Chapter rows */}
+                {loadedTextbook.documents.map((doc, i) => {
+                  const match = doc.name.match(/^(\d+)/);
+                  const chapterNum = match ? match[1] : String(i + 1).padStart(2, '0');
+                  const title = doc.name.replace(/^\d+\s*/, '').replace(/\.pdf$/i, '') || doc.name;
+                  const sizeKB = doc.size > 0 ? Math.round(doc.size / 1024) : 0;
+                  const chars = doc.parsedText ? doc.parsedText.length : 0;
+                  return (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => handleSelectChapterDocument(doc)}
+                      className="w-full grid grid-cols-[3rem_1fr_4.5rem_6rem] gap-3 items-center px-4 py-3 text-left border-b border-slate-700/30 last:border-b-0 hover:bg-slate-700/40 transition-colors group"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <HiDocumentText className="w-4 h-4 text-cyan-400/70 shrink-0 group-hover:text-cyan-300 transition-colors" />
+                        <span className="font-mono text-sm text-slate-500 tabular-nums">{chapterNum}</span>
                       </div>
-                    </div>
-                  </Card>
-                ))}
+                      <p className="text-sm text-slate-200 truncate group-hover:text-cyan-300 transition-colors">{title}</p>
+                      <span className="text-right text-xs text-slate-500 tabular-nums">
+                        {sizeKB > 0 ? `${sizeKB} KB` : '—'}
+                      </span>
+                      <span className="text-right text-xs text-slate-500 tabular-nums">
+                        {chars > 0 ? chars.toLocaleString() : '—'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}

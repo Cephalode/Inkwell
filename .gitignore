@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 dist/
+
+# Server runtime data
+server/data/files/

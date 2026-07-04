@@ -1,26 +1,11 @@
 import { Router, type Request, type Response } from 'express';
-import { unlinkSync, existsSync, readFileSync, statSync } from 'fs';
-import { v4 as uuidv4 } from 'uuid';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { unlinkSync } from 'fs';
 import pool from '../db.js';
 
 const router = Router();
 
-// ── Helper: extract text from a PDF file on disk ──────────────────────────
-async function extractTextFromPDF(filePath: string): Promise<string> {
-  const data = new Uint8Array(readFileSync(filePath));
-  const pdf = await pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
-  const texts: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    texts.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
-  }
-  return texts.join('\n');
-}
-
 // ── Row mappers ────────────────────────────────────────────────────────────
-interface TextbookRow {
+export interface TextbookRow {
   id: string;
   name: string;
   description: string;
@@ -28,7 +13,7 @@ interface TextbookRow {
   updated_at: string;
 }
 
-function rowToTextbook(row: TextbookRow) {
+export function rowToTextbook(row: TextbookRow) {
   return {
     id: row.id,
     name: row.name,
@@ -127,122 +112,6 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (err: unknown) {
     console.error('Error fetching textbook:', err);
     res.status(500).json({ error: 'Failed to fetch textbook' });
-  }
-});
-
-// ── POST /api/documents/:id/convert-to-textbook ───────────────────────────
-// Converts a document + its saved chapters into a textbook with individual
-// chapter documents. Deletes the original document and its chapter records.
-router.post('/documents/:id/convert-to-textbook', async (req: Request, res: Response) => {
-  const parentId = req.params.id;
-
-  try {
-    // 1. Verify parent document exists
-    const { rows: docRows } = await pool.query('SELECT * FROM documents WHERE id = $1', [parentId]);
-    if (docRows.length === 0) {
-      return res.status(404).json({ error: 'Document not found' });
-    }
-    const parentDoc = docRows[0] as DocRow;
-
-    // 2. Get all saved chapters
-    const { rows: chapterRows } = await pool.query(
-      'SELECT * FROM chapters WHERE parent_id = $1 ORDER BY chapter_index ASC',
-      [parentId],
-    );
-    if (chapterRows.length === 0) {
-      return res.status(400).json({ error: 'No saved chapters found. Save chapters first.' });
-    }
-
-    // 3. Create textbook record
-    const textbookId = uuidv4();
-    await pool.query(
-      `INSERT INTO textbooks (id, name, description)
-       VALUES ($1, $2, $3)`,
-      [textbookId, parentDoc.name, ''],
-    );
-
-    // 4. Convert each chapter into a full document
-    const createdDocs: ReturnType<typeof rowToDoc>[] = [];
-    for (const ch of chapterRows) {
-      const chRow = ch as {
-        id: string;
-        chapter_title: string;
-        chapter_index: number;
-        start_page: number;
-        end_page: number;
-        parsed_text: string;
-        tags: unknown;
-        file_path: string | null;
-      };
-
-      const docId = uuidv4();
-      const chapterName = `${String(chRow.chapter_index + 1).padStart(2, '0')} ${chRow.chapter_title}.pdf`;
-
-      // Extract text from chapter PDF if file exists
-      let parsedText = chRow.parsed_text || '';
-      let fileSize = 0;
-      const chapterFilePath = chRow.file_path;
-
-      if (chapterFilePath && existsSync(chapterFilePath)) {
-        try {
-          fileSize = statSync(chapterFilePath).size;
-          parsedText = await extractTextFromPDF(chapterFilePath);
-        } catch (err) {
-          console.error(`Failed to extract text from chapter ${chRow.chapter_title}:`, err);
-        }
-      }
-
-      // Insert as a new document, reusing the chapter's file path
-      const { rows: newDocRows } = await pool.query(
-        `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, tags, file_path, textbook_id)
-         VALUES ($1, $2, 'pdf', 'application/pdf', $3, $4, $5, $6, $7)
-         RETURNING *`,
-        [
-          docId,
-          chapterName,
-          fileSize,
-          parsedText,
-          chRow.tags ?? JSON.stringify(parentDoc.tags ?? []),
-          chapterFilePath, // reuse the existing file (don't copy)
-          textbookId,
-        ],
-      );
-      createdDocs.push(rowToDoc(newDocRows[0] as DocRow));
-    }
-
-    // 5. Update courses: replace old document ID with textbook ID in document_ids
-    const { rows: courseRows } = await pool.query(
-      'SELECT id, document_ids FROM courses WHERE document_ids @> $1::jsonb',
-      [JSON.stringify([parentId])],
-    );
-    for (const cr of courseRows) {
-      const course = cr as { id: string; document_ids: string[] };
-      const updatedIds = course.document_ids.map((id: string) => id === parentId ? textbookId : id);
-      await pool.query(
-        'UPDATE courses SET document_ids = $1::jsonb, updated_at = now() WHERE id = $2',
-        [JSON.stringify(updatedIds), course.id],
-      );
-    }
-
-    // 6. Delete chapter records (but NOT their files — we reused them above)
-    await pool.query('DELETE FROM chapters WHERE parent_id = $1', [parentId]);
-
-    // 7. Delete the original document
-    const parentFilePath = parentDoc.file_path;
-    await pool.query('DELETE FROM documents WHERE id = $1', [parentId]);
-    if (parentFilePath && existsSync(parentFilePath)) {
-      try { unlinkSync(parentFilePath); } catch { /* already deleted */ }
-    }
-
-    // 8. Return the textbook
-    const { rows: tbRows } = await pool.query('SELECT * FROM textbooks WHERE id = $1', [textbookId]);
-    res.status(201).json({
-      ...rowToTextbook(tbRows[0] as TextbookRow),
-      documents: createdDocs,
-    });
-  } catch (err: unknown) {
-    console.error('Error converting to textbook:', err);
-    res.status(500).json({ error: 'Failed to convert to textbook' });
   }
 });
 
