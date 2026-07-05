@@ -1,5 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { API_KEY, UPSTREAM } from './config.js';
 import pool from './db.js';
 import { GENERATION_TIMEOUT_MS } from './src/generationPipeline.js';
@@ -191,6 +193,19 @@ async function reapStuckGenerations(): Promise<void> {
     }
   }
 }
+
+// ── SPA fallback (production) ────────────────────────────────────────────────
+// Serve built frontend assets from dist/ and fall back to index.html for any
+// non-API GET request so deep client-side routes (e.g. /documents/:id) survive
+// a hard refresh. Registered AFTER all /api/* routes so it never shadows them.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(__dirname, '../dist');
+
+app.use(express.static(distDir));
+
+app.get(/^\/(?!api).*/, (_req: Request, res: Response) => {
+  res.sendFile(path.join(distDir, 'index.html'));
+});
 
 // ── Start ───────────────────────────────────────────────────────────────────
 // Migrations run BEFORE app.listen() so routes never accept traffic against an

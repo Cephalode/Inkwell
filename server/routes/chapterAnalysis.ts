@@ -8,15 +8,6 @@ import { send, setSSEHeaders } from '../src/sse.js';
 const router = Router();
 
 // ── Types ───────────────────────────────────────────────────────────────────
-interface ChapterRow {
-  id: string;
-  parent_id: string;
-  chapter_title: string;
-  start_page: number;
-  end_page: number;
-  file_path: string | null;
-}
-
 interface DocRow {
   id: string;
   file_path: string | null;
@@ -63,45 +54,25 @@ router.post('/chapters/:id/analyze', async (req, res) => {
   };
 
   try {
-    // 1. Fetch chapter from DB.
-    const { rows: chapterRows } = await pool.query(
-      'SELECT id, parent_id, chapter_title, start_page, end_page, file_path FROM chapters WHERE id = $1',
-      [id],
-    );
-    if (chapterRows.length === 0) return fail('Chapter not found');
-    const chapter = chapterRows[0] as ChapterRow;
-
-    // 2. Fetch parent document for the source file path.
+    // 1. Fetch the chapter document from the documents table.
+    //    Converted textbook chapters are standalone documents with their own
+    //    file_path (a full standalone PDF). There is no parent PDF or page range.
     const { rows: docRows } = await pool.query(
       'SELECT id, file_path FROM documents WHERE id = $1',
-      [chapter.parent_id],
+      [id],
     );
-    if (docRows.length === 0) return fail('Parent document not found');
+    if (docRows.length === 0) return fail('Chapter not found');
     const doc = docRows[0] as DocRow;
 
-    // Always read from the PARENT document's original full PDF. A chapter's own
-    // file_path is a split/derived blob that may be corrupt or empty, and the
-    // page numbers below are relative to the original document anyway.
-    const filePath = doc.file_path || chapter.file_path;
+    // 2. Extract text directly from the document's own file_path (standalone PDF).
+    const filePath = doc.file_path;
     if (!filePath) return fail('No PDF file path available for this chapter');
 
-    // Validate page range. extractTextWithFonts expects 1-indexed pages.
-    const startPage = Number(chapter.start_page);
-    const endPage = Number(chapter.end_page);
-    if (!Number.isFinite(startPage) || !Number.isFinite(endPage) || startPage < 1) {
-      return fail(
-        `Invalid start_page (${chapter.start_page}); must be a 1-indexed page number`,
-      );
-    }
-    if (endPage < startPage) {
-      return fail(
-        `Invalid page range: end_page (${endPage}) is before start_page (${startPage})`,
-      );
-    }
-
-    // 3. Extract text with font metadata.
+    // 3. Extract text with font metadata from the entire standalone PDF.
+    //    extractTextWithFonts clamps endPage to the document's actual page
+    //    count, so passing a very large value extracts all pages.
     send(res, { type: 'extracting', message: 'Extracting text from PDF…' });
-    const pages = await extractTextWithFonts(filePath, startPage, endPage);
+    const pages = await extractTextWithFonts(filePath, 1, Number.MAX_SAFE_INTEGER);
     const chapterText = pagesToText(pages);
     if (!chapterText.trim()) return fail('No extractable text found in this chapter');
 
@@ -226,7 +197,7 @@ ${JSON.stringify(synthesisInput)}`,
       chapterNotes,
       analyzedAt: new Date().toISOString(),
     };
-    await pool.query('UPDATE chapters SET analysis = $1::jsonb, updated_at = now() WHERE id = $2', [
+    await pool.query('UPDATE documents SET analysis = $1::jsonb, updated_at = now() WHERE id = $2', [
       JSON.stringify(analysisResult),
       id,
     ]);
@@ -244,15 +215,16 @@ ${JSON.stringify(synthesisInput)}`,
 // ── GET /chapters/:id/analysis — Retrieve cached analysis ───────────────────
 router.get('/chapters/:id/analysis', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT analysis FROM chapters WHERE id = $1', [
+    const { rows } = await pool.query('SELECT analysis FROM documents WHERE id = $1', [
       req.params.id,
     ]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Chapter not found' });
     }
+    // No analysis yet → return null (not 404) so the client can trigger analysis.
     const analysis = (rows[0] as { analysis: AnalysisResult | null }).analysis;
     if (!analysis) {
-      return res.status(404).json({ error: 'No analysis found for this chapter' });
+      return res.json(null);
     }
     res.json(analysis);
   } catch (err: unknown) {

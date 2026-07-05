@@ -7,7 +7,7 @@ import { renameSync } from 'fs';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import pool from '../db.js';
 import { API_KEY, UPSTREAM } from '../config.js';
-import { TextbookRow, rowToTextbook } from './textbooks.js';
+import { type TextbookRow, rowToTextbook } from './textbooks.js';
 
 const router = Router();
 

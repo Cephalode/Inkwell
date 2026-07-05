@@ -1,6 +1,9 @@
 import type { ComponentPropsWithoutRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 // ── Element → styled JSX mapping (dark cyan/teal theme) ─────────────────────
 // Intentionally avoids @tailwindcss/typography; base text color lives on the
@@ -82,7 +85,7 @@ export default function Markdown({ content, className, compact = false }: Markdo
   const compactCls = compact ? '[&_p]:mb-0 [&_ul]:mb-0 [&_ol]:mb-0 [&_blockquote]:my-0' : '';
   return (
     <div className={`text-sm leading-relaxed text-slate-300 max-w-none ${compactCls} ${className ?? ''}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={components}>
         {content}
       </ReactMarkdown>
     </div>
