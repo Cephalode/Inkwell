@@ -52,7 +52,7 @@ function rowToDoc(row: DocRow) {
     parsedText: row.parsed_text,
     thumbnail: row.thumbnail,
     chapterMarkers: row.chapter_markers,
-    tags: row.tags,
+    tags: row.tags ?? [],
     filePath: row.file_path,
     classifyStatus: row.classify_status,
     videoSummary: row.video_summary,
