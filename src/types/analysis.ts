@@ -23,6 +23,23 @@ export interface ChapterAnalysis {
   analyzedAt: string;
 }
 
+export interface VideoPick {
+  videoId: string;
+  title: string;
+  channel: string;
+  duration: string;
+  url: string;
+  reason: string;
+  subsectionIndex: number;
+}
+
+export interface ChapterVideos {
+  picks: VideoPick[];
+  generatedAt: string;
+}
+
+export type VideoStatus = 'idle' | 'loading' | 'done' | 'error';
+
 /** Lifecycle status of the analysis pipeline. */
 export type AnalysisStatus =
   | 'idle'

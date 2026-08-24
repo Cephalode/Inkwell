@@ -18,6 +18,7 @@ import Badge from '../shared/Badge';
 import Markdown from '../shared/Markdown';
 import { useChapterAnalysis } from '../../hooks/useChapterAnalysis';
 import { useTTSStore } from '../../store/ttsStore';
+import VideoList from './VideoList';
 import type { SubsectionAnalysis } from '../../types/analysis';
 
 /**
@@ -80,12 +81,15 @@ export default function ChapterAnalysisPanel({ chapterId }: ChapterAnalysisPanel
         {status === 'error' ? (
           <ErrorView message={error} onRetry={handleRetry} />
         ) : status === 'done' ? (
-          <DoneView
-            chapterNotes={chapterNotes}
-            subsections={subsections}
-            results={results}
-            analyzedAt={undefined}
-          />
+          <>
+            <DoneView
+              chapterNotes={chapterNotes}
+              subsections={subsections}
+              results={results}
+              analyzedAt={undefined}
+            />
+            <VideoList chapterId={chapterId} subsections={subsections} />
+          </>
         ) : (
           <ProgressView
             status={status}

@@ -1,7 +1,7 @@
 import type { DocumentFile, ChapterDocument, Textbook, DocumentType, ClassifyStatus, Chapter, VideoSummary } from '../../types/document';
 import type { Course } from '../../types/course';
 import type { ChatSession, ChatMessage } from '../../types/chat';
-import type { ChapterAnalysis } from '../../types/analysis';
+import type { ChapterAnalysis, ChapterVideos } from '../../types/analysis';
 import type { StudyGuide } from '../../types/studyGuide';
 import type { FlashcardDeck, Flashcard } from '../../types/flashcards';
 import type { PracticeTest, TestQuestion, TestAttempt, TestAttemptResult } from '../../types/practiceTest';
@@ -389,6 +389,23 @@ export async function getChapterAnalysis(chapterId: string): Promise<ChapterAnal
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to get analysis: ${res.status}`);
   return (await res.json()) as ChapterAnalysis;
+}
+
+export async function getChapterVideos(chapterId: string): Promise<ChapterVideos | null> {
+  const res = await fetch(`${API_BASE}/chapters/${chapterId}/videos`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to get videos: ${res.status}`);
+  return (await res.json()) as ChapterVideos | null;
+}
+
+export async function findChapterVideos(chapterId: string, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${API_BASE}/chapters/${chapterId}/find-videos`, {
+    method: 'POST',
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to start video search: ${res.status}`);
+  return res;
 }
 
 // ---------------------------------------------------------------------------
