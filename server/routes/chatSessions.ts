@@ -160,7 +160,7 @@ router.post('/:id/generate-title', async (req: Request, res: Response) => {
         'Authorization': `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'glm-5.1',
+        model: 'glm-5.3',
         messages: [
           { role: 'system', content: 'You are a title generator. Given the first message of a chat conversation, generate a concise title (3-6 words) that captures the main topic. Reply with ONLY the title text, nothing else. No quotes, no prefixes.' },
           { role: 'user', content: message },

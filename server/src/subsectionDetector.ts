@@ -182,7 +182,7 @@ async function detectByAI(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'glm-5.1',
+      model: 'glm-5.3',
       temperature: 0.2,
       max_tokens: 4096,
       stream: false,

@@ -310,7 +310,7 @@ router.post('/:id/classify', async (req: Request, res: Response) => {
         'Authorization': `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'glm-5.1',
+        model: 'glm-5.3',
         temperature: 0.3,
         max_tokens: 2048,
         stream: false,

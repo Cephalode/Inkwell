@@ -43,7 +43,7 @@ interface ChatPayload {
   tools?: unknown[];
 }
 
-const MODEL = 'glm-5.1';
+const MODEL = 'glm-5.3';
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
 const app = express();
