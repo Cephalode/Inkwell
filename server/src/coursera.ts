@@ -3,7 +3,7 @@
 
 const BASE = 'https://www.coursera.org';
 
-export interface CourseraCourse { id: string; slug: string; name: string }
+export interface CourseraCourse { id: string; slug: string; name: string; status: 'completed' | 'enrolled' | 'unenrolled' }
 export interface CourseraItem { id: string; name: string; slug: string; type: string; locked: boolean; url: string }
 export interface CourseraLesson { id: string; name: string; slug: string; items: CourseraItem[] }
 export interface CourseraModule { id: string; name: string; slug: string; lessons: CourseraLesson[] }
@@ -35,13 +35,29 @@ export function isAuthError(err: any): boolean {
   return err?.status === 401 || err?.status === 403;
 }
 
+// Status rule: hidden membership (showHidden diff) = unenrolled; passing grade record = completed; else enrolled.
 export async function fetchEnrolledCourses(cauth: string): Promise<CourseraCourse[]> {
-  const m = await api('/api/memberships.v1?q=me&fields=courseId&limit=100', cauth);
-  const ids: string[] = m.elements.map((e: any) => e.courseId);
-  if (!ids.length) return [];
-  const c = await api(`/api/courses.v1?ids=${encodeURIComponent(ids.join(','))}&fields=slug,name`, cauth);
+  const visible = await api('/api/memberships.v1?q=me&fields=courseId&limit=100', cauth);
+  const all = await api('/api/memberships.v1?q=me&fields=courseId,grade&limit=100&showHidden=true', cauth);
+  const visibleIds = new Set<string>(visible.elements.map((e: any) => e.courseId));
+  if (!all.elements.length) return [];
+  const c = await api(`/api/courses.v1?ids=${encodeURIComponent(all.elements.map((e: any) => e.courseId).join(','))}&fields=slug,name`, cauth);
+  // courses.v1 silently drops unenrolled/private courses — backfill via onDemandCourses.v1
   const byId = new Map<string, any>(c.elements.map((e: any) => [e.id, e]));
-  return ids.map((id) => byId.get(id)).filter(Boolean).map((e: any) => ({ id: e.id, slug: e.slug, name: e.name }));
+  const missing = all.elements.map((e: any) => e.courseId).filter((id: string) => !byId.has(id));
+  if (missing.length) {
+    const od = await api(`/api/onDemandCourses.v1?ids=${encodeURIComponent(missing.join(','))}&fields=slug,name`, cauth);
+    for (const e of od.elements ?? []) byId.set(e.id, e);
+  }
+  return all.elements
+    .map((e: any) => {
+      const rec: string | undefined = e.grade?.record;
+      const passed = !!rec && rec !== 'NOT_PASSED' && rec.endsWith('PASSED');
+      const status = !visibleIds.has(e.courseId) ? 'unenrolled' : passed ? 'completed' : 'enrolled';
+      const info = byId.get(e.courseId);
+      return info ? { id: e.courseId, slug: info.slug, name: info.name, status } : null;
+    })
+    .filter(Boolean);
 }
 
 // Returns modules in course-intended order: elements[0].moduleIds → module.lessonIds → lesson.itemIds.

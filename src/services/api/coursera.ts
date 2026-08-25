@@ -1,4 +1,4 @@
-export interface CourseraCourse { id: string; slug: string; name: string }
+export interface CourseraCourse { id: string; slug: string; name: string; status: 'completed' | 'enrolled' | 'unenrolled' }
 export interface CourseraItem { id: string; name: string; slug: string; type: string; locked: boolean; url: string }
 export interface CourseraLesson { id: string; name: string; slug: string; items: CourseraItem[] }
 export interface CourseraModule { id: string; name: string; slug: string; lessons: CourseraLesson[] }

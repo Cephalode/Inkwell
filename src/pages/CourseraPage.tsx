@@ -6,7 +6,7 @@ import {
   getCourseraStatus, linkCoursera, unlinkCoursera, listCourseraCourses, getCourseOutline,
   type CourseraCourse, type CourseraModule,
 } from '../services/api/coursera';
-import { HiPlay, HiDocumentText, HiCode, HiChatAlt2, HiLockClosed, HiClipboard, HiAcademicCap, HiLink, HiTrash, HiArrowLeft } from 'react-icons/hi';
+import { HiPlay, HiDocumentText, HiCode, HiChatAlt2, HiLockClosed, HiClipboard, HiAcademicCap, HiLink, HiTrash, HiArrowLeft, HiCheckCircle } from 'react-icons/hi';
 
 const TYPE_ICON: Record<string, typeof HiPlay> = {
   lecture: HiPlay,
@@ -178,20 +178,37 @@ export default function CourseraPage() {
       ) : courses.length === 0 ? (
         <EmptyState icon={<HiAcademicCap className="w-12 h-12 text-cyan-400" />} title="No enrolled courses" description="Enroll in a course on Coursera and refresh here" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {courses.map((c) => (
-            <Card key={c.id} onClick={() => openCourse(c)} className="group">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-lg bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center shrink-0">
-                  <HiAcademicCap className="w-5 h-5 text-cyan-400" />
+        <div className="space-y-8">
+          {([
+            ['enrolled', 'In Progress', 'text-cyan-400'],
+            ['completed', 'Completed', 'text-emerald-400'],
+            ['unenrolled', 'Unenrolled', 'text-slate-500'],
+          ] as const).map(([status, label, color]) => {
+            const list = courses.filter((c) => c.status === status);
+            if (!list.length) return null;
+            return (
+              <section key={status}>
+                <h2 className={`text-sm font-semibold uppercase tracking-wide mb-3 ${color}`}>{label} ({list.length})</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {list.map((c) => (
+                    <Card key={c.id} onClick={() => openCourse(c)} className="group">
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${status === 'enrolled' ? 'bg-cyan-600/20 border-cyan-500/30' : status === 'completed' ? 'bg-emerald-600/20 border-emerald-500/30' : 'bg-slate-700/40 border-slate-600/40'}`}>
+                          {status === 'completed'
+                            ? <HiCheckCircle className="w-5 h-5 text-emerald-400" />
+                            : <HiAcademicCap className={`w-5 h-5 ${status === 'enrolled' ? 'text-cyan-400' : 'text-slate-500'}`} />}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">{c.name}</h3>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{c.slug}</p>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">{c.name}</h3>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">{c.slug}</p>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </section>
+            );
+          })}
         </div>
       )}
       {loadingOutline && <div className="flex justify-center py-10"><Spinner /></div>}
