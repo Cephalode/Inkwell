@@ -17,6 +17,7 @@ import textbooksRouter from './routes/textbooks.js';
 import studyGuidesRouter from './routes/studyGuides.js';
 import flashcardsRouter from './routes/flashcards.js';
 import practiceTestsRouter from './routes/practiceTests.js';
+import courseraRouter from './routes/coursera.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -89,6 +90,7 @@ app.use('/api/textbooks', textbooksRouter);
 app.use('/api/study-guides', studyGuidesRouter);
 app.use('/api/flashcard-decks', flashcardsRouter);
 app.use('/api/practice-tests', practiceTestsRouter);
+app.use('/api/coursera', courseraRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {

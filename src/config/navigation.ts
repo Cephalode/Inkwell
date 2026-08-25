@@ -7,6 +7,7 @@ import {
   HiClipboardDocumentList,
   HiRectangleStack,
   HiQuestionMarkCircle,
+  HiGlobeAlt,
   HiCog,
 } from 'react-icons/hi2';
 
@@ -25,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/study-guides', label: 'Study Guides', icon: HiClipboardDocumentList },
   { path: '/flashcards', label: 'Flashcards', icon: HiRectangleStack },
   { path: '/tests', label: 'Tests', icon: HiQuestionMarkCircle },
+  { path: '/coursera', label: 'Coursera', icon: HiGlobeAlt },
   { path: '/settings', label: 'Settings', icon: HiCog },
 ];
 
