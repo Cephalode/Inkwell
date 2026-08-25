@@ -41,6 +41,10 @@ export interface DocRow {
   classify_status: string;
   video_summary: unknown;
   textbook_id: string | null;
+  start_page: number | null;
+  end_page: number | null;
+  chapter_index: number | null;
+  chapter_title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +64,10 @@ export function rowToDoc(row: DocRow) {
     classifyStatus: row.classify_status,
     videoSummary: row.video_summary,
     textbookId: row.textbook_id,
+    startPage: row.start_page,
+    endPage: row.end_page,
+    chapterIndex: row.chapter_index,
+    chapterTitle: row.chapter_title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -484,8 +492,8 @@ router.post('/:id/convert-to-textbook', async (req: Request, res: Response) => {
 
       // Insert as a new document, reusing the chapter's file path
       const { rows: newDocRows } = await pool.query(
-        `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, tags, file_path, textbook_id)
-         VALUES ($1, $2, 'pdf', 'application/pdf', $3, $4, $5, $6, $7)
+        `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, tags, file_path, textbook_id, start_page, end_page, chapter_index, chapter_title)
+         VALUES ($1, $2, 'pdf', 'application/pdf', $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           docId,
@@ -495,6 +503,10 @@ router.post('/:id/convert-to-textbook', async (req: Request, res: Response) => {
           chRow.tags ?? JSON.stringify(parentDoc.tags ?? []),
           chapterFilePath, // reuse the existing file (don't copy)
           textbookId,
+          chRow.start_page,
+          chRow.end_page,
+          chRow.chapter_index,
+          chRow.chapter_title,
         ],
       );
       createdDocs.push(rowToDoc(newDocRows[0] as DocRow));
