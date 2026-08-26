@@ -264,7 +264,9 @@ export const useTTSStore = create<TTSState>()((set, get) => {
         });
       }
     };
-    load();
+    // ponytail: get() is undefined until create() returns — must not call load() synchronously.
+    // WebKit/iOS returns voices synchronously, which crashed module init (blank page on refresh).
+    window.setTimeout(load, 0);
     synth.addEventListener('voiceschanged', load);
     // Some engines populate only after a tick — retry once shortly after load.
     window.setTimeout(load, 250);
