@@ -9,6 +9,8 @@ import {
   HiQuestionMarkCircle,
   HiGlobeAlt,
   HiCog,
+  HiPencilSquare,
+  HiCalendarDays,
 } from 'react-icons/hi2';
 
 export interface NavItem {
@@ -25,6 +27,8 @@ export const NAV_ITEMS: NavItem[] = [
   { path: '/courses', label: 'Courses', icon: HiAcademicCap },
   { path: '/study-guides', label: 'Study Guides', icon: HiClipboardDocumentList },
   { path: '/flashcards', label: 'Flashcards', icon: HiRectangleStack },
+  { path: '/deadlines', label: 'Deadlines', icon: HiCalendarDays },
+  { path: '/notes', label: 'Notes', icon: HiPencilSquare },
   { path: '/tests', label: 'Tests', icon: HiQuestionMarkCircle },
   { path: '/coursera', label: 'Coursera', icon: HiGlobeAlt },
   { path: '/settings', label: 'Settings', icon: HiCog },

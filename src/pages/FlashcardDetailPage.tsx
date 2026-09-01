@@ -4,6 +4,15 @@ import { HiArrowLeft, HiRefresh } from 'react-icons/hi';
 import Spinner from '../components/shared/Spinner';
 import { useFlashcardDeck, useFlashcardGeneration } from '../hooks/useFlashcards';
 import { useFlashcardStore } from '../store/flashcardStore';
+import { useSrsStore, SRS_INTERVALS } from '../store/srsStore';
+
+/** [label, sublabel, tailwind classes] per grade 0-3. */
+const GRADES: { label: string; cls: string }[] = [
+  { label: 'Very hard', cls: 'bg-red-600/20 hover:bg-red-600/30 text-red-400' },
+  { label: 'Hard', cls: 'bg-amber-600/20 hover:bg-amber-600/30 text-amber-400' },
+  { label: 'Easy', cls: 'bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400' },
+  { label: 'Very easy', cls: 'bg-green-600/20 hover:bg-green-600/30 text-green-400' },
+];
 
 export default function FlashcardDetailPage() {
   const { deckId } = useParams<{ deckId: string }>();
@@ -14,6 +23,17 @@ export default function FlashcardDetailPage() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [sessionDone, setSessionDone] = useState(false);
+  const [tally, setTally] = useState<number[]>([0, 0, 0, 0]);
+
+  const srsMap = useSrsStore((s) => s.srs);
+  const orderedCards = useMemo(
+    () =>
+      [...cards].sort(
+        (a, b) => (srsMap[a.id]?.dueAt ?? 0) - (srsMap[b.id]?.dueAt ?? 0)
+      ),
+    [cards, srsMap]
+  );
 
   const deck = useFlashcardStore((s) =>
     s.decks.find((d) => d.id === deckId)
@@ -52,10 +72,37 @@ export default function FlashcardDetailPage() {
     await generate(deckId);
     setCurrentIndex(0);
     setIsFlipped(false);
+    setSessionDone(false);
+    setTally([0, 0, 0, 0]);
   };
 
-  const currentCard = cards[currentIndex];
-  const totalCards = cards.length;
+  /** Grade current card on the SRS + backend, advance or finish the session. */
+  const handleGrade = (grade: 0 | 1 | 2 | 3) => {
+    if (!currentCard) return;
+    useSrsStore.getState().gradeCard(currentCard.id, grade);
+    useFlashcardStore
+      .getState()
+      .reviewCard(currentCard.id, grade >= 2)
+      .catch(console.error);
+    setTally((t) => t.map((n, i) => (i === grade ? n + 1 : n)));
+    if (currentIndex < totalCards - 1) {
+      setCurrentIndex(currentIndex + 1);
+      setIsFlipped(false);
+    } else {
+      setSessionDone(true);
+    }
+  };
+
+  /** Restart the session in due-soonest-first order. */
+  const handleReviewAgain = () => {
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionDone(false);
+    setTally([0, 0, 0, 0]);
+  };
+
+  const currentCard = orderedCards[currentIndex];
+  const totalCards = orderedCards.length;
   const progress_pct = totalCards > 0 ? ((currentIndex + 1) / totalCards) * 100 : 0;
 
   if (!deck) {
@@ -148,6 +195,31 @@ export default function FlashcardDetailPage() {
 
       {/* Study area */}
       <div className="space-y-4">
+        {sessionDone ? (
+          <>
+            <div className="text-center py-8 space-y-3">
+              <p className="text-lg font-bold text-white">Session done — {tally.reduce((a, b) => a + b, 0)} cards</p>
+              <p className="text-sm text-slate-400">
+                {tally[0]} again · {tally[1]} hard · {tally[2]} easy · {tally[3]} very easy
+              </p>
+              <div className="flex gap-3 justify-center pt-2">
+                <button
+                  onClick={handleReviewAgain}
+                  className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-medium transition-colors"
+                >
+                  Review again
+                </button>
+                <button
+                  onClick={() => navigate('/flashcards')}
+                  className="px-5 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-colors"
+                >
+                  All decks
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+        <>
         {/* Progress bar */}
         <div className="w-full h-2 bg-slate-700/60 rounded-full overflow-hidden">
           <div
@@ -172,7 +244,21 @@ export default function FlashcardDetailPage() {
           </div>
         </div>
 
-        {/* Controls */}
+        {/* Controls: navigation when reading, SRS grades after flip */}
+        {isFlipped ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {GRADES.map((g, i) => (
+              <button
+                key={g.label}
+                onClick={() => handleGrade(i as 0 | 1 | 2 | 3)}
+                className={`px-3 py-2.5 rounded-lg font-medium transition-colors text-center ${g.cls}`}
+              >
+                <span className="block text-sm">{g.label}</span>
+                <span className="block text-xs opacity-70">{SRS_INTERVALS[i]}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
         <div className="flex gap-3 justify-center">
           <button
             onClick={() => {
@@ -186,33 +272,10 @@ export default function FlashcardDetailPage() {
           </button>
 
           <button
-            onClick={async () => {
-              if (currentCard) {
-                await useFlashcardStore.getState().reviewCard(currentCard.id, false);
-              }
-              if (currentIndex < totalCards - 1) {
-                setCurrentIndex(currentIndex + 1);
-                setIsFlipped(false);
-              }
-            }}
-            className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg font-medium transition-colors"
+            onClick={() => setIsFlipped(true)}
+            className="px-8 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium transition-colors"
           >
-            Missed
-          </button>
-
-          <button
-            onClick={async () => {
-              if (currentCard) {
-                await useFlashcardStore.getState().reviewCard(currentCard.id, true);
-              }
-              if (currentIndex < totalCards - 1) {
-                setCurrentIndex(currentIndex + 1);
-                setIsFlipped(false);
-              }
-            }}
-            className="px-6 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded-lg font-medium transition-colors"
-          >
-            Got it
+            Reveal
           </button>
 
           <button
@@ -226,6 +289,7 @@ export default function FlashcardDetailPage() {
             Next
           </button>
         </div>
+        )}
 
         {/* Stats */}
         <div className="text-center text-sm text-slate-500">
@@ -246,6 +310,8 @@ export default function FlashcardDetailPage() {
                 : 0}%
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
     </div>

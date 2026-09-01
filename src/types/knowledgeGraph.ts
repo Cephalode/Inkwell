@@ -31,6 +31,8 @@ export interface KGFilters {
   showChats: boolean;
   showChapters: boolean;
   searchQuery: string;
+  /** When set, only nodes belonging to these courses are shown (undefined = all courses). */
+  courseIds?: string[];
 }
 
 export interface KGSimulationControls {

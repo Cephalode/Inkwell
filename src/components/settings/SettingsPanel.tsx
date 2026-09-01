@@ -6,7 +6,7 @@ import { HiEye, HiEyeOff, HiCheck, HiStatusOffline, HiStatusOnline } from 'react
 import { checkBackendHealth } from '../../services/ai/client';
 
 export default function SettingsPanel() {
-  const { settings, setApiKey, setProvider, setBaseUrl, setModel, setDefaultSummaryType } = useSettingsStore();
+  const { settings, setApiKey, setProvider, setBaseUrl, setModel, setDefaultSummaryType, setShowWeekStats } = useSettingsStore();
   const [showKey, setShowKey] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -157,6 +157,25 @@ export default function SettingsPanel() {
             </button>
           ))}
         </div>
+      </Card>
+
+      <Card header={<h3 className="text-white font-semibold">📅 Today Dashboard</h3>}>
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <span>
+            <span className="block text-sm text-slate-200">Show this-week stats</span>
+            <span className="block text-xs text-slate-500 mt-0.5">Cards graded and study sessions from the last 7 days</span>
+          </span>
+          <button
+            role="switch"
+            aria-checked={settings.showWeekStats}
+            onClick={() => setShowWeekStats(!settings.showWeekStats)}
+            className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${settings.showWeekStats ? 'bg-cyan-600' : 'bg-slate-700'}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${settings.showWeekStats ? 'translate-x-5' : ''}`}
+            />
+          </button>
+        </label>
       </Card>
     </div>
   );

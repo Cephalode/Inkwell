@@ -10,6 +10,7 @@ interface SettingsState {
   setModel: (model: string) => void;
   setTheme: (theme: ThemeMode) => void;
   setDefaultSummaryType: (t: 'tldr' | 'keypoints' | 'detailed') => void;
+  setShowWeekStats: (v: boolean) => void;
   resetSettings: () => void;
 }
 
@@ -44,6 +45,7 @@ export const useSettingsStore = create<SettingsState>()(
         return { settings: { ...s.settings, theme } };
       }),
       setDefaultSummaryType: (t) => set((s) => ({ settings: { ...s.settings, defaultSummaryType: t } })),
+      setShowWeekStats: (v) => set((s) => ({ settings: { ...s.settings, showWeekStats: v } })),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
     }),
     { name: STORE_KEY }

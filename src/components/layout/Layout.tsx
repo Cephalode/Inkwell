@@ -7,6 +7,7 @@ import MobileTabBar from './MobileTabBar';
 import MobileDrawer from './MobileDrawer';
 import MobileHeader from './MobileHeader';
 import GlobalChat from '../chat/GlobalChat';
+import CommandPalette from '../commandPalette/CommandPalette';
 import TTSOverlay from '../shared/TTSOverlay';
 
 export default function Layout() {
@@ -23,6 +24,7 @@ export default function Layout() {
         </main>
         <MobileTabBar />
         <GlobalChat />
+        <CommandPalette />
         <TTSOverlay />
       </div>
     );
@@ -38,6 +40,7 @@ export default function Layout() {
         </main>
       </div>
       <GlobalChat />
+      <CommandPalette />
       <TTSOverlay />
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HiOutlineFunnel, HiOutlineMagnifyingGlass, HiChevronDown, HiChevronUp } from 'react-icons/hi2';
 import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
+import { useCourseStore } from '../../store/courseStore';
 import type { KGNodeType } from '../../types/knowledgeGraph';
 
 const nodeTypeConfig: { key: KGNodeType; label: string; color: string; filterKey: keyof import('../../types/knowledgeGraph').KGFilters }[] = [
@@ -15,7 +16,17 @@ const nodeTypeConfig: { key: KGNodeType; label: string; color: string; filterKey
 
 export function GraphFilters() {
   const { filters, setFilters } = useKnowledgeGraphStore();
+  const courses = useCourseStore((s) => s.courses);
   const [expanded, setExpanded] = useState(true);
+
+  const selectedCourseIds = filters.courseIds ?? [];
+
+  const toggleCourse = (courseId: string) => {
+    const next = selectedCourseIds.includes(courseId)
+      ? selectedCourseIds.filter((id) => id !== courseId)
+      : [...selectedCourseIds, courseId];
+    setFilters({ courseIds: next.length > 0 ? next : undefined });
+  };
 
   return (
     <div className="absolute top-4 left-4 z-10 w-64">
@@ -87,6 +98,35 @@ export function GraphFilters() {
                 </label>
               ))}
             </div>
+
+            {/* Divider */}
+            <div className="border-t border-slate-700/50" />
+
+            {/* Course Filter Chips */}
+            {courses.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-slate-500 uppercase tracking-wider">Show</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {courses.map((course) => {
+                    const active = selectedCourseIds.includes(course.id);
+                    return (
+                      <button
+                        key={course.id}
+                        onClick={() => toggleCourse(course.id)}
+                        aria-pressed={active}
+                        className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                          active
+                            ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                            : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        }`}
+                      >
+                        {course.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

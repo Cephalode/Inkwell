@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock } from 'react-icons/hi';
+import { useLocation, useParams } from 'react-router';
+import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock, HiChevronLeft, HiChevronRight } from 'react-icons/hi';
 import Markdown from '../shared/Markdown';
 import { useChatStore } from '../../store/chatStore';
 import { useDocumentStore } from '../../store/documentStore';
+import { useCourseStore } from '../../store/courseStore';
 import { runAgentTurn, type SystemMessageContext } from '../../services/chat/agent';
 import { generateUUID } from '../../utils/uuid';
 import type { ChatMessage, ChatSession } from '../../types/chat';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 // ── Tool display labels ────────────────────────────────────────────────────
 
@@ -244,10 +247,36 @@ export default function GlobalChat() {
     loadSessions,
   } = useChatStore();
   const currentDocument = useDocumentStore((s) => s.currentDocument);
+  const courses = useCourseStore((s) => s.courses);
+  const location = useLocation();
+  const params = useParams();
+  const isMobile = useIsMobile();
+
+  // Desktop rail collapse state (initialized open); mobile keeps store `isOpen`.
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Unseen-reply dot, fully derived: messages.length is snapshotted into state
+  // at collapse time (event handlers only — no setState-in-effect).
+  const [seenCountAtCollapse, setSeenCountAtCollapse] = useState<number | null>(null);
+  const unseenReply =
+    railCollapsed && seenCountAtCollapse !== null && messages.length > seenCountAtCollapse;
+
+  const collapseRail = useCallback(() => {
+    setSeenCountAtCollapse(messages.length);
+    setRailCollapsed(true);
+  }, [messages.length]);
+  const expandRail = useCallback(() => {
+    setSeenCountAtCollapse(null);
+    setRailCollapsed(false);
+  }, []);
+  const toggleRail = useCallback(() => {
+    if (railCollapsed) expandRail();
+    else collapseRail();
+  }, [railCollapsed, collapseRail, expandRail]);
 
   // Load sessions on mount
   useEffect(() => {
@@ -271,18 +300,36 @@ export default function GlobalChat() {
         const tag = (e.target as HTMLElement).tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         e.preventDefault();
-        toggle();
+        if (isMobile) {
+          toggle();
+        } else {
+          toggleRail();
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [toggle]);
+  }, [toggle, isMobile, toggleRail]);
 
   // Current session title for header display
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const sessionTitle = activeSession?.title === 'New chat' && messages.length > 0
     ? activeSession.title
     : (activeSession?.title ?? 'New chat');
+
+  // Context label: course name on /courses/:id, 'Notes' on /notes, else 'Inkwell'.
+  const courseMatch = location.pathname.match(/^\/courses\/([^/]+)/);
+  const contextCourse = courseMatch
+    ? courses.find((c) => c.id === decodeURIComponent(courseMatch[1])) ?? courses.find((c) => params.id === c.id)
+    : undefined;
+  const contextLabel = courseMatch
+    ? (contextCourse?.name ?? 'Inkwell')
+    : location.pathname.startsWith('/notes')
+      ? 'Notes'
+      : 'Inkwell';
+
+  // Desktop rail visibility (collapse) — mobile keeps the original isOpen flow.
+  const railOpen = isMobile ? isOpen : !railCollapsed;
 
   const handleSend = useCallback(async () => {
     const msg = input.trim();
@@ -356,140 +403,308 @@ export default function GlobalChat() {
     setLoading(false);
   }, [input, isLoading, currentDocument, addMessage, setLoading, setPendingTools]);
 
+  // ── Mobile: original presentation, untouched ─────────────────────────────
+  if (isMobile) {
+    return (
+      <>
+        {/* FAB button */}
+        {!isOpen && (
+          <button
+            onClick={toggle}
+            className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full shadow-lg shadow-cyan-600/30 flex items-center justify-center transition-all hover:scale-110"
+            aria-label="Open chat"
+          >
+            <HiChatAlt2 className="w-7 h-7" />
+          </button>
+        )}
+
+        {/* Sidebar */}
+        <div
+          className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] bg-slate-900 border-l border-slate-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
+            isOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0">
+            <div className="relative">
+              <button
+                onClick={() => setShowSessionList((v) => !v)}
+                className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors"
+              >
+                💬 {sessionTitle}
+                <HiChevronDown className={`w-3.5 h-3.5 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
+              </button>
+              {currentDocument && (
+                <span className="block text-xs text-slate-400 font-normal ml-5 mt-0.5">
+                  · {currentDocument.name}
+                </span>
+              )}
+              {showSessionList && (
+                <SessionListDropdown
+                  sessions={sessions}
+                  activeSessionId={activeSessionId}
+                  onSelect={setActiveSession}
+                  onNew={() => {
+                    createNewSession();
+                    setShowSessionList(false);
+                  }}
+                  onDelete={deleteSession}
+                  onClose={() => setShowSessionList(false)}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={createNewSession}
+                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+                title="New chat"
+              >
+                <HiPlus className="w-4 h-4" />
+              </button>
+              <button
+                onClick={close}
+                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+              >
+                <HiX className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.length === 0 && (
+              <div className="text-center text-slate-500 py-16">
+                <p className="text-lg mb-2">💬 Ask anything</p>
+                <p className="text-sm">
+                  {currentDocument
+                    ? `Asking about "${currentDocument.name}"`
+                    : 'Open a document to chat with context'}
+                </p>
+              </div>
+            )}
+
+            {messages.map((msg) => (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
+                    msg.role === 'user'
+                      ? 'bg-cyan-600 text-white whitespace-pre-wrap'
+                      : 'bg-slate-700 text-slate-200'
+                  }`}
+                >
+                  {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
+                </div>
+              </div>
+            ))}
+
+            {isLoading && <ToolProgressIndicator />}
+            <ToolCallSummary />
+            {isLoading && pendingTools.length === 0 && (
+              <div className="flex justify-start">
+                <div className="bg-slate-700 rounded-xl px-4 py-3">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={endRef} />
+          </div>
+
+          {/* Input */}
+          <div className="p-3 border-t border-slate-700/50 shrink-0">
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
+                className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              >
+                <HiPaperAirplane className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Backdrop on mobile */}
+        {isOpen && (
+          <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={close} />
+        )}
+      </>
+    );
+  }
+
+  // ── Desktop: Tutor rail ──────────────────────────────────────────────────
+  const collapsed = railCollapsed;
+
+  const chatBody = (
+    <>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0 gap-2">
+        <div className="relative min-w-0 flex-1">
+          <button
+            onClick={() => setShowSessionList((v) => !v)}
+            className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors min-w-0"
+          >
+            Tutor
+            <HiChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
+          </button>
+          <span className="block text-xs text-slate-400 truncate mt-0.5">{contextLabel}</span>
+          {showSessionList && (
+            <SessionListDropdown
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelect={setActiveSession}
+              onNew={() => {
+                createNewSession();
+                setShowSessionList(false);
+              }}
+              onDelete={deleteSession}
+              onClose={() => setShowSessionList(false)}
+            />
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={createNewSession}
+            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+            title="New chat"
+          >
+            <HiPlus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={collapseRail}
+            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+            title="Collapse Tutor rail"
+            aria-label="Collapse Tutor rail"
+          >
+            <HiChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="text-center text-slate-500 py-16">
+            <p className="text-lg mb-2">💬 Ask your tutor</p>
+            <p className="text-sm">
+              {currentDocument
+                ? `Asking about "${currentDocument.name}"`
+                : 'Open a document to chat with context'}
+            </p>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
+                msg.role === 'user'
+                  ? 'bg-cyan-600 text-white whitespace-pre-wrap'
+                  : 'bg-slate-700 text-slate-200'
+              }`}
+            >
+              {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
+            </div>
+          </div>
+        ))}
+
+        {isLoading && <ToolProgressIndicator />}
+        <ToolCallSummary />
+        {isLoading && pendingTools.length === 0 && (
+          <div className="flex justify-start">
+            <div className="bg-slate-700 rounded-xl px-4 py-3">
+              <div className="flex gap-1">
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={endRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-3 border-t border-slate-700/50 shrink-0">
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
+            className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading}
+            className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          >
+            <HiPaperAirplane className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <>
-      {/* FAB button */}
-      {!isOpen && (
+      {/* Collapsed rail strip */}
+      <div
+        className={`fixed inset-y-0 right-0 z-50 flex flex-col items-center bg-slate-900 border-l border-slate-700/50 shadow-lg overflow-hidden transition-all duration-300 ease-in-out ${
+          collapsed ? 'w-[52px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
+        }`}
+      >
         <button
-          onClick={toggle}
+          onClick={expandRail}
+          className="relative mt-4 flex flex-col items-center justify-center gap-2 text-slate-300 hover:text-cyan-400 transition-colors"
+          title="Expand Tutor rail"
+          aria-label="Expand Tutor rail"
+        >
+          <HiChevronLeft className="w-4 h-4" />
+          <span
+            className="text-[11px] font-semibold tracking-widest text-slate-300"
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            TUTOR
+          </span>
+          {unseenReply && (
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+
+      {/* Open rail */}
+      <div
+        className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-slate-900 border-l border-slate-700/50 shadow-2xl overflow-hidden transition-all duration-300 ease-in-out ${
+          railOpen ? 'w-[320px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
+        }`}
+      >
+        {chatBody}
+      </div>
+
+      {/* FAB fallback (never shown when rail handles open/collapsed) */}
+      {!railOpen && !collapsed && (
+        <button
+          onClick={() => setRailCollapsed(false)}
           className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full shadow-lg shadow-cyan-600/30 flex items-center justify-center transition-all hover:scale-110"
           aria-label="Open chat"
         >
           <HiChatAlt2 className="w-7 h-7" />
         </button>
-      )}
-
-      {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] bg-slate-900 border-l border-slate-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0">
-          <div className="relative">
-            <button
-              onClick={() => setShowSessionList((v) => !v)}
-              className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors"
-            >
-              💬 {sessionTitle}
-              <HiChevronDown className={`w-3.5 h-3.5 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
-            </button>
-            {currentDocument && (
-              <span className="block text-xs text-slate-400 font-normal ml-5 mt-0.5">
-                · {currentDocument.name}
-              </span>
-            )}
-            {showSessionList && (
-              <SessionListDropdown
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                onSelect={setActiveSession}
-                onNew={() => {
-                  createNewSession();
-                  setShowSessionList(false);
-                }}
-                onDelete={deleteSession}
-                onClose={() => setShowSessionList(false)}
-              />
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={createNewSession}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
-              title="New chat"
-            >
-              <HiPlus className="w-4 h-4" />
-            </button>
-            <button
-              onClick={close}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
-            >
-              <HiX className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && (
-            <div className="text-center text-slate-500 py-16">
-              <p className="text-lg mb-2">💬 Ask anything</p>
-              <p className="text-sm">
-                {currentDocument
-                  ? `Asking about "${currentDocument.name}"`
-                  : 'Open a document to chat with context'}
-              </p>
-            </div>
-          )}
-
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                  msg.role === 'user'
-                    ? 'bg-cyan-600 text-white whitespace-pre-wrap'
-                    : 'bg-slate-700 text-slate-200'
-                }`}
-              >
-                {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
-              </div>
-            </div>
-          ))}
-
-          {isLoading && <ToolProgressIndicator />}
-          <ToolCallSummary />
-          {isLoading && pendingTools.length === 0 && (
-            <div className="flex justify-start">
-              <div className="bg-slate-700 rounded-xl px-4 py-3">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div ref={endRef} />
-        </div>
-
-        {/* Input */}
-        <div className="p-3 border-t border-slate-700/50 shrink-0">
-          <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-              placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
-              className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
-            >
-              <HiPaperAirplane className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Backdrop on mobile */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={close} />
       )}
     </>
   );

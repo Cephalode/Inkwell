@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { HiSparkles, HiBookOpen, HiDocumentText } from 'react-icons/hi';
+import { useState, useEffect, useMemo } from 'react';
+import { HiSparkles, HiBookOpen, HiDocumentText, HiVideoCamera, HiPlay } from 'react-icons/hi';
 import TextbookViewer from '../components/textbook/TextbookViewer';
 import ChapterSelector from '../components/textbook/ChapterSelector';
 import ChapterAnalysisPanel from '../components/textbook/ChapterAnalysisPanel';
@@ -10,8 +10,87 @@ import Spinner from '../components/shared/Spinner';
 import { useTextbook } from '../hooks/useTextbook';
 import { useChapters } from '../hooks/useChapters';
 import { useDocumentStore } from '../store/documentStore';
-import { downloadDocumentFile, convertToTextbook, listTextbooks } from '../services/api/client';
+import { downloadDocumentFile, convertToTextbook, listTextbooks, getChapterVideos } from '../services/api/client';
 import type { Chapter, Textbook, DocumentFile } from '../types/document';
+import type { VideoPick } from '../types/analysis';
+
+/** Token-based <mark> highlighting of `text` for terms of >= minLen chars. */
+function highlightPassages(text: string, terms: string[], minLen = 4): (string | { mark: string })[] {
+  const tokens = terms
+    .flatMap((t) => t.split(/\s+/))
+    .map((t) => t.trim())
+    .filter((t) => t.length >= minLen)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (tokens.length === 0) return [text];
+  const re = new RegExp(`(${tokens.join('|')})`, 'gi');
+  // With a capturing group, split() places matches at odd indices.
+  return text
+    .split(re)
+    .filter((p) => p !== '')
+    .map((part, i) => (i % 2 === 1 ? { mark: part } : part));
+}
+
+/** Chapter text excerpt with chapter-title terms highlighted via <mark>. */
+function HighlightedExcerpt({ text, terms }: { text: string; terms: string[] }) {
+  const parts = useMemo(() => highlightPassages(text.slice(0, 420), terms, 4), [text, terms]);
+  return (
+    <p className="text-xs leading-relaxed text-slate-400">
+      {parts.map((p, i) =>
+        typeof p === 'string' ? (
+          <span key={i}>{p}</span>
+        ) : (
+          <mark key={i} className="bg-cyan-500/25 text-cyan-100 rounded px-0.5">
+            {p.mark}
+          </mark>
+        )
+      )}
+      {text.length > 420 && <span className="text-slate-600"> …</span>}
+    </p>
+  );
+}
+
+/** Cached YouTube picks for the open chapter; renders nothing without data. */
+function SectionVideos({ chapterId }: { chapterId: string | null }) {
+  const [loaded, setLoaded] = useState<{ chapterId: string; picks: VideoPick[] } | null>(null);
+  useEffect(() => {
+    if (!chapterId) return;
+    let cancelled = false;
+    getChapterVideos(chapterId)
+      .then((v) => {
+        if (!cancelled && v && v.picks.length > 0) {
+          setLoaded({ chapterId, picks: v.picks.slice(0, 3) });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chapterId]);
+  // Derived: only show picks that belong to the currently open chapter.
+  const picks = loaded && loaded.chapterId === chapterId ? loaded.picks : [];
+  if (picks.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <HiVideoCamera className="w-3.5 h-3.5 text-cyan-400" />
+        Watch — picked for this section
+      </span>
+      {picks.map((p) => (
+        <a
+          key={p.videoId}
+          href={p.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-cyan-500/40 rounded-full text-xs text-slate-300 hover:text-cyan-300 transition-colors max-w-xs"
+        >
+          <HiPlay className="w-3 h-3 text-red-500 shrink-0" />
+          <span className="truncate">{p.title}</span>
+          {p.duration && <span className="text-slate-500 shrink-0 tabular-nums">{p.duration}</span>}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 export default function TextbookPage() {
   const { documents, currentDocument, setCurrentDocument } = useDocumentStore();
@@ -23,9 +102,16 @@ export default function TextbookPage() {
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [chapterLocalPage, setChapterLocalPage] = useState(1);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
+  const [selectedChapterDoc, setSelectedChapterDoc] = useState<DocumentFile | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
   const [convertError, setConvertError] = useState<string | null>(null);
+
+  // Chapter-title words (min length 4) drive <mark> highlighting in excerpts.
+  const highlightTerms = useMemo(
+    () => (selectedChapter ? selectedChapter.title.split(/\s+/) : []),
+    [selectedChapter]
+  );
 
   // ── Server-side textbook mode ─────────────────────────────────────────
   const [serverTextbooks, setServerTextbooks] = useState<Textbook[]>([]);
@@ -45,6 +131,7 @@ export default function TextbookPage() {
     setCurrentDocument(doc);
     setLoadedTextbook(null);
     setSelectedChapter(null);
+    setSelectedChapterDoc(null);
     setChapterBlob(null);
     let blob = doc.rawBlob;
     if (!blob) {
@@ -59,6 +146,7 @@ export default function TextbookPage() {
     setLoadedTextbook(tb);
     setCurrentDocument(null);
     setSelectedChapter(null);
+    setSelectedChapterDoc(null);
     setChapterBlob(null);
     setPageLoaded(false);
   };
@@ -68,6 +156,7 @@ export default function TextbookPage() {
     try {
       const blob = await downloadDocumentFile(doc.id);
       setChapterBlob(blob);
+      setSelectedChapterDoc(doc);
       const { getPDFPageCount } = await import('../services/parsers/index');
       const count = await getPDFPageCount(blob);
       setChapterPageCount(count);
@@ -89,12 +178,14 @@ export default function TextbookPage() {
     setCurrentDocument(null);
     setLoadedTextbook(null);
     setSelectedChapter(null);
+    setSelectedChapterDoc(null);
     setChapterBlob(null);
     setPageLoaded(false);
   };
 
   const handleSelectChapter = (ch: Chapter) => {
     setSelectedChapter(ch);
+    setSelectedChapterDoc(null);
     setChapterLocalPage(1);
     setStartPage(ch.page);
     const idx = chapters.findIndex((c) => c.title === ch.title && c.page === ch.page);
@@ -110,6 +201,7 @@ export default function TextbookPage() {
 
   const handleCloseChapter = () => {
     setSelectedChapter(null);
+    setSelectedChapterDoc(null);
     setSelectedChapterId(null);
     setChapterBlob(null);
   };
@@ -228,6 +320,10 @@ export default function TextbookPage() {
               </Button>
             )}
           </div>
+          {selectedChapterDoc?.parsedText && (
+            <HighlightedExcerpt text={selectedChapterDoc.parsedText} terms={highlightTerms} />
+          )}
+          <SectionVideos chapterId={selectedChapterId} />
           <div>
             {chapterBlob ? (
               <TextbookViewer
@@ -335,6 +431,10 @@ export default function TextbookPage() {
                   totalPages={chapterPageCount}
                 />
               </div>
+              {selectedChapterDoc?.parsedText && (
+                <HighlightedExcerpt text={selectedChapterDoc.parsedText} terms={highlightTerms} />
+              )}
+              <SectionVideos chapterId={selectedChapterId} />
               {selectedChapterId && showAnalysis && (
                 <ChapterAnalysisPanel chapterId={selectedChapterId} />
               )}

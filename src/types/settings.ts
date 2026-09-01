@@ -11,6 +11,8 @@ export interface AppSettings {
   ai: AIConfig;
   theme: ThemeMode;
   defaultSummaryType: 'tldr' | 'keypoints' | 'detailed';
+  /** Show the "This week" stats strip on the Today dashboard. */
+  showWeekStats: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,4 +24,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   theme: 'dark',
   defaultSummaryType: 'keypoints',
+  showWeekStats: true,
 };

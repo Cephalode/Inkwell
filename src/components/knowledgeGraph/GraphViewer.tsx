@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import ForceGraph2D, { type ForceGraphInstance } from '../../lib/ForceGraph2D';
 import type { KGNode, KGGraph, KGNodeType } from '../../types/knowledgeGraph';
 import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
+import { masteryForTopic, type Mastery } from './masteryFor';
 
 const NODE_COLORS: Record<KGNodeType, string> = {
   document: '#14b8a6',
@@ -12,6 +13,21 @@ const NODE_COLORS: Record<KGNodeType, string> = {
   chat: '#6b7280',
   chapter: '#06b6d4',
 };
+
+/** Topic mastery palette: 0 = Not started, 1 = In progress, 2 = Learned, 3 = Known */
+const MASTERY_COLORS: Record<Mastery, string> = {
+  0: '#bab6b6',
+  1: '#62c5ee',
+  2: '#1186ac',
+  3: '#0a303e',
+};
+
+const MASTERY_LEGEND: { level: Mastery; label: string }[] = [
+  { level: 0, label: 'Not started' },
+  { level: 1, label: 'In progress' },
+  { level: 2, label: 'Learned' },
+  { level: 3, label: 'Known' },
+];
 
 const NODE_RADIUS: Record<KGNodeType, number> = {
   document: 6,
@@ -113,6 +129,31 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
 
     // Filter out nodes of excluded types
     let filteredNodes = graph.nodes.filter((n) => !excludedTypes.has(n.type));
+
+    // Apply course filter: when courseIds is set, keep only nodes belonging
+    // to the selected courses (course node itself, or document linked via an
+    // 'in-course' edge to a selected course).
+    if (filters.courseIds && filters.courseIds.length > 0) {
+      const selected = new Set(filters.courseIds);
+      const courseNodeIds = new Set<string>();
+      for (const node of filteredNodes) {
+        if (node.type === 'course') {
+          // Accept both raw course ids and prefixed "course:<id>" node ids
+          const rawId = node.id.startsWith('course:') ? node.id.slice(7) : node.id;
+          if (selected.has(node.id) || selected.has(rawId)) courseNodeIds.add(node.id);
+        }
+      }
+      const docIdsInCourses = new Set<string>();
+      for (const edge of graph.edges) {
+        if (edge.type === 'in-course') {
+          if (courseNodeIds.has(edge.source)) docIdsInCourses.add(edge.target);
+          if (courseNodeIds.has(edge.target)) docIdsInCourses.add(edge.source);
+        }
+      }
+      filteredNodes = filteredNodes.filter(
+        (n) => courseNodeIds.has(n.id) || docIdsInCourses.has(n.id),
+      );
+    }
 
     // Apply search query: keep matching nodes + their direct neighbours
     if (filters.searchQuery.trim()) {
@@ -326,7 +367,10 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     (node: SimNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const kgNode: KGNode = node;
       const { x = 0, y = 0 } = node;
-      const color = NODE_COLORS[kgNode.type] || '#6b7280';
+      const color =
+        kgNode.type === 'chapter'
+          ? MASTERY_COLORS[masteryForTopic(kgNode.id)]
+          : NODE_COLORS[kgNode.type] || '#6b7280';
       const radius = getNodeRadius(kgNode);
 
       // Dimming when a node is hovered and this one isn't connected
@@ -395,8 +439,9 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
   );
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-[400px]">
-      <ForceGraph2D
+    <div className="w-full h-full min-h-[400px] flex flex-col">
+      <div ref={containerRef} className="relative flex-1 min-h-0">
+        <ForceGraph2D
         ref={graphRef}
         graphData={graphData}
         width={dimensions.width}
@@ -427,7 +472,20 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
         enablePanInteraction={true}
         minZoom={0.1}
         maxZoom={8}
-      />
+        />
+      </div>
+      {/* Mastery legend */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 py-1.5 shrink-0">
+        {MASTERY_LEGEND.map(({ level, label }) => (
+          <div key={level} className="flex items-center gap-1.5">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: MASTERY_COLORS[level] }}
+            />
+            <span className="text-xs text-slate-400">{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

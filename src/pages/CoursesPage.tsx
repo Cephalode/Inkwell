@@ -6,7 +6,8 @@ import Spinner from '../components/shared/Spinner';
 import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
 import { Course } from '../types/course';
-import { HiPlus, HiX } from 'react-icons/hi';
+import { Link } from 'react-router-dom';
+import { HiPlus, HiX, HiDownload } from 'react-icons/hi';
 
 export default function CoursesPage() {
   const { courses, isLoading, loadCourses, createCourse, deleteCourse: deleteCourseById, addDocumentToCourse, removeDocumentFromCourse } = useCourses();
@@ -14,14 +15,17 @@ export default function CoursesPage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseSubject, setNewCourseSubject] = useState('');
   const [newCourseDescription, setNewCourseDescription] = useState('');
 
   useEffect(() => { loadCourses(); }, [loadCourses]);
 
   const handleCreate = async () => {
     if (!newCourseName.trim()) return;
-    await createCourse(newCourseName.trim(), newCourseDescription.trim() || undefined);
+    const description = newCourseDescription.trim() || newCourseSubject.trim() || undefined;
+    await createCourse(newCourseName.trim(), description);
     setNewCourseName('');
+    setNewCourseSubject('');
     setNewCourseDescription('');
     setShowCreateForm(false);
   };
@@ -67,6 +71,14 @@ export default function CoursesPage() {
             autoFocus
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
           />
+          <input
+            type="text"
+            value={newCourseSubject}
+            onChange={(e) => setNewCourseSubject(e.target.value)}
+            placeholder="Subject (optional) — e.g. Biology, Calculus"
+            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          />
           <textarea
             value={newCourseDescription}
             onChange={(e) => setNewCourseDescription(e.target.value)}
@@ -74,13 +86,22 @@ export default function CoursesPage() {
             rows={2}
             className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm resize-none"
           />
-          <button
-            onClick={handleCreate}
-            disabled={!newCourseName.trim()}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            Create Course
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleCreate}
+              disabled={!newCourseName.trim()}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              Create Course
+            </button>
+            <Link
+              to="/coursera"
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-sm font-medium transition-colors border border-slate-600"
+            >
+              <HiDownload className="w-4 h-4" />
+              Import from connections
+            </Link>
+          </div>
         </div>
       )}
 

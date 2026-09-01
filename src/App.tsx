@@ -21,6 +21,9 @@ const FlashcardDetailPage = lazy(() => import('./pages/FlashcardDetailPage'));
 const PracticeTestsPage = lazy(() => import('./pages/PracticeTestsPage'));
 const PracticeTestDetailPage = lazy(() => import('./pages/PracticeTestDetailPage'));
 const CourseraPage = lazy(() => import('./pages/CourseraPage'));
+const NotesPage = lazy(() => import('./pages/NotesPage'));
+const DeadlinesPage = lazy(() => import('./pages/DeadlinesPage'));
+const NewFlashcardPage = lazy(() => import('./pages/NewFlashcardPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
@@ -53,10 +56,13 @@ export default function App() {
             <Route path="/study-guides" element={<SuspenseWrapper><StudyGuidesPage /></SuspenseWrapper>} />
             <Route path="/study-guides/:id" element={<SuspenseWrapper><StudyGuideDetailPage /></SuspenseWrapper>} />
             <Route path="/flashcards" element={<SuspenseWrapper><FlashcardsPage /></SuspenseWrapper>} />
+            <Route path="/flashcards/:deckId/new" element={<SuspenseWrapper><NewFlashcardPage /></SuspenseWrapper>} />
             <Route path="/flashcards/:deckId" element={<SuspenseWrapper><FlashcardDetailPage /></SuspenseWrapper>} />
             <Route path="/tests" element={<SuspenseWrapper><PracticeTestsPage /></SuspenseWrapper>} />
             <Route path="/tests/:testId" element={<SuspenseWrapper><PracticeTestDetailPage /></SuspenseWrapper>} />
             <Route path="/coursera" element={<SuspenseWrapper><CourseraPage /></SuspenseWrapper>} />
+            <Route path="/notes" element={<SuspenseWrapper><NotesPage /></SuspenseWrapper>} />
+            <Route path="/deadlines" element={<SuspenseWrapper><DeadlinesPage /></SuspenseWrapper>} />
             <Route path="/textbook" element={<SuspenseWrapper><TextbookPage /></SuspenseWrapper>} />
             <Route path="/settings" element={<SuspenseWrapper><SettingsPage /></SuspenseWrapper>} />
           </Route>
