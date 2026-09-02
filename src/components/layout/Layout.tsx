@@ -1,16 +1,14 @@
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import Header from './Header';
-import { useUIStore } from '../../store/uiStore';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileTabBar from './MobileTabBar';
 import MobileDrawer from './MobileDrawer';
 import MobileHeader from './MobileHeader';
 import GlobalChat from '../chat/GlobalChat';
 import TTSOverlay from '../shared/TTSOverlay';
+import CommandPalette from '../shared/CommandPalette';
 
 export default function Layout() {
-  const { sidebarOpen } = useUIStore();
   const isMobile = useIsMobile();
 
   if (isMobile) {
@@ -31,12 +29,12 @@ export default function Layout() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <Sidebar />
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-56' : 'ml-16'}`}>
-        <Header />
+      <div className="ml-16">
         <main className="p-6">
           <Outlet />
         </main>
       </div>
+      <CommandPalette />
       <GlobalChat />
       <TTSOverlay />
     </div>

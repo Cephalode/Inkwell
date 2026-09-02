@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { HiArrowLeft, HiRefresh } from 'react-icons/hi';
+import { PiArrowsClockwiseDuotone, PiCheckCircleDuotone } from 'react-icons/pi';
 import Spinner from '../components/shared/Spinner';
 import { useFlashcardDeck, useFlashcardGeneration } from '../hooks/useFlashcards';
 import { useFlashcardStore } from '../store/flashcardStore';
 
+/** Flashcard review — the Study Desk prototype's session flow: flip to
+ *  reveal, grade yourself, finish with a session summary. Grades map onto
+ *  the existing correct/incorrect review API. */
 export default function FlashcardDetailPage() {
   const { deckId } = useParams<{ deckId: string }>();
   const navigate = useNavigate();
@@ -14,30 +17,15 @@ export default function FlashcardDetailPage() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [sessionGrades, setSessionGrades] = useState({ got: 0, missed: 0 });
 
-  const deck = useFlashcardStore((s) =>
-    s.decks.find((d) => d.id === deckId)
-  );
+  const deck = useFlashcardStore((s) => s.decks.find((d) => d.id === deckId));
 
-  // Aggregate mastery across the whole deck (computed client-side from each
-  // card's review_stats). Recomputes reactively because the store updates the
-  // reviewed card in place, producing a new `cards` array reference.
   const mastery = useMemo(() => {
-    const reviewedCount = cards.filter(
-      (c) => (c.review_stats?.timesReviewed ?? 0) > 0
-    ).length;
-    const totalReviewed = cards.reduce(
-      (sum, c) => sum + (c.review_stats?.timesReviewed ?? 0),
-      0
-    );
-    const totalCorrect = cards.reduce(
-      (sum, c) => sum + (c.review_stats?.timesCorrect ?? 0),
-      0
-    );
-    // Cards with timesReviewed === 0 contribute 0 to both sums, so they are
-    // naturally excluded from the denominator.
-    const correctRate =
-      totalReviewed > 0 ? Math.round((totalCorrect / totalReviewed) * 100) : 0;
+    const reviewedCount = cards.filter((c) => (c.review_stats?.timesReviewed ?? 0) > 0).length;
+    const totalReviewed = cards.reduce((sum, c) => sum + (c.review_stats?.timesReviewed ?? 0), 0);
+    const totalCorrect = cards.reduce((sum, c) => sum + (c.review_stats?.timesCorrect ?? 0), 0);
+    const correctRate = totalReviewed > 0 ? Math.round((totalCorrect / totalReviewed) * 100) : 0;
     return { reviewedCount, correctRate };
   }, [cards]);
 
@@ -52,13 +40,36 @@ export default function FlashcardDetailPage() {
     await generate(deckId);
     setCurrentIndex(0);
     setIsFlipped(false);
+    setSessionGrades({ got: 0, missed: 0 });
   };
 
   const currentCard = cards[currentIndex];
   const totalCards = cards.length;
-  const progress_pct = totalCards > 0 ? ((currentIndex + 1) / totalCards) * 100 : 0;
+  const finished = totalCards > 0 && currentIndex >= totalCards;
+
+  const grade = async (correct: boolean) => {
+    if (currentCard) {
+      await useFlashcardStore.getState().reviewCard(currentCard.id, correct);
+    }
+    setSessionGrades((g) => (correct ? { ...g, got: g.got + 1 } : { ...g, missed: g.missed + 1 }));
+    setCurrentIndex((i) => i + 1);
+    setIsFlipped(false);
+  };
+
+  const restart = () => {
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setSessionGrades({ got: 0, missed: 0 });
+  };
 
   if (!deck) {
+    if (loading) {
+      return (
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
+      );
+    }
     return <div>Deck not found</div>;
   }
 
@@ -70,184 +81,147 @@ export default function FlashcardDetailPage() {
     );
   }
 
-  if (totalCards === 0) {
-    return (
-      <div className="space-y-6">
-        <button
-          onClick={() => navigate('/flashcards')}
-          className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          <HiArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-
-        <div className="text-center py-10">
-          <p className="text-slate-400 mb-4">No cards in this deck yet</p>
-          <button
-            onClick={handleRegenerate}
-            disabled={generating}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            {generating ? 'Generating…' : 'Generate Cards'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          onClick={() => navigate('/flashcards')}
-          className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          <HiArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-white">{deck.title}</h1>
-          <p className="text-sm text-slate-400">{totalCards} cards</p>
+    <div
+      className="mx-auto flex flex-col"
+      style={{ maxWidth: 640, minHeight: 'calc(100vh - 48px)', padding: 'var(--space-2)' }}
+    >
+      {/* Breadcrumb + regenerate */}
+      <div className="flex items-center justify-between" style={{ gap: 'var(--space-4)' }}>
+        <div className="card-kicker whitespace-nowrap" style={{ fontSize: 12 }}>
+          <a
+            className="cursor-pointer"
+            style={{ color: 'var(--color-accent)' }}
+            onClick={() => navigate('/flashcards')}
+          >
+            ← Flashcards
+          </a>{' '}
+          · {deck.title}
         </div>
         <button
+          className="btn btn-ghost"
+          style={{ fontSize: 13 }}
           onClick={handleRegenerate}
           disabled={generating || deck.status === 'generating'}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 transition-colors disabled:opacity-50"
-          title="Regenerate"
+          title="Regenerate cards"
         >
-          <HiRefresh className="w-5 h-5" />
+          <PiArrowsClockwiseDuotone size={15} />
+          &nbsp;{generating ? 'Generating…' : 'Regenerate'}
         </button>
       </div>
 
-      {/* Deck status */}
       {deck.status === 'error' && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
+        <div
+          style={{
+            marginTop: 'var(--space-3)',
+            padding: '10px 12px',
+            borderRadius: 'var(--radius-md)',
+            background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+            color: 'var(--color-danger)',
+            fontSize: 14,
+          }}
+        >
           {deck.error || 'Generation failed'}
         </div>
       )}
 
-      {/* Mastery summary */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-slate-700/50 bg-slate-800/40 px-4 py-3 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Reviewed</span>
-          <span className="font-semibold text-teal-300 tabular-nums">
-            {mastery.reviewedCount}
-            <span className="mx-1 text-slate-500">of</span>
-            {totalCards}
-          </span>
-        </div>
-        <div className="hidden sm:block h-4 w-px bg-slate-700/60" />
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Correct rate</span>
-          <span className="font-semibold text-teal-300 tabular-nums">
-            {mastery.correctRate}%
-          </span>
-        </div>
-      </div>
-
-      {/* Study area */}
-      <div className="space-y-4">
-        {/* Progress bar */}
-        <div className="w-full h-2 bg-slate-700/60 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-300"
-            style={{ width: `${progress_pct}%` }}
-          />
-        </div>
-
-        {/* Flashcard */}
+      {totalCards === 0 ? (
         <div
-          onClick={() => setIsFlipped(!isFlipped)}
-          className="h-64 bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-6 cursor-pointer hover:border-amber-500/50 transition-all flex items-center justify-center"
+          className="flex flex-1 flex-col items-center justify-center text-center"
+          style={{ gap: 'var(--space-3)' }}
         >
-          <div className="text-center max-w-md">
-            <p className="text-xs text-slate-500 mb-2 uppercase tracking-wide">
-              {isFlipped ? 'Back' : 'Front'}
-            </p>
-            <p className="text-xl font-semibold text-slate-200">
-              {isFlipped ? currentCard?.back : currentCard?.front}
-            </p>
-            <p className="text-xs text-slate-500 mt-4">Click to flip</p>
+          <div style={{ fontSize: 16, opacity: 0.6 }}>No cards in this deck yet</div>
+          <button className="btn btn-primary" onClick={handleRegenerate} disabled={generating}>
+            {generating ? 'Generating…' : 'Generate cards'}
+          </button>
+        </div>
+      ) : !finished ? (
+        <>
+          <div style={{ fontSize: 13, opacity: 0.5, marginTop: 'var(--space-2)' }}>
+            Card {Math.min(currentIndex + 1, totalCards)} of {totalCards}
+            {mastery.reviewedCount > 0 &&
+              ` · ${mastery.reviewedCount} reviewed all-time · ${mastery.correctRate}% correct`}
           </div>
-        </div>
 
-        {/* Controls */}
-        <div className="flex gap-3 justify-center">
-          <button
-            onClick={() => {
-              if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
-              setIsFlipped(false);
+          {/* The card */}
+          <div
+            onClick={() => setIsFlipped((f) => !f)}
+            className="flex flex-1 cursor-pointer flex-col items-center justify-center text-center"
+            style={{
+              gap: 'var(--space-4)',
+              border: '1px solid var(--color-neutral-300)',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--color-surface)',
+              margin: 'var(--space-4) 0',
+              padding: 'var(--space-8) var(--space-6)',
+              minHeight: 280,
             }}
-            disabled={currentIndex === 0}
-            className="px-6 py-2 bg-slate-700/50 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-lg font-medium transition-colors"
           >
-            Previous
-          </button>
+            {isFlipped ? (
+              <>
+                <div style={{ fontSize: 14, opacity: 0.5 }}>{currentCard?.front}</div>
+                <div style={{ width: 48, borderTop: '1px solid var(--color-neutral-400)' }} />
+                <div style={{ fontSize: 21, lineHeight: 1.5, maxWidth: '46ch' }}>
+                  {currentCard?.back}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 24, lineHeight: 1.45, maxWidth: '40ch' }}>
+                  {currentCard?.front}
+                </div>
+                <div style={{ fontSize: 12.5, opacity: 0.4 }}>Click to reveal</div>
+              </>
+            )}
+          </div>
 
-          <button
-            onClick={async () => {
-              if (currentCard) {
-                await useFlashcardStore.getState().reviewCard(currentCard.id, false);
-              }
-              if (currentIndex < totalCards - 1) {
-                setCurrentIndex(currentIndex + 1);
-                setIsFlipped(false);
-              }
-            }}
-            className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg font-medium transition-colors"
-          >
-            Missed
-          </button>
-
-          <button
-            onClick={async () => {
-              if (currentCard) {
-                await useFlashcardStore.getState().reviewCard(currentCard.id, true);
-              }
-              if (currentIndex < totalCards - 1) {
-                setCurrentIndex(currentIndex + 1);
-                setIsFlipped(false);
-              }
-            }}
-            className="px-6 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 rounded-lg font-medium transition-colors"
-          >
-            Got it
-          </button>
-
-          <button
-            onClick={() => {
-              if (currentIndex < totalCards - 1) setCurrentIndex(currentIndex + 1);
-              setIsFlipped(false);
-            }}
-            disabled={currentIndex === totalCards - 1}
-            className="px-6 py-2 bg-slate-700/50 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-lg font-medium transition-colors"
-          >
-            Next
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="text-center text-sm text-slate-500">
-          Card {currentIndex + 1} of {totalCards}
-        </div>
-
-        {/* Review stats */}
-        {currentCard?.review_stats && (
-          <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3 text-center text-xs text-slate-400 space-y-1">
-            <div>Reviewed: {currentCard.review_stats.timesReviewed} times</div>
-            <div>
-              Correct rate: {currentCard.review_stats.timesReviewed > 0
-                ? Math.round(
-                    (currentCard.review_stats.timesCorrect /
-                      currentCard.review_stats.timesReviewed) *
-                      100
-                  )
-                : 0}%
+          {isFlipped ? (
+            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+              <button
+                onClick={() => grade(false)}
+                className="btn btn-secondary"
+                style={{ flexDirection: 'column', gap: 2, padding: '10px 8px' }}
+              >
+                <span style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--color-accent-2-700)' }}>
+                  Missed it
+                </span>
+                <span style={{ fontSize: 11.5, opacity: 0.45 }}>see it again soon</span>
+              </button>
+              <button
+                onClick={() => grade(true)}
+                className="btn btn-secondary"
+                style={{ flexDirection: 'column', gap: 2, padding: '10px 8px' }}
+              >
+                <span style={{ fontWeight: 600, fontSize: 13.5 }}>Got it</span>
+                <span style={{ fontSize: 11.5, opacity: 0.45 }}>counts toward mastery</span>
+              </button>
             </div>
+          ) : (
+            <div className="text-center" style={{ fontSize: 13, opacity: 0.45, padding: '12px 0' }}>
+              How did you do? Grade yourself after flipping.
+            </div>
+          )}
+        </>
+      ) : (
+        <div
+          className="flex flex-1 flex-col items-center justify-center text-center"
+          style={{ gap: 'var(--space-3)' }}
+        >
+          <PiCheckCircleDuotone size={44} style={{ color: 'var(--color-accent)' }} />
+          <div style={{ fontSize: 22, fontWeight: 600 }}>Session done — {totalCards} cards</div>
+          <div style={{ fontSize: 14, opacity: 0.6 }}>
+            {sessionGrades.got} got it · {sessionGrades.missed} missed
           </div>
-        )}
-      </div>
+          <div className="flex" style={{ gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+            <button className="btn btn-primary" onClick={restart}>
+              Review again
+            </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/flashcards')}>
+              Back to decks
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
