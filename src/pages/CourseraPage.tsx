@@ -3,32 +3,11 @@ import Card from '../components/shared/Card';
 import Spinner from '../components/shared/Spinner';
 import EmptyState from '../components/shared/EmptyState';
 import {
-  getCourseraStatus, linkCoursera, unlinkCoursera, listCourseraCourses, getCourseOutline,
+  getCourseraStatus, linkCoursera, unlinkCoursera, listCourseraCourses, getCourseOutline, importCourseraCourse, importCourseraTextbooks,
   type CourseraCourse, type CourseraModule,
 } from '../services/api/coursera';
-import { HiPlay, HiDocumentText, HiCode, HiChatAlt2, HiLockClosed, HiClipboard, HiAcademicCap, HiLink, HiTrash, HiArrowLeft, HiCheckCircle } from 'react-icons/hi';
-
-const TYPE_ICON: Record<string, typeof HiPlay> = {
-  lecture: HiPlay,
-  supplement: HiDocumentText,
-  programming: HiCode,
-  gradedProgramming: HiCode,
-  staffGraded: HiClipboard,
-  peer: HiClipboard,
-  discussionPrompt: HiChatAlt2,
-  exam: HiAcademicCap,
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  lecture: 'Lecture',
-  supplement: 'Reading',
-  programming: 'Practice Lab',
-  gradedProgramming: 'Graded Lab',
-  staffGraded: 'Assignment',
-  peer: 'Peer Review',
-  discussionPrompt: 'Discussion',
-  exam: 'Exam',
-};
+import { HiDocumentText, HiLockClosed, HiAcademicCap, HiLink, HiTrash, HiArrowLeft, HiCheckCircle, HiPlus } from 'react-icons/hi';
+import { TYPE_ICON, TYPE_LABEL } from '../components/coursera/typeMeta';
 
 export default function CourseraPage() {
   const [linked, setLinked] = useState<boolean | null>(null);
@@ -38,6 +17,28 @@ export default function CourseraPage() {
   const [courses, setCourses] = useState<CourseraCourse[] | null>(null);
   const [outline, setOutline] = useState<{ course: CourseraCourse; modules: CourseraModule[] } | null>(null);
   const [loadingOutline, setLoadingOutline] = useState(false);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [bookNote, setBookNote] = useState('');
+
+  const markImported = (slug: string) =>
+    setCourses((cs) => (cs ? cs.map((c) => (c.slug === slug ? { ...c, imported: true } : c)) : cs));
+
+  const handleImport = async (course: CourseraCourse, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImporting(course.slug);
+    setBookNote('');
+    try {
+      if (!course.imported) {
+        await importCourseraCourse(course.slug, course.name);
+        markImported(course.slug);
+      }
+      try {
+        const r = await importCourseraTextbooks(course.slug);
+        setBookNote(`Textbooks: ${r.results.join('; ')}`);
+      } catch (err) { setBookNote(`Textbook import failed: ${err instanceof Error ? err.message : String(err)}`); }
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setImporting(null); }
+  };
 
   useEffect(() => {
     getCourseraStatus()
@@ -52,7 +53,7 @@ export default function CourseraPage() {
       setCauth('');
       setLinked(true);
       setCourses(await listCourseraCourses());
-    } catch (e: any) { setError(e.message || String(e)); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLinking(false); }
   };
 
@@ -64,7 +65,7 @@ export default function CourseraPage() {
   const openCourse = async (course: CourseraCourse) => {
     setLoadingOutline(true); setError('');
     try { setOutline({ course, modules: await getCourseOutline(course.slug) }); }
-    catch (e: any) { setError(e.message || String(e)); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLoadingOutline(false); }
   };
 
@@ -173,6 +174,7 @@ export default function CourseraPage() {
         </button>
       </div>
       {error && <p className="text-sm text-red-400">{error}</p>}
+      {bookNote && <p className="text-sm text-slate-400">{bookNote}</p>}
       {courses === null ? (
         <div className="flex justify-center py-10"><Spinner /></div>
       ) : courses.length === 0 ? (
@@ -198,10 +200,34 @@ export default function CourseraPage() {
                             ? <HiCheckCircle className="w-5 h-5 text-emerald-400" />
                             : <HiAcademicCap className={`w-5 h-5 ${status === 'enrolled' ? 'text-cyan-400' : 'text-slate-500'}`} />}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <h3 className="font-semibold text-white truncate group-hover:text-cyan-400 transition-colors">{c.name}</h3>
                           <p className="text-xs text-slate-500 mt-0.5 truncate">{c.slug}</p>
                         </div>
+                        {c.imported ? (
+                          <>
+                            <span className="shrink-0 flex items-center gap-1 text-[11px] text-emerald-400 font-medium px-2 py-1 bg-emerald-600/10 border border-emerald-500/20 rounded-md">
+                              <HiCheckCircle className="w-3.5 h-3.5" /> In Courses
+                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleImport(c, e); }}
+                              disabled={importing === c.slug}
+                              title="Fetch PDF textbooks into this course"
+                              className="shrink-0 flex items-center gap-1 text-xs text-cyan-400 font-medium px-2.5 py-1.5 bg-cyan-600/10 hover:bg-cyan-600/25 border border-cyan-500/30 rounded-md transition-colors disabled:opacity-50"
+                            >
+                              <HiDocumentText className="w-3.5 h-3.5" /> {importing === c.slug ? 'Fetching…' : 'Textbooks'}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={(e) => handleImport(c, e)}
+                            disabled={importing === c.slug}
+                            title="Import into Courses"
+                            className="shrink-0 flex items-center gap-1 text-xs text-cyan-400 font-medium px-2.5 py-1.5 bg-cyan-600/10 hover:bg-cyan-600/25 border border-cyan-500/30 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            <HiPlus className="w-3.5 h-3.5" /> {importing === c.slug ? 'Importing…' : 'Import'}
+                          </button>
+                        )}
                       </div>
                     </Card>
                   ))}

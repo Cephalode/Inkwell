@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HiArrowLeft, HiDocumentText, HiX, HiPlus, HiChevronUp, HiLockClosed, HiExternalLink, HiRefresh } from 'react-icons/hi';
 import EmptyState from '../shared/EmptyState';
@@ -83,14 +83,14 @@ export default function CourseDetail({ course, allDocuments, onBack, onRemoveDoc
     if (!course.courseraSlug || (outline && !force)) return;
     setOutlineLoading(true); setOutlineError('');
     try { setOutline(await getCourseOutline(course.courseraSlug)); }
-    catch (e: any) { setOutlineError(e.message || String(e)); }
+    catch (e) { setOutlineError(e instanceof Error ? e.message : String(e)); }
     finally { setOutlineLoading(false); }
   };
 
-  useEffect(() => {
-    if (hasCoursera && tab !== 'documents' && !outline && !outlineLoading && !outlineError) loadOutline();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, outline, outlineLoading, outlineError]);
+  const openTab = (t: Tab) => {
+    setTab(t);
+    if (hasCoursera && t !== 'documents' && !outlineLoading) loadOutline();
+  };
 
   const courseDocs = allDocuments.filter((d) => course.documentIds.includes(d.id));
   const availableDocs = allDocuments.filter((d) => !course.documentIds.includes(d.id));
@@ -149,7 +149,7 @@ export default function CourseDetail({ course, allDocuments, onBack, onRemoveDoc
         {tabs.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => openTab(t.id)}
             className={`px-3.5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === t.id
                 ? 'text-cyan-400 border-cyan-400'
