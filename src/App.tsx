@@ -21,6 +21,7 @@ const FlashcardDetailPage = lazy(() => import('./pages/FlashcardDetailPage'));
 const PracticeTestsPage = lazy(() => import('./pages/PracticeTestsPage'));
 const PracticeTestDetailPage = lazy(() => import('./pages/PracticeTestDetailPage'));
 const CourseraPage = lazy(() => import('./pages/CourseraPage'));
+const TopicMapPage = lazy(() => import('./pages/TopicMapPage'));
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<LoadingScreen />}>{children}</Suspense>;
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/documents" element={<DocumentsPage />} />
             <Route path="/documents/:id" element={<DocumentDetailPage />} />
+            <Route path="/topic-map" element={<SuspenseWrapper><TopicMapPage /></SuspenseWrapper>} />
             <Route path="/courses" element={<SuspenseWrapper><CoursesPage /></SuspenseWrapper>} />
             <Route path="/courses/:id" element={<SuspenseWrapper><CourseDetailPage /></SuspenseWrapper>} />
             <Route path="/study-guides" element={<SuspenseWrapper><StudyGuidesPage /></SuspenseWrapper>} />

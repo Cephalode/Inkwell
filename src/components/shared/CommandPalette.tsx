@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   PiHouseDuotone,
   PiFilesDuotone,
+  PiGraphDuotone,
   PiBookOpenDuotone,
   PiBookBookmarkDuotone,
   PiNotePencilDuotone,
@@ -92,6 +93,7 @@ export default function CommandPalette() {
           items: [
             { icon: PiHouseDuotone, title: 'Home', sub: 'Today & recent work', to: '/' },
             { icon: PiFilesDuotone, title: 'Documents', sub: 'All materials', to: '/documents' },
+            { icon: PiGraphDuotone, title: 'Topic map', sub: 'Topics across courses', to: '/topic-map' },
             { icon: PiBookOpenDuotone, title: 'Textbook', sub: 'Reader', to: '/textbook' },
             ...courses.map((c) => ({
               icon: PiBookBookmarkDuotone,

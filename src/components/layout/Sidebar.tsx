@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   PiHouseDuotone,
   PiMagnifyingGlassDuotone,
+  PiGraphDuotone,
   PiPlusBold,
   PiFilesDuotone,
   PiGearDuotone,
@@ -99,6 +100,13 @@ export default function Sidebar() {
       </RailButton>
       <RailButton title="Search — ⌘K" onClick={() => openModal('command-palette')}>
         <PiMagnifyingGlassDuotone size={19} />
+      </RailButton>
+      <RailButton
+        title="Topic map"
+        active={location.pathname.startsWith('/topic-map')}
+        onClick={() => navigate('/topic-map')}
+      >
+        <PiGraphDuotone size={19} />
       </RailButton>
 
       {courses.map((c) => (

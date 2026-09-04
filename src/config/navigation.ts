@@ -2,6 +2,7 @@ import { IconType } from 'react-icons';
 import {
   HiHome,
   HiDocumentText,
+  HiShare,
   HiBookOpen,
   HiAcademicCap,
   HiClipboardDocumentList,
@@ -21,6 +22,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: HiHome },
   { path: '/documents', label: 'Documents', icon: HiDocumentText },
+  { path: '/topic-map', label: 'Topic map', icon: HiShare },
   { path: '/textbook', label: 'Textbook', icon: HiBookOpen },
   { path: '/courses', label: 'Courses', icon: HiAcademicCap },
   { path: '/study-guides', label: 'Study Guides', icon: HiClipboardDocumentList },
