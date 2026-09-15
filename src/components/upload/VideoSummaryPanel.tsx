@@ -159,16 +159,16 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
   if (status === 'idle') {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-        <div className="w-12 h-12 flex items-center justify-center rounded-full bg-cyan-500/10">
-          <HiSparkles className="w-6 h-6 text-cyan-400" />
+        <div
+          className="w-12 h-12 flex items-center justify-center rounded-full"
+          style={{ background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }}
+        >
+          <HiSparkles className="w-6 h-6" style={{ color: 'var(--color-accent)' }} />
         </div>
-        <p className="text-sm text-slate-300 max-w-sm">
+        <p className="text-sm max-w-sm" style={{ opacity: 0.75 }}>
           Generate an AI-powered summary of this video's transcript — key points, formulas, definitions, and topics.
         </p>
-        <button
-          onClick={generate}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium transition-colors"
-        >
+        <button onClick={generate} className="btn btn-primary">
           <HiSparkles className="w-4 h-4" />
           Generate Summary
         </button>
@@ -181,7 +181,7 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10">
         <Spinner size="md" />
-        <span className="text-sm text-slate-300">{analyzingMessage}</span>
+        <span className="text-sm" style={{ opacity: 0.75 }}>{analyzingMessage}</span>
       </div>
     );
   }
@@ -190,14 +190,11 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
   if (status === 'error' && !summary) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-        <HiExclamation className="w-8 h-8 text-red-400" />
-        <p className="text-sm text-red-300 max-w-sm">
+        <HiExclamation className="w-8 h-8" style={{ color: 'var(--color-danger)' }} />
+        <p className="text-sm max-w-sm" style={{ color: 'var(--color-danger)' }}>
           {error || 'Something went wrong while generating the summary.'}
         </p>
-        <button
-          onClick={generate}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium transition-colors"
-        >
+        <button onClick={generate} className="btn btn-primary">
           <HiRefresh className="w-4 h-4" />
           Retry
         </button>
@@ -214,11 +211,16 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
       <div>
         <button
           onClick={toggleListen}
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+          className={`btn ${reading && ttsIsSpeaking ? 'btn-secondary' : 'btn-primary'}`}
+          style={
             reading && ttsIsSpeaking
-              ? 'bg-cyan-500/15 text-cyan-200 border-cyan-500/40 hover:bg-cyan-500/25'
-              : 'bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-500/50'
-          }`}
+              ? {
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  color: 'var(--color-accent-700)',
+                  borderColor: 'color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                }
+              : undefined
+          }
         >
           <HiVolumeUp className={`w-4 h-4 ${reading && ttsIsSpeaking ? 'animate-pulse' : ''}`} />
           {reading && ttsIsSpeaking ? 'Stop Listening' : 'Listen'}
@@ -237,11 +239,16 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
       {/* Summary */}
       {summary.summary && (
         <div
-          className={`rounded-lg border px-4 py-3 transition-colors ${
-            reading
-              ? 'border-cyan-500/60 bg-cyan-950/30 shadow-[0_0_12px_-2px_rgba(34,211,238,0.35)]'
-              : 'border-cyan-900/40 bg-cyan-950/20'
-          }`}
+          className="border px-4 py-3 transition-colors"
+          style={{
+            borderRadius: 'var(--radius-md)',
+            borderColor: reading
+              ? 'color-mix(in srgb, var(--color-accent) 60%, transparent)'
+              : 'color-mix(in srgb, var(--color-accent) 25%, transparent)',
+            background: reading
+              ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
+              : 'color-mix(in srgb, var(--color-accent) 5%, transparent)',
+          }}
         >
           <Markdown content={summary.summary} />
         </div>
@@ -253,8 +260,8 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
           <ul className="space-y-1">
             {summary.keyPoints.map((kp, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="text-cyan-400 mt-1 shrink-0">•</span>
-                <span className="flex-1 min-w-0 text-slate-300">
+                <span className="mt-1 shrink-0" style={{ color: 'var(--color-accent)' }}>•</span>
+                <span className="flex-1 min-w-0" style={{ opacity: 0.85 }}>
                   <Markdown content={kp} compact />
                 </span>
               </li>
@@ -279,7 +286,11 @@ export default function VideoSummaryPanel({ docId, existingSummary }: VideoSumma
         <DetailBlock icon={<HiBookOpen className="w-3.5 h-3.5" />} label="Definitions" color="purple">
           <ul className="space-y-1.5">
             {summary.definitions.map((d, i) => (
-              <li key={i} className="pl-3 border-l-2 border-purple-500/40 text-slate-300">
+              <li
+                key={i}
+                className="pl-3 border-l-2"
+                style={{ borderColor: 'color-mix(in srgb, var(--color-accent-2-700) 40%, transparent)', opacity: 0.85 }}
+              >
                 <Markdown content={d} compact />
               </li>
             ))}
@@ -302,13 +313,16 @@ interface DetailBlockProps {
 function DetailBlock({ icon, label, color, children }: DetailBlockProps) {
   const accent =
     color === 'cyan'
-      ? 'text-cyan-300'
+      ? 'var(--color-accent-700)'
       : color === 'teal'
-        ? 'text-teal-300'
-        : 'text-purple-300';
+        ? 'var(--color-accent-600)'
+        : 'var(--color-accent-2-700)';
   return (
     <div>
-      <div className={`flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide ${accent}`}>
+      <div
+        className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide"
+        style={{ color: accent }}
+      >
         {icon}
         {label}
       </div>
