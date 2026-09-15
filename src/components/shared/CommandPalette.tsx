@@ -4,6 +4,7 @@ import {
   PiHouseDuotone,
   PiFilesDuotone,
   PiGraphDuotone,
+  PiRocketLaunchDuotone,
   PiBookOpenDuotone,
   PiBookBookmarkDuotone,
   PiNotePencilDuotone,
@@ -14,6 +15,7 @@ import {
   PiPlusBold,
   PiMagnifyingGlassDuotone,
   PiExamDuotone,
+  PiVideoDuotone,
 } from 'react-icons/pi';
 import type { IconType } from 'react-icons';
 import { useUIStore } from '../../store/uiStore';
@@ -94,6 +96,8 @@ export default function CommandPalette() {
             { icon: PiHouseDuotone, title: 'Home', sub: 'Today & recent work', to: '/' },
             { icon: PiFilesDuotone, title: 'Documents', sub: 'All materials', to: '/documents' },
             { icon: PiGraphDuotone, title: 'Topic map', sub: 'Topics across courses', to: '/topic-map' },
+            { icon: PiRocketLaunchDuotone, title: 'Learn', sub: 'Roadmaps, XP & streak', to: '/learn' },
+            { icon: PiVideoDuotone, title: 'Videos', sub: 'Best videos for your milestones', to: '/learn/videos' },
             { icon: PiBookOpenDuotone, title: 'Textbook', sub: 'Reader', to: '/textbook' },
             ...courses.map((c) => ({
               icon: PiBookBookmarkDuotone,

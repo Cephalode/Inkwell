@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import pool from '../db.js';
-import { extractTextWithFonts, pagesToText } from '../src/pdfExtractor.js';
+import { extractTextWithFontsFromBuffer, pagesToText } from '../src/pdfExtractor.js';
 import { detectSubsections, parseJSON, type Subsection } from '../src/subsectionDetector.js';
 import { callGLM } from '../src/llm.js';
 import { send, setSSEHeaders } from '../src/sse.js';
+import { storageDownload } from '../src/storage.js';
 
 const router = Router();
 
@@ -64,15 +65,16 @@ router.post('/chapters/:id/analyze', async (req, res) => {
     if (docRows.length === 0) return fail('Chapter not found');
     const doc = docRows[0] as DocRow;
 
-    // 2. Extract text directly from the document's own file_path (standalone PDF).
+    // 2. Extract text directly from the document's own file (standalone PDF).
     const filePath = doc.file_path;
     if (!filePath) return fail('No PDF file path available for this chapter');
 
     // 3. Extract text with font metadata from the entire standalone PDF.
-    //    extractTextWithFonts clamps endPage to the document's actual page
+    //    extractTextWithFontsFromBuffer clamps endPage to the document's actual page
     //    count, so passing a very large value extracts all pages.
     send(res, { type: 'extracting', message: 'Extracting text from PDF…' });
-    const pages = await extractTextWithFonts(filePath, 1, Number.MAX_SAFE_INTEGER);
+    const pdfBuffer = await storageDownload(filePath);
+    const pages = await extractTextWithFontsFromBuffer(new Uint8Array(pdfBuffer), 1, Number.MAX_SAFE_INTEGER);
     const chapterText = pagesToText(pages);
     if (!chapterText.trim()) return fail('No extractable text found in this chapter');
 

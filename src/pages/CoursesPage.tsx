@@ -44,12 +44,15 @@ export default function CoursesPage() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">📚 Courses</h1>
-          <p className="text-slate-400">Organize your study materials into courses</p>
+          <div className="card-kicker" style={{ fontSize: 13 }}>Study</div>
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Courses</h1>
+          <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>
+            Organize your study materials into courses
+          </p>
         </div>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          className="btn btn-primary whitespace-nowrap"
         >
           {showCreateForm ? <HiX className="w-4 h-4" /> : <HiPlus className="w-4 h-4" />}
           {showCreateForm ? 'Cancel' : 'New Course'}
@@ -57,13 +60,13 @@ export default function CoursesPage() {
       </div>
 
       {showCreateForm && (
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 space-y-4">
+        <div className="card p-5 space-y-4">
           <input
             type="text"
             value={newCourseName}
             onChange={(e) => setNewCourseName(e.target.value)}
             placeholder="Course name"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+            className="input"
             autoFocus
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
           />
@@ -72,12 +75,12 @@ export default function CoursesPage() {
             onChange={(e) => setNewCourseDescription(e.target.value)}
             placeholder="Description (optional)"
             rows={2}
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm resize-none"
+            className="input resize-none"
           />
           <button
             onClick={handleCreate}
             disabled={!newCourseName.trim()}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors"
+            className="btn btn-primary"
           >
             Create Course
           </button>

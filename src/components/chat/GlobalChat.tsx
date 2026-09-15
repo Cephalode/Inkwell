@@ -1,11 +1,14 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock } from 'react-icons/hi';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock, HiBookOpen, HiDocumentText } from 'react-icons/hi';
 import Markdown from '../shared/Markdown';
 import { useChatStore } from '../../store/chatStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { runAgentTurn, type SystemMessageContext } from '../../services/chat/agent';
 import { generateUUID } from '../../utils/uuid';
+import { listTextbooks } from '../../services/api/client';
+import MentionPopover, { type MentionableItem } from './MentionPopover';
 import type { ChatMessage, ChatSession } from '../../types/chat';
+import type { Textbook } from '../../types/document';
 
 // ── Tool display labels ────────────────────────────────────────────────────
 
@@ -50,15 +53,16 @@ function ToolCallSummary() {
   return (
     <div className="flex justify-start">
       <div
-        className={`max-w-[85%] rounded-xl px-4 py-2 text-sm border ${
-          stillRunning
-            ? 'bg-slate-700/50 border-slate-600 text-slate-300'
-            : 'bg-slate-800 border-slate-700 text-slate-300'
-        }`}
+        className="max-w-[85%] px-4 py-2 text-sm"
+        style={{
+          background: stillRunning ? 'var(--color-neutral-200)' : 'var(--color-neutral-100)',
+          border: '1px solid var(--color-divider)',
+          borderRadius: 'var(--radius-md)',
+        }}
       >
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="flex items-center gap-2 w-full text-left hover:text-white transition-colors"
+          className="flex items-center gap-2 w-full text-left transition-colors"
         >
           {stillRunning ? (
             <Spinner />
@@ -71,27 +75,27 @@ function ToolCallSummary() {
               : `Used ${pendingTools.length} tool${pendingTools.length > 1 ? 's' : ''}`}
           </span>
           {errorCount > 0 && (
-            <span className="text-xs text-red-400">({errorCount} error{errorCount > 1 ? 's' : ''})</span>
+            <span className="text-xs" style={{ color: 'var(--color-danger)' }}>({errorCount} error{errorCount > 1 ? 's' : ''})</span>
           )}
-          <span className="text-xs ml-auto text-slate-500">{expanded ? '▲' : '▼'}</span>
+          <span className="text-xs ml-auto" style={{ opacity: 0.5 }}>{expanded ? '▲' : '▼'}</span>
         </button>
 
         {expanded && (
-          <div className="mt-2 space-y-1.5 pl-1 border-l-2 border-slate-600 ml-1">
+          <div className="mt-2 space-y-1.5 pl-1 border-l-2 ml-1" style={{ borderColor: 'var(--color-neutral-300)' }}>
             {pendingTools.map((tool, i) => (
               <div key={i} className="pl-3 py-1">
                 <div className="flex items-center gap-2 text-xs">
                   {tool.status === 'running' ? (
                     <Spinner className="w-3 h-3" />
                   ) : tool.status === 'done' ? (
-                    <span className="text-green-400">✓</span>
+                    <span style={{ color: 'var(--color-success)' }}>✓</span>
                   ) : (
-                    <span className="text-red-400">✗</span>
+                    <span style={{ color: 'var(--color-danger)' }}>✗</span>
                   )}
                   <span className="font-medium">{getToolDisplayLabel(tool.name)}</span>
                 </div>
                 {tool.result && (
-                  <p className="text-xs text-slate-400 mt-0.5 line-clamp-2">{tool.result}</p>
+                  <p className="text-xs mt-0.5 line-clamp-2" style={{ opacity: 0.6 }}>{tool.result}</p>
                 )}
               </div>
             ))}
@@ -106,12 +110,25 @@ function ToolCallSummary() {
 
 function ToolProgressIndicator() {
   const pendingTools = useChatStore((s) => s.pendingTools);
-  const runningTool = pendingTools.findLast((t) => t.status === 'running');
+  // NOTE: Avoid Array.prototype.findLast() (ES2023, Safari < 15.4 / Chrome < 97).
+  // It is a runtime API, so esbuild never transpiles/polyfills it — on older
+  // mobile browsers it throws "findLast is not a function" and crashes the
+  // React render tree (blank screen). reverse()+find() is universally supported
+  // and preserves the "last matching element" semantics.
+  const runningTool = [...pendingTools].reverse().find((t) => t.status === 'running');
   if (!runningTool) return null;
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-xl px-4 py-3 text-sm bg-cyan-900/30 border border-cyan-700/30 text-cyan-300 flex items-center gap-2">
+      <div
+        className="max-w-[85%] px-4 py-3 text-sm flex items-center gap-2"
+        style={{
+          background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+          borderRadius: 'var(--radius-md)',
+          color: 'var(--color-accent-700)',
+        }}
+      >
         <Spinner />
         <span className="text-xs">{getToolDisplayLabel(runningTool.name)}…</span>
       </div>
@@ -165,27 +182,32 @@ function SessionListDropdown({
   return (
     <div
       ref={ref}
-      className="absolute top-full left-0 mt-1 w-72 bg-slate-800 border border-slate-600/50 rounded-xl shadow-xl z-50 overflow-hidden"
+      className="card absolute top-full left-0 mt-1 w-72 z-50 overflow-hidden"
+      style={{ boxShadow: 'var(--shadow-lg)' }}
     >
       <button
         onClick={onNew}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-cyan-400 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-[var(--color-neutral-200)] transition-colors"
+        style={{ color: 'var(--color-accent)', borderBottom: '1px solid var(--color-divider)' }}
       >
         <HiPlus className="w-4 h-4" />
         New chat
       </button>
       <div className="max-h-64 overflow-y-auto">
         {sessions.length === 0 ? (
-          <div className="px-3 py-4 text-sm text-slate-500 text-center">No sessions yet</div>
+          <div className="px-3 py-4 text-sm text-center" style={{ opacity: 0.5 }}>No sessions yet</div>
         ) : (
           sessions.map((session) => (
             <div
               key={session.id}
               className={`group flex items-start gap-2 px-3 py-2.5 text-sm cursor-pointer transition-colors ${
-                session.id === activeSessionId
-                  ? 'bg-slate-700/60 text-white'
-                  : 'text-slate-300 hover:bg-slate-700/30'
+                session.id === activeSessionId ? '' : 'hover:bg-[var(--color-neutral-200)]'
               }`}
+              style={
+                session.id === activeSessionId
+                  ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' }
+                  : undefined
+              }
               onClick={() => {
                 onSelect(session.id);
                 onClose();
@@ -195,7 +217,7 @@ function SessionListDropdown({
                 <div className="font-medium truncate">
                   {session.title === 'New chat' ? 'New chat' : session.title}
                 </div>
-                <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
+                <div className="flex items-center gap-1 text-xs mt-0.5" style={{ opacity: 0.55 }}>
                   <HiClock className="w-3 h-3 shrink-0" />
                   <span>{relativeTime(session.updatedAt)}</span>
                   {session.messages.length > 0 && (
@@ -210,7 +232,7 @@ function SessionListDropdown({
                   e.stopPropagation();
                   onDelete(session.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                className="opacity-0 group-hover:opacity-100 p-0.5 text-[var(--color-neutral-600)] hover:text-[var(--color-danger)] transition-all shrink-0"
                 title="Delete session"
               >
                 <HiX className="w-3.5 h-3.5" />
@@ -244,10 +266,77 @@ export default function GlobalChat() {
     loadSessions,
   } = useChatStore();
   const currentDocument = useDocumentStore((s) => s.currentDocument);
+  const currentChapter = useDocumentStore((s) => s.currentChapter);
+  const currentChapterText = useDocumentStore((s) => s.currentChapterText);
+  const viewerPage = useDocumentStore((s) => s.viewerPage);
+  const documents = useDocumentStore((s) => s.documents);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── @ mention state (Feature 3) ────────────────────────────────────────
+  const [attachedRefs, setAttachedRefs] = useState<MentionableItem[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [textbooks, setTextbooks] = useState<Textbook[]>([]);
+
+  // Build the list of mentionable items (documents + textbook chapters).
+  const mentionItems = useMemo<MentionableItem[]>(() => {
+    const docItems: MentionableItem[] = documents.map((d) => ({
+      id: d.id,
+      name: d.name,
+      type: 'document' as const,
+    }));
+    const chapterItems: MentionableItem[] = [];
+    for (const tb of textbooks) {
+      for (const doc of tb.documents) {
+        chapterItems.push({
+          id: doc.id,
+          name: doc.name.replace(/^\d+\s+/, '').replace(/\.pdf$/i, '') || doc.name,
+          type: 'chapter' as const,
+          parentId: tb.id,
+        });
+      }
+    }
+    // De-duplicate by id (a doc might appear as both a document and a chapter)
+    const seen = new Set<string>();
+    return [...docItems, ...chapterItems].filter((it) => {
+      if (seen.has(it.id)) return false;
+      seen.add(it.id);
+      return true;
+    });
+  }, [documents, textbooks]);
+
+  // Filtered + capped view of mention items for the popover.
+  const filteredMentionItems = useMemo(() => {
+    const q = mentionQuery.trim().toLowerCase();
+    const base = q
+      ? mentionItems.filter((it) => it.name.toLowerCase().includes(q))
+      : mentionItems;
+    return base.slice(0, 8);
+  }, [mentionItems, mentionQuery]);
+
+  // Keep the active highlight within bounds as the filtered list changes.
+  useEffect(() => {
+    if (mentionIndex >= filteredMentionItems.length) {
+      setMentionIndex(0);
+    }
+  }, [filteredMentionItems.length, mentionIndex]);
+
+  // Load textbooks once so chapter names are available for @ mentions.
+  useEffect(() => {
+    let cancelled = false;
+    listTextbooks()
+      .then((tbs) => {
+        if (!cancelled) setTextbooks(tbs);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load sessions on mount
   useEffect(() => {
@@ -284,10 +373,63 @@ export default function GlobalChat() {
     ? activeSession.title
     : (activeSession?.title ?? 'New chat');
 
+  // ── @ mention input handling (Feature 3) ───────────────────────────────
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    const caret = e.target.selectionStart ?? val.length;
+    const before = val.slice(0, caret);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx !== -1) {
+      const between = before.slice(atIdx + 1);
+      // Only open the popover for an inline @query with no whitespace
+      if (!/\s/.test(between) && (atIdx === 0 || /\s/.test(before[atIdx - 1]))) {
+        setMentionOpen(true);
+        setMentionQuery(between);
+        setMentionIndex(0);
+      } else {
+        setMentionOpen(false);
+      }
+    } else {
+      setMentionOpen(false);
+    }
+    setInput(val);
+  };
+
+  const handleMentionSelect = (item: MentionableItem) => {
+    const val = input;
+    const caret = inputRef.current?.selectionStart ?? val.length;
+    const before = val.slice(0, caret);
+    const atIdx = before.lastIndexOf('@');
+    setMentionOpen(false);
+    setMentionQuery('');
+    if (atIdx === -1) return;
+    const after = val.slice(caret);
+    const mentionText = `@${item.name} `;
+    const newVal = val.slice(0, atIdx) + mentionText + after;
+    setInput(newVal);
+    setAttachedRefs((prev) =>
+      prev.some((r) => r.id === item.id) ? prev : [...prev, item],
+    );
+    // Refocus and place the caret right after the inserted mention
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        const pos = atIdx + mentionText.length;
+        el.focus();
+        el.setSelectionRange(pos, pos);
+      }
+    });
+  };
+
+  const removeAttachedRef = (id: string) => {
+    setAttachedRefs((prev) => prev.filter((r) => r.id !== id));
+  };
+
   const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || isLoading) return;
     setInput('');
+    setMentionOpen(false);
 
     const userMsg: ChatMessage = {
       id: generateUUID(),
@@ -306,6 +448,16 @@ export default function GlobalChat() {
         currentPage: window.location.pathname,
         currentDocumentName: currentDocument?.name,
         currentDocumentId: currentDocument?.id,
+        currentChapter: currentChapter
+          ? { id: currentChapter.id, title: currentChapter.title, parentId: currentChapter.parentId }
+          : null,
+        currentChapterId: currentChapter?.id ?? null,
+        currentChapterText,
+        viewerPage,
+        attachedFileRefs:
+          attachedRefs.length > 0
+            ? attachedRefs.map((r) => ({ id: r.id, name: r.name, type: r.type }))
+            : undefined,
       };
 
       const result = await runAgentTurn(msg, allMessages.filter((m) => m.id !== userMsg.id), context, {
@@ -353,40 +505,59 @@ export default function GlobalChat() {
       });
     }
 
+    // Clear attached references after the message has been sent
+    setAttachedRefs([]);
     setLoading(false);
-  }, [input, isLoading, currentDocument, addMessage, setLoading, setPendingTools]);
+  }, [input, isLoading, currentDocument, currentChapter, currentChapterText, viewerPage, attachedRefs, addMessage, setLoading, setPendingTools]);
 
   return (
     <>
-      {/* FAB button */}
+      {/* Edge pull tab — click to pull out the chat sidebar */}
       {!isOpen && (
         <button
           onClick={toggle}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full shadow-lg shadow-cyan-600/30 flex items-center justify-center transition-all hover:scale-110"
+          className="fixed right-0 top-1/2 z-40 flex h-16 w-7 -translate-y-1/2 items-center justify-center transition-colors hover:text-[var(--color-accent)]"
+          style={{
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-divider)',
+            borderRight: 'none',
+            borderRadius: 'var(--radius-md) 0 0 var(--radius-md)',
+            boxShadow: 'var(--shadow-md)',
+            color: 'var(--color-neutral-600)',
+          }}
           aria-label="Open chat"
+          title="Chat — ⌘L"
         >
-          <HiChatAlt2 className="w-7 h-7" />
+          <HiChatAlt2 className="h-4 w-4" />
         </button>
       )}
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] bg-slate-900 border-l border-slate-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
+        style={{
+          background: 'var(--color-surface)',
+          borderLeft: '1px solid var(--color-divider)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0">
+        <div
+          className="flex items-center justify-between px-4 py-3 shrink-0"
+          style={{ borderBottom: '1px solid var(--color-divider)' }}
+        >
           <div className="relative">
             <button
               onClick={() => setShowSessionList((v) => !v)}
-              className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors"
+              className="text-sm font-semibold flex items-center gap-1.5 hover:text-[var(--color-accent)] transition-colors"
             >
               💬 {sessionTitle}
               <HiChevronDown className={`w-3.5 h-3.5 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
             </button>
             {currentDocument && (
-              <span className="block text-xs text-slate-400 font-normal ml-5 mt-0.5">
+              <span className="block text-xs font-normal ml-5 mt-0.5" style={{ opacity: 0.6 }}>
                 · {currentDocument.name}
               </span>
             )}
@@ -407,14 +578,14 @@ export default function GlobalChat() {
           <div className="flex items-center gap-1">
             <button
               onClick={createNewSession}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+              className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
               title="New chat"
             >
               <HiPlus className="w-4 h-4" />
             </button>
             <button
               onClick={close}
-              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+              className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
             >
               <HiX className="w-5 h-5" />
             </button>
@@ -424,7 +595,7 @@ export default function GlobalChat() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
-            <div className="text-center text-slate-500 py-16">
+            <div className="text-center py-16" style={{ opacity: 0.5 }}>
               <p className="text-lg mb-2">💬 Ask anything</p>
               <p className="text-sm">
                 {currentDocument
@@ -437,11 +608,18 @@ export default function GlobalChat() {
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                  msg.role === 'user'
-                    ? 'bg-cyan-600 text-white whitespace-pre-wrap'
-                    : 'bg-slate-700 text-slate-200'
+                className={`max-w-[85%] text-sm ${
+                  msg.role === 'user' ? 'px-4 py-3 whitespace-pre-wrap' : ''
                 }`}
+                style={
+                  msg.role === 'user'
+                    ? {
+                        background: 'var(--color-accent)',
+                        color: 'var(--color-bg)',
+                        borderRadius: 'var(--radius-lg)',
+                      }
+                    : undefined
+                }
               >
                 {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
               </div>
@@ -452,11 +630,11 @@ export default function GlobalChat() {
           <ToolCallSummary />
           {isLoading && pendingTools.length === 0 && (
             <div className="flex justify-start">
-              <div className="bg-slate-700 rounded-xl px-4 py-3">
+              <div className="px-1 py-3">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -466,20 +644,114 @@ export default function GlobalChat() {
         </div>
 
         {/* Input */}
-        <div className="p-3 border-t border-slate-700/50 shrink-0">
+        <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--color-divider)' }}>
+          {/* Attached @ references (Feature 3) */}
+          {attachedRefs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {attachedRefs.map((ref) => (
+                <span
+                  key={ref.id}
+                  className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--color-accent-700)',
+                  }}
+                >
+                  {ref.type === 'chapter' ? (
+                    <HiBookOpen className="w-3 h-3 shrink-0" />
+                  ) : (
+                    <HiDocumentText className="w-3 h-3 shrink-0" />
+                  )}
+                  <span className="truncate max-w-[180px]">{ref.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachedRef(ref.id)}
+                    className="p-0.5 rounded-[var(--radius-sm)] hover:bg-[color-mix(in_srgb,var(--color-accent)_25%,transparent)] transition-colors"
+                    title="Remove reference"
+                  >
+                    <HiX className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-              placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
-              className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-            />
+            {/* Highlighted @-mention input (Feature 3) */}
+            <div
+              className="relative flex-1 border border-[var(--color-divider)] focus-within:border-[var(--color-accent)] transition-colors"
+              style={{
+                background: 'var(--color-bg)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              {/* Mirror: renders the value with @mentions highlighted in cyan,
+                  positioned behind a transparent input so the caret/typing
+                  is handled by the real input while styling comes from here. */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 px-4 py-2 text-sm leading-[1.5] whitespace-pre overflow-hidden pointer-events-none"
+              >
+                {input.split(/(@\S+)/g).map((part, i) =>
+                  part.startsWith('@') ? (
+                    <span key={i} className="font-medium" style={{ color: 'var(--color-accent)' }}>{part}</span>
+                  ) : (
+                    <span key={i}>{part}</span>
+                  ),
+                )}
+              </div>
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={(e) => {
+                  if (mentionOpen && filteredMentionItems.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setMentionIndex((i) => (i + 1) % filteredMentionItems.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setMentionIndex(
+                        (i) => (i - 1 + filteredMentionItems.length) % filteredMentionItems.length,
+                      );
+                      return;
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleMentionSelect(filteredMentionItems[mentionIndex]);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setMentionOpen(false);
+                      return;
+                    }
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    handleSend();
+                  }
+                }}
+                placeholder={currentDocument ? 'Ask about this document… (@ to reference)' : 'Ask a question… (@ to reference)'}
+                className="relative w-full px-4 py-2 bg-transparent border-0 text-sm text-transparent placeholder:text-[var(--color-neutral-500)] focus:outline-none"
+                style={{ caretColor: 'var(--color-accent)', borderRadius: 'var(--radius-md)' }}
+              />
+              {mentionOpen && (
+                <MentionPopover
+                  items={filteredMentionItems}
+                  activeIndex={mentionIndex}
+                  onSelect={handleMentionSelect}
+                  onClose={() => setMentionOpen(false)}
+                />
+              )}
+            </div>
             <button
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              className="btn btn-primary shrink-0 transition-colors"
+              style={{ padding: 8 }}
             >
               <HiPaperAirplane className="w-4 h-4" />
             </button>

@@ -4,6 +4,8 @@ import { useDocumentStore } from '../store/documentStore';
 import { useCourseStore } from '../store/courseStore';
 import { useFlashcardStore } from '../store/flashcardStore';
 import { useCourses } from '../hooks/useCourses';
+import { useLearningStore } from '../store/learningStore';
+import { useVideoStore } from '../store/videoStore';
 
 interface TodayTask {
   id: string;
@@ -21,12 +23,16 @@ export default function DashboardPage() {
   const courses = useCourseStore((s) => s.courses);
   const decks = useFlashcardStore((s) => s.decks);
   const fetchDecks = useFlashcardStore((s) => s.fetchDecks);
+  const overview = useLearningStore((s) => s.overview);
+  const plan = useVideoStore((s) => s.plan);
   const { loadCourses } = useCourses();
   const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadCourses();
     fetchDecks().catch(() => {});
+    useLearningStore.getState().loadOverview().catch(() => {});
+    useVideoStore.getState().loadPlan().catch(() => {});
   }, [loadCourses, fetchDecks]);
 
   const today = new Date().toLocaleDateString(undefined, {
@@ -41,6 +47,26 @@ export default function DashboardPage() {
 
   const tasks: TodayTask[] = useMemo(() => {
     const t: TodayTask[] = [];
+    const learnCourse = overview?.courses.find((c) => c.nextStep);
+    if (learnCourse?.nextStep) {
+      t.push({
+        id: 'learn-next',
+        label: `Continue ${learnCourse.nextStep.title} — ${learnCourse.courseName}`,
+        meta: `≈ ${learnCourse.nextStep.estimatedMinutes} min`,
+        to: `/learn/steps/${learnCourse.nextStep.id}`,
+      });
+    }
+    // The plan's top video is the best value for the learner's time right now.
+    const bestVideo = plan?.videos[0];
+    if (bestVideo && !bestVideo.watchedAt) {
+      const n = bestVideo.unlearnedMilestones || bestVideo.milestones.length;
+      t.push({
+        id: 'watch-best',
+        label: `Watch "${bestVideo.title}" — covers ${n} milestone${n === 1 ? '' : 's'}`,
+        meta: `${Math.round(bestVideo.durationSeconds / 60)} min`,
+        to: `/learn/videos/${bestVideo.id}`,
+      });
+    }
     const recentDoc = documents[0];
     if (recentDoc) {
       t.push({
@@ -77,7 +103,7 @@ export default function DashboardPage() {
       });
     }
     return t;
-  }, [documents, decks, unclassified]);
+  }, [documents, decks, unclassified, overview, plan]);
 
   const recentDocs = documents.slice(0, 5);
 
@@ -85,11 +111,28 @@ export default function DashboardPage() {
     <div style={{ maxWidth: 700, padding: 'var(--space-6) var(--space-4)' }}>
       <div className="card-kicker" style={{ fontSize: 13 }}>{today}</div>
       <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Today</h1>
-      <p style={{ fontSize: 15, opacity: 0.6, margin: '0 0 var(--space-6)' }}>
+      <p style={{ fontSize: 15, opacity: 0.6, margin: overview ? '0 0 var(--space-2)' : '0 0 var(--space-6)' }}>
         {documents.length === 0
           ? 'Add some materials and your plan builds itself.'
           : `Your plan across ${courses.length || 'all'} course${courses.length === 1 ? '' : 's'}.`}
       </p>
+      {overview && (
+        <div
+          className="flex flex-wrap items-baseline"
+          style={{ gap: 'var(--space-3)', fontSize: 13, margin: '0 0 var(--space-6)' }}
+        >
+          <span style={{ opacity: 0.7 }}>
+            🔥 {overview.profile.streak}-day streak · {overview.profile.xpToday}/{overview.profile.dailyGoalXp} XP today
+          </span>
+          <a
+            className="cursor-pointer"
+            style={{ color: 'var(--color-accent-700)' }}
+            onClick={() => navigate('/learn')}
+          >
+            Learn →
+          </a>
+        </div>
+      )}
 
       {/* Today's plan */}
       <div className="flex flex-col" style={{ gap: 'var(--space-4)' }}>

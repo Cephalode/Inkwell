@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { PiCardsDuotone } from 'react-icons/pi';
+import { PiArrowCounterClockwiseDuotone, PiCardsDuotone, PiSealCheckDuotone, PiSignpostDuotone } from 'react-icons/pi';
 import { FOUNDATION_COURSE, type TopicMap, type TopicNode } from '../../types/topicMap';
 import { FOUNDATION_HUE, courseHue, courseName } from '../../utils/buildTopicMap';
 
@@ -14,16 +14,25 @@ const dot = (hue: string, size: number): CSSProperties => ({
   flex: 'none',
 });
 
-interface TopicMapPanelProps {
-  map: TopicMap;
-  selected: TopicNode | null;
+interface TopicHandlers {
   onPick: (id: string) => void;
   onReview: (topic: TopicNode) => void;
   onOpenCourse: (topic: TopicNode) => void;
+  /** Roadmap topics: open the step that teaches them. */
+  onOpenStep: (topic: TopicNode) => void;
+  /** Roadmap topics: mark the skill learned, or reset it when it already is. */
+  onMarkKnown: (topic: TopicNode) => void;
 }
 
+interface TopicMapPanelProps extends TopicHandlers {
+  map: TopicMap;
+  selected: TopicNode | null;
+}
+
+const fullWidth: CSSProperties = { width: '100%', boxSizing: 'border-box', justifyContent: 'center' };
+
 /** The topic map's right-hand card: overall progress, or the selected topic. */
-export default function TopicMapPanel({ map, selected, onPick, onReview, onOpenCourse }: TopicMapPanelProps) {
+export default function TopicMapPanel({ map, selected, ...handlers }: TopicMapPanelProps) {
   const courseTopics = map.topics.filter((t) => t.courseId !== FOUNDATION_COURSE);
   const learned = courseTopics.filter((t) => t.mastery === 2).length;
   const inProgress = courseTopics.filter((t) => t.mastery === 1).length;
@@ -74,11 +83,11 @@ export default function TopicMapPanel({ map, selected, onPick, onReview, onOpenC
             })}
           </div>
           <div style={{ fontSize: 12.5, opacity: 0.5, lineHeight: 1.55, marginTop: 'var(--space-2)' }}>
-            Select a topic to see what it unlocks. As you review its flashcards, learned topics join the glowing core.
+            Select a topic to see what it unlocks. As you master topics they join the glowing core.
           </div>
         </>
       ) : (
-        <SelectedTopic map={map} topic={selected} onPick={onPick} onReview={onReview} onOpenCourse={onOpenCourse} />
+        <SelectedTopic map={map} topic={selected} {...handlers} />
       )}
     </aside>
   );
@@ -90,15 +99,17 @@ function SelectedTopic({
   onPick,
   onReview,
   onOpenCourse,
-}: {
-  map: TopicMap;
-  topic: TopicNode;
-  onPick: (id: string) => void;
-  onReview: (topic: TopicNode) => void;
-  onOpenCourse: (topic: TopicNode) => void;
-}) {
+  onOpenStep,
+  onMarkKnown,
+}: TopicHandlers & { map: TopicMap; topic: TopicNode }) {
   const hue = courseHue(map, topic.courseId);
   const isFoundation = topic.courseId === FOUNDATION_COURSE;
+  const learned = topic.mastery === 2;
+  const masteryText =
+    topic.masteryScore !== undefined && topic.mastery !== 3
+      ? `${MASTERY_LABEL[topic.mastery]} · ${Math.round(topic.masteryScore * 100)}%`
+      : MASTERY_LABEL[topic.mastery];
+  const reviewLabel = topic.cards ? `Review ${topic.cards} card${topic.cards === 1 ? '' : 's'}` : 'Make flashcards';
   const byId = new Map(map.topics.map((t) => [t.id, t]));
   const connections = map.edges
     .filter((e) => e.a === topic.id || e.b === topic.id)
@@ -130,7 +141,7 @@ function SelectedTopic({
       </div>
       <div>
         <div style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>{topic.label}</div>
-        <span style={masteryStyle}>{MASTERY_LABEL[topic.mastery]}</span>
+        <span style={masteryStyle}>{masteryText}</span>
         <div style={{ fontSize: 12.5, opacity: 0.6, marginTop: 8 }}>
           {isFoundation ? topic.source : `From ${topic.source}${topic.cards ? ` · ${topic.cards} card${topic.cards === 1 ? '' : 's'}` : ''}`}
         </div>
@@ -180,13 +191,34 @@ function SelectedTopic({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'var(--space-2)' }}>
-        <button type="button" className="btn btn-primary" onClick={() => onReview(topic)} style={{ width: '100%', boxSizing: 'border-box', justifyContent: 'center' }}>
-          <PiCardsDuotone size={15} />
-          &nbsp;{topic.cards ? `Review ${topic.cards} card${topic.cards === 1 ? '' : 's'}` : 'Make flashcards'}
-        </button>
+        {topic.stepId ? (
+          <>
+            <button type="button" className="btn btn-primary" onClick={() => onOpenStep(topic)} style={fullWidth}>
+              <PiSignpostDuotone size={15} />
+              &nbsp;Open topic
+            </button>
+            {topic.cards > 0 && (
+              <button type="button" className="btn btn-secondary" onClick={() => onReview(topic)} style={fullWidth}>
+                <PiCardsDuotone size={15} />
+                &nbsp;{reviewLabel}
+              </button>
+            )}
+          </>
+        ) : (
+          <button type="button" className="btn btn-primary" onClick={() => onReview(topic)} style={fullWidth}>
+            <PiCardsDuotone size={15} />
+            &nbsp;{reviewLabel}
+          </button>
+        )}
         {!isFoundation && (
-          <button type="button" className="btn btn-ghost" onClick={() => onOpenCourse(topic)} style={{ width: '100%', boxSizing: 'border-box', justifyContent: 'center' }}>
+          <button type="button" className="btn btn-ghost" onClick={() => onOpenCourse(topic)} style={fullWidth}>
             Open course
+          </button>
+        )}
+        {topic.skillId && (
+          <button type="button" className="btn btn-ghost" onClick={() => onMarkKnown(topic)} style={fullWidth}>
+            {learned ? <PiArrowCounterClockwiseDuotone size={14} /> : <PiSealCheckDuotone size={14} />}
+            &nbsp;{learned ? 'Reset mastery' : 'I already know this'}
           </button>
         )}
       </div>

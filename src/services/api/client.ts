@@ -44,7 +44,13 @@ interface DocumentRow {
   tags?: string[] | null;
   classifyStatus?: ClassifyStatus | null;
   videoSummary?: VideoSummary | null;
+  summary?: string | null;
+  summaryStatus?: string | null;
   filePath?: string | null;
+  startPage?: number | null;
+  endPage?: number | null;
+  chapterIndex?: number | null;
+  chapterTitle?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +85,7 @@ interface CourseRow {
   name: string;
   description?: string | null;
   color?: string | null;
+  courseraSlug?: string | null;
   documentIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
@@ -122,7 +129,13 @@ function mapDocument(r: DocumentRow): DocumentFile {
     tags: r.tags ?? [],
     classifyStatus: r.classifyStatus ?? undefined,
     videoSummary: r.videoSummary ?? undefined,
+    summary: r.summary ?? undefined,
+    summaryStatus: r.summaryStatus ?? undefined,
     filePath: r.filePath ?? undefined,
+    startPage: r.startPage ?? null,
+    endPage: r.endPage ?? null,
+    chapterIndex: r.chapterIndex ?? null,
+    chapterTitle: r.chapterTitle ?? null,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };
@@ -205,6 +218,13 @@ export async function deleteDocument(id: string): Promise<void> {
 export async function classifyDocument(id: string): Promise<{ label: string; subject: string; confidence: number; status: string }> {
   const res = await fetch(`${API_BASE}/documents/${id}/classify`, { method: 'POST' });
   if (!res.ok) throw new Error(`Failed to classify document: ${res.status}`);
+  return await res.json();
+}
+
+/** (Re)generate the auto-summary. Normally fires automatically after classify. */
+export async function generateSummary(id: string): Promise<{ summary: string; status: string }> {
+  const res = await fetch(`${API_BASE}/documents/${id}/summary`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to generate summary: ${res.status}`);
   return await res.json();
 }
 
@@ -418,6 +438,7 @@ function mapCourse(r: CourseRow): Course {
     name: r.name,
     description: r.description ?? '',
     color: r.color ?? '',
+    courseraSlug: r.courseraSlug ?? undefined,
     documentIds: r.documentIds ?? [],
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
@@ -455,12 +476,13 @@ export async function createCourse(course: { name: string; description?: string;
   return mapCourse(data);
 }
 
-export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds'>>): Promise<Course> {
+export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds' | 'courseraSlug'>>): Promise<Course> {
   const body: Record<string, unknown> = {};
   if (updates.name !== undefined) body.name = updates.name;
   if (updates.description !== undefined) body.description = updates.description;
   if (updates.color !== undefined) body.color = updates.color;
   if (updates.documentIds !== undefined) body.documentIds = updates.documentIds;
+  if (updates.courseraSlug !== undefined) body.courseraSlug = updates.courseraSlug;
   const res = await fetch(`${API_BASE}/courses/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

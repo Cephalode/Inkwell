@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { unlinkSync } from 'fs';
 import pool from '../db.js';
+import { storageDelete, isStorageKey } from '../src/storage.js';
 
 const router = Router();
 
@@ -38,6 +38,10 @@ interface DocRow {
   classify_status: string;
   video_summary: unknown;
   textbook_id: string | null;
+  start_page: number | null;
+  end_page: number | null;
+  chapter_index: number | null;
+  chapter_title: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +61,10 @@ function rowToDoc(row: DocRow) {
     classifyStatus: row.classify_status,
     videoSummary: row.video_summary,
     textbookId: row.textbook_id,
+    startPage: row.start_page,
+    endPage: row.end_page,
+    chapterIndex: row.chapter_index,
+    chapterTitle: row.chapter_title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -129,11 +137,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
     // Delete textbook (CASCADE deletes documents)
     await pool.query('DELETE FROM textbooks WHERE id = $1', [textbookId]);
 
-    // Remove files from disk
+    // Remove files from Storage
     for (const row of docRows) {
       const filePath = (row as { file_path: string | null }).file_path;
-      if (filePath) {
-        try { unlinkSync(filePath); } catch { /* already deleted */ }
+      if (filePath && isStorageKey(filePath)) {
+        try { await storageDelete(filePath); } catch { /* already deleted */ }
       }
     }
 

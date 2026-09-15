@@ -5,8 +5,7 @@ export interface AutoResizingTextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,
     UseAutoResizeOptions {}
 
-const BASE_CLASS =
-  'w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm resize-none';
+const BASE_CLASS = 'input resize-none';
 
 /**
  * A textarea that auto-resizes to fit its content.

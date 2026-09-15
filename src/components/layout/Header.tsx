@@ -10,6 +10,7 @@ export default function Header() {
   const { theme, toggleTheme } = useTheme();
   const { courses, loadCourses, createCourse } = useCourses();
   const navigate = useNavigate();
+  const [search, setSearch] = useState('');
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
@@ -45,19 +46,29 @@ export default function Header() {
       <button onClick={toggleSidebar} className="text-slate-400 hover:text-white transition-colors">
         <HiMenu className="w-6 h-6" />
       </button>
-      <div className="flex-1 max-w-md">
+        <div className="flex-1 max-w-md min-w-0">
         <div className="relative">
           <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
           <input
-            type="text"
+            type="search"
             placeholder="Search documents..."
+            aria-label="Search documents"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              navigate(`/documents${e.target.value ? `?q=${encodeURIComponent(e.target.value)}` : ''}`, { replace: true });
+            }}
             className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
           />
         </div>
       </div>
 
       {/* Course Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-shrink-0" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <nav
+        className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-1 min-w-0"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        aria-label="Courses"
+      >
         {courses.map((course) => (
           <NavLink
             key={course.id}
@@ -73,7 +84,7 @@ export default function Header() {
             {course.name}
           </NavLink>
         ))}
-      </div>
+      </nav>
 
       {/* Create Course Button — outside overflow container so dropdown isn't clipped */}
       <div className="relative flex-shrink-0" ref={createRef}>

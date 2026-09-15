@@ -30,7 +30,7 @@ export function useFlashcards() {
 }
 
 export function useFlashcardDeck(deckId: string) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!deckId);
   const [error, setError] = useState<string | null>(null);
   const cardsByDeckId = useFlashcardStore((state) => state.cardsByDeckId);
   const fetchCards = useFlashcardStore((state) => state.fetchCards);

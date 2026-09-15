@@ -13,13 +13,13 @@ export interface CallGLMOptions {
   temperature?: number;
   /** Max tokens to generate. Defaults to 4096. */
   maxTokens?: number;
-  /** Model name. Defaults to 'glm-5.3'. */
+  /** Model name. Defaults to 'glm-5.3-flash'. */
   model?: string;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-const DEFAULT_MODEL = 'glm-5.3';
+const DEFAULT_MODEL = 'glm-5.3-flash';
 
 /**
  * Call the GLM chat-completions API and return the raw text response.

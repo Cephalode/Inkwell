@@ -4,15 +4,18 @@ import {
   PiHouseDuotone,
   PiMagnifyingGlassDuotone,
   PiGraphDuotone,
+  PiRocketLaunchDuotone,
   PiPlusBold,
   PiFilesDuotone,
   PiGearDuotone,
   PiMoonDuotone,
   PiSunDuotone,
+  PiChatsDuotone,
 } from 'react-icons/pi';
 import { useUIStore } from '../../store/uiStore';
 import { useTheme } from '../../hooks/useTheme';
 import { useCourses } from '../../hooks/useCourses';
+import { useChatStore } from '../../store/chatStore';
 
 const ABBR_STOPWORDS = new Set(['introduction', 'intro', 'to', 'the', 'a', 'an', 'of', 'and', 'for', 'in']);
 
@@ -77,6 +80,8 @@ export default function Sidebar() {
   const { theme, toggleTheme } = useTheme();
   const { openModal } = useUIStore();
   const { courses, loadCourses } = useCourses();
+  const chatOpen = useChatStore((s) => s.isOpen);
+  const toggleChat = useChatStore((s) => s.toggle);
 
   useEffect(() => {
     loadCourses();
@@ -107,6 +112,20 @@ export default function Sidebar() {
         onClick={() => navigate('/topic-map')}
       >
         <PiGraphDuotone size={19} />
+      </RailButton>
+      <RailButton
+        title="Learn"
+        active={location.pathname.startsWith('/learn')}
+        onClick={() => navigate('/learn')}
+      >
+        <PiRocketLaunchDuotone size={19} />
+      </RailButton>
+      <RailButton
+        title="Chat — ⌘L"
+        active={chatOpen}
+        onClick={toggleChat}
+      >
+        <PiChatsDuotone size={19} />
       </RailButton>
 
       {courses.map((c) => (

@@ -10,7 +10,7 @@ export default function PracticeTestDetailPage() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
 
-  const { test, loading } = usePracticeTest(testId || '');
+  const { test, loading, error } = usePracticeTest(testId || '');
   const { generate, generating, generationProgress } = usePracticeTestGeneration();
   const { submit } = useTestAttempt();
 
@@ -36,10 +36,24 @@ export default function PracticeTestDetailPage() {
     return <div>Test not found</div>;
   }
 
-  if (loading || !test) {
+  // Spinner while the test is loading or about to load. Only fall back to
+  // "not found" once a fetch has completed with an error and still no test,
+  // so a hard refresh doesn't spin forever on a failed request.
+  if (!test) {
+    if (loading || !error) {
+      return (
+        <div className="flex justify-center py-20">
+          <Spinner />
+        </div>
+      );
+    }
     return (
-      <div className="flex justify-center py-20">
-        <Spinner />
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <p className="mb-4" style={{ opacity: 0.6 }}>Test not found</p>
+        <button onClick={() => navigate('/tests')} className="btn btn-secondary">
+          <HiArrowLeft className="w-4 h-4" />
+          Back to Tests
+        </button>
       </div>
     );
   }
@@ -86,19 +100,19 @@ export default function PracticeTestDetailPage() {
 
   if (showResults && results) {
     return (
-      <div className="space-y-6">
-        <button
-          onClick={() => navigate('/tests')}
-          className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-        >
+      <div className="space-y-6" style={{ maxWidth: 860 }}>
+        <button onClick={() => navigate('/tests')} className="btn btn-ghost">
           <HiArrowLeft className="w-4 h-4" />
           Back to Tests
         </button>
 
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-xl p-6 space-y-4">
-          <h1 className="text-3xl font-bold text-white">Test Results</h1>
-          <div className="text-5xl font-bold text-teal-400">{Math.round(results.score)}%</div>
-          <p className="text-slate-400">
+        <div className="card space-y-4" style={{ padding: 'var(--space-6)' }}>
+          <div className="card-kicker">Results</div>
+          <h1 style={{ fontSize: 28, margin: 0 }}>Test Results</h1>
+          <div style={{ fontSize: 48, fontWeight: 600, color: 'var(--color-accent)' }}>
+            {Math.round(results.score)}%
+          </div>
+          <p style={{ opacity: 0.6, margin: 0 }}>
             {results.totalQuestions} questions · {Math.round((results.score / 100) * results.totalQuestions)} correct
           </p>
         </div>
@@ -108,20 +122,17 @@ export default function PracticeTestDetailPage() {
           {questions.map((q) => {
             const graded = results.gradedAnswers[q.id];
             return (
-              <div
-                key={q.id}
-                className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4 space-y-3"
-              >
+              <div key={q.id} className="card p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-200 mb-1">{q.prompt}</p>
+                    <p className="text-sm font-semibold mb-1">{q.prompt}</p>
                     {q.qtype === 'mcq' || q.qtype === 'true_false' ? (
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs" style={{ opacity: 0.7 }}>
                         {graded?.isCorrect ? (
-                          <span className="text-green-400">✓ Correct</span>
+                          <span style={{ color: 'var(--color-success)' }}>✓ Correct</span>
                         ) : (
                           <>
-                            <span className="text-red-400">✗ Incorrect</span>
+                            <span style={{ color: 'var(--color-danger)' }}>✗ Incorrect</span>
                             <br />
                             Correct: {String(q.correct_answer ?? '')}
                           </>
@@ -129,27 +140,33 @@ export default function PracticeTestDetailPage() {
                       </p>
                     ) : (
                       <div className="space-y-1">
-                        <p className="text-xs text-slate-400">
-                          Your answer: <span className="text-slate-300">{graded?.studentAnswer}</span>
+                        <p className="text-xs" style={{ opacity: 0.6 }}>
+                          Your answer: <span style={{ opacity: 0.9 }}>{graded?.studentAnswer}</span>
                         </p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs">
                           {graded?.isCorrect ? (
-                            <span className="text-green-400">✓ Correct</span>
+                            <span style={{ color: 'var(--color-success)' }}>✓ Correct</span>
                           ) : (
-                            <span className="text-red-400">✗ {graded?.feedback}</span>
+                            <span style={{ color: 'var(--color-danger)' }}>✗ {graded?.feedback}</span>
                           )}
                         </p>
                       </div>
                     )}
                   </div>
                   <div
-                    className={`text-2xl font-bold ${graded?.isCorrect ? 'text-green-400' : 'text-red-400'}`}
+                    className="text-2xl font-semibold"
+                    style={{
+                      color: graded?.isCorrect ? 'var(--color-success)' : 'var(--color-danger)',
+                    }}
                   >
                     {graded?.pointsAwarded}/{1}
                   </div>
                 </div>
                 {q.explanation && (
-                  <p className="text-xs text-slate-400 border-t border-slate-700/50 pt-3">
+                  <p
+                    className="text-xs pt-3"
+                    style={{ opacity: 0.6, borderTop: '1px solid var(--color-divider)' }}
+                  >
                     {q.explanation}
                   </p>
                 )}
@@ -158,10 +175,7 @@ export default function PracticeTestDetailPage() {
           })}
         </div>
 
-        <button
-          onClick={() => navigate('/tests')}
-          className="w-full px-4 py-3 bg-teal-600 hover:bg-teal-500 text-white rounded-lg font-medium transition-colors"
-        >
+        <button onClick={() => navigate('/tests')} className="btn btn-primary w-full">
           All Tests
         </button>
       </div>
@@ -172,24 +186,23 @@ export default function PracticeTestDetailPage() {
     const isGenerating = generating || !!generationProgress[testId] || test.status === 'generating';
     return (
       <div className="space-y-6 text-center py-20">
-        <p className="text-slate-400">
+        <p style={{ opacity: 0.6 }}>
           {isGenerating ? 'Generating questions…' : 'No questions in this test yet'}
         </p>
         {test.status === 'error' && (
-          <p className="text-sm text-red-400">{test.error || 'Generation failed'}</p>
+          <p className="text-sm" style={{ color: 'var(--color-danger)' }}>
+            {test.error || 'Generation failed'}
+          </p>
         )}
         <div className="flex justify-center gap-3">
-          <button
-            onClick={() => navigate('/tests')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-colors"
-          >
+          <button onClick={() => navigate('/tests')} className="btn btn-secondary">
             <HiArrowLeft className="w-4 h-4" />
             Back to Tests
           </button>
           <button
             onClick={() => generate(testId)}
             disabled={isGenerating}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 disabled:bg-slate-700 text-white rounded-lg font-medium transition-colors"
+            className="btn btn-primary"
           >
             {isGenerating ? 'Generating…' : 'Generate Questions'}
           </button>
@@ -199,49 +212,70 @@ export default function PracticeTestDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <button
-        onClick={() => navigate('/tests')}
-        className="flex items-center gap-2 px-3 py-1.5 text-slate-400 hover:text-slate-200 transition-colors"
-      >
+    <div className="space-y-6" style={{ maxWidth: 860 }}>
+      <button onClick={() => navigate('/tests')} className="btn btn-ghost">
         <HiArrowLeft className="w-4 h-4" />
         Back to Tests
       </button>
 
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">{test.title}</h1>
-        <p className="text-slate-400">{totalQuestions} questions</p>
+        <h1 style={{ fontSize: 28, margin: '0 0 var(--space-1)' }}>{test.title}</h1>
+        <p style={{ opacity: 0.6, margin: 0 }}>{totalQuestions} questions</p>
       </div>
 
       {/* Progress bar */}
-      <div className="w-full h-2 bg-slate-700/60 rounded-full overflow-hidden">
+      <div
+        className="w-full h-2 overflow-hidden"
+        style={{ background: 'var(--color-neutral-300)', borderRadius: 'var(--radius-sm)' }}
+      >
         <div
-          className="h-full bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-300"
-          style={{ width: `${progress_pct}%` }}
+          className="h-full transition-all duration-300"
+          style={{ background: 'var(--color-accent)', width: `${progress_pct}%` }}
         />
       </div>
 
       {/* Question */}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-6 space-y-4">
+      <div className="card space-y-4" style={{ padding: 'var(--space-6)' }}>
         <div className="flex justify-between items-start">
           <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
+            <p className="text-xs uppercase tracking-wide mb-2" style={{ opacity: 0.5 }}>
               Question {currentQuestionIndex + 1} of {totalQuestions}
             </p>
-            <h2 className="text-xl font-semibold text-slate-200">{currentQuestion.prompt}</h2>
+            <h2 className="text-xl">{currentQuestion.prompt}</h2>
           </div>
           {currentQuestion.qtype === 'true_false' && (
-            <span className="text-xs bg-slate-700/50 text-slate-400 px-2 py-1 rounded">
+            <span
+              className="text-xs px-2 py-1 whitespace-nowrap"
+              style={{
+                background: 'var(--color-neutral-200)',
+                borderRadius: 'var(--radius-sm)',
+                opacity: 0.75,
+              }}
+            >
               True/False
             </span>
           )}
           {currentQuestion.qtype === 'mcq' && (
-            <span className="text-xs bg-slate-700/50 text-slate-400 px-2 py-1 rounded">
+            <span
+              className="text-xs px-2 py-1 whitespace-nowrap"
+              style={{
+                background: 'var(--color-neutral-200)',
+                borderRadius: 'var(--radius-sm)',
+                opacity: 0.75,
+              }}
+            >
               Multiple Choice
             </span>
           )}
           {currentQuestion.qtype === 'short_answer' && (
-            <span className="text-xs bg-slate-700/50 text-slate-400 px-2 py-1 rounded">
+            <span
+              className="text-xs px-2 py-1 whitespace-nowrap"
+              style={{
+                background: 'var(--color-neutral-200)',
+                borderRadius: 'var(--radius-sm)',
+                opacity: 0.75,
+              }}
+            >
               Short Answer
             </span>
           )}
@@ -254,7 +288,12 @@ export default function PracticeTestDetailPage() {
               {(currentQuestion.options || []).map((option: string, idx: number) => (
                 <label
                   key={idx}
-                  className="flex items-center gap-3 p-3 bg-slate-900/50 border border-slate-700/50 rounded-lg cursor-pointer hover:border-teal-600/50 transition-colors"
+                  className="flex items-center gap-3 p-3 cursor-pointer transition-colors hover:border-[var(--color-accent)]"
+                  style={{
+                    background: 'var(--color-neutral-100)',
+                    border: '1px solid var(--color-neutral-300)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
                 >
                   <input
                     type="radio"
@@ -263,8 +302,9 @@ export default function PracticeTestDetailPage() {
                     checked={answers[currentQuestion.id] === option}
                     onChange={(e) => handleAnswer(e.target.value)}
                     className="w-4 h-4"
+                    style={{ accentColor: 'var(--color-accent)' }}
                   />
-                  <span className="text-slate-200">{option}</span>
+                  <span>{option}</span>
                 </label>
               ))}
             </div>
@@ -278,7 +318,12 @@ export default function PracticeTestDetailPage() {
               ].map(({ label, value }) => (
                 <label
                   key={label}
-                  className="flex items-center gap-3 p-3 bg-slate-900/50 border border-slate-700/50 rounded-lg cursor-pointer hover:border-teal-600/50 transition-colors"
+                  className="flex items-center gap-3 p-3 cursor-pointer transition-colors hover:border-[var(--color-accent)]"
+                  style={{
+                    background: 'var(--color-neutral-100)',
+                    border: '1px solid var(--color-neutral-300)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
                 >
                   <input
                     type="radio"
@@ -287,8 +332,9 @@ export default function PracticeTestDetailPage() {
                     checked={answers[currentQuestion.id] === value}
                     onChange={() => handleAnswer(value)}
                     className="w-4 h-4"
+                    style={{ accentColor: 'var(--color-accent)' }}
                   />
-                  <span className="text-slate-200">{label}</span>
+                  <span>{label}</span>
                 </label>
               ))}
             </div>
@@ -299,7 +345,7 @@ export default function PracticeTestDetailPage() {
               value={String(answers[currentQuestion.id] || '')}
               onChange={(e) => handleAnswer(e.target.value)}
               placeholder="Type your answer here…"
-              className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 text-sm resize-none"
+              className="input resize-none"
               rows={4}
             />
           )}
@@ -311,27 +357,20 @@ export default function PracticeTestDetailPage() {
         <button
           onClick={handlePrevious}
           disabled={currentQuestionIndex === 0}
-          className="px-6 py-2 bg-slate-700/50 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-lg font-medium transition-colors"
+          className="btn btn-secondary"
         >
           Previous
         </button>
 
         <div className="flex gap-3">
           {currentQuestionIndex < totalQuestions - 1 && (
-            <button
-              onClick={handleNext}
-              className="px-6 py-2 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg font-medium transition-colors"
-            >
+            <button onClick={handleNext} className="btn btn-secondary">
               Next
             </button>
           )}
 
           {currentQuestionIndex === totalQuestions - 1 && (
-            <button
-              onClick={handleSubmit}
-              disabled={submittingTest}
-              className="px-6 py-2 bg-teal-600 hover:bg-teal-500 disabled:bg-slate-700 text-white rounded-lg font-medium transition-colors"
-            >
+            <button onClick={handleSubmit} disabled={submittingTest} className="btn btn-primary">
               {submittingTest ? 'Grading…' : 'Submit Test'}
             </button>
           )}
@@ -341,10 +380,8 @@ export default function PracticeTestDetailPage() {
       {/* Previous attempts */}
       {attempts.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-            Previous Attempts
-          </h3>
-          <div className="space-y-2">
+          <h3 className="section-label" style={{ margin: 0 }}>Previous Attempts</h3>
+          <div className="flex flex-col">
             {[...attempts]
               .sort(
                 (a, b) =>
@@ -354,15 +391,22 @@ export default function PracticeTestDetailPage() {
               .map((attempt) => (
                 <div
                   key={attempt.id}
-                  className="flex items-center justify-between bg-slate-800/50 border border-slate-700/50 rounded-lg px-4 py-3"
+                  className="flex items-center justify-between"
+                  style={{
+                    padding: '10px 0',
+                    borderTop: '1px solid var(--color-neutral-300)',
+                  }}
                 >
-                  <span className="text-sm text-slate-400">
+                  <span className="text-sm" style={{ opacity: 0.6 }}>
                     {new Date(attempt.completed_at ?? attempt.started_at).toLocaleDateString(
                       'en-US',
                       { month: 'short', day: 'numeric', year: 'numeric' },
                     )}
                   </span>
-                  <span className="text-sm font-semibold text-teal-400">
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: 'var(--color-accent-700)' }}
+                  >
                     {Math.round(attempt.score)}%
                   </span>
                 </div>

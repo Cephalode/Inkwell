@@ -10,7 +10,6 @@ export interface AIConfig {
 export interface AppSettings {
   ai: AIConfig;
   theme: ThemeMode;
-  defaultSummaryType: 'tldr' | 'keypoints' | 'detailed';
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -21,5 +20,4 @@ export const DEFAULT_SETTINGS: AppSettings = {
     model: 'gpt-4o-mini',
   },
   theme: 'dark',
-  defaultSummaryType: 'keypoints',
 };

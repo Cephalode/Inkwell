@@ -1,5 +1,6 @@
 import pool from '../db.js';
-import { extractTextWithFonts, pagesToText } from './pdfExtractor.js';
+import { extractTextWithFontsFromBuffer, pagesToText } from './pdfExtractor.js';
+import { storageDownload, isStorageKey } from './storage.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -224,10 +225,12 @@ export async function collectMaterials(opts: {
       continue;
     }
 
-    // 5. PDF extraction fallback.
-    if (doc.file_path) {
+    // 5. PDF extraction fallback (Supabase Storage).
+    if (doc.file_path && isStorageKey(doc.file_path)) {
       try {
-        const pages = await extractTextWithFonts(doc.file_path, 1, 500);
+        const pages = await extractTextWithFontsFromBuffer(
+          new Uint8Array(await storageDownload(doc.file_path)), 1, 500,
+        );
         const text = pagesToText(pages);
         if (text.trim()) {
           units.push({

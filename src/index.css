@@ -183,6 +183,16 @@ input[type='checkbox'] {
 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
 
+.btn-danger { background: var(--color-danger); color: #fff; }
+.btn-danger:hover { background: color-mix(in srgb, var(--color-danger) 85%, var(--color-text)); }
+.btn-danger:active { background: color-mix(in srgb, var(--color-danger) 75%, var(--color-text)); }
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+}
+
 .input {
   width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
   color: var(--color-text); caret-color: var(--color-accent);

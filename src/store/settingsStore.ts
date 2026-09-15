@@ -9,7 +9,6 @@ interface SettingsState {
   setBaseUrl: (url: string) => void;
   setModel: (model: string) => void;
   setTheme: (theme: ThemeMode) => void;
-  setDefaultSummaryType: (t: 'tldr' | 'keypoints' | 'detailed') => void;
   resetSettings: () => void;
 }
 
@@ -43,7 +42,6 @@ export const useSettingsStore = create<SettingsState>()(
         document.documentElement.className = theme;
         return { settings: { ...s.settings, theme } };
       }),
-      setDefaultSummaryType: (t) => set((s) => ({ settings: { ...s.settings, defaultSummaryType: t } })),
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
     }),
     { name: STORE_KEY }

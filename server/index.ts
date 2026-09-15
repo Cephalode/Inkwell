@@ -18,6 +18,10 @@ import studyGuidesRouter from './routes/studyGuides.js';
 import flashcardsRouter from './routes/flashcards.js';
 import practiceTestsRouter from './routes/practiceTests.js';
 import courseraRouter from './routes/coursera.js';
+import integrationsRouter from './routes/integrations.js';
+import roadmapsRouter from './routes/roadmaps.js';
+import learningRouter from './routes/learning.js';
+import videosRouter from './routes/videos.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -43,7 +47,7 @@ interface ChatPayload {
   tools?: unknown[];
 }
 
-const MODEL = 'glm-5.3';
+const MODEL = 'glm-5.3-flash';
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
 const app = express();
@@ -91,6 +95,10 @@ app.use('/api/study-guides', studyGuidesRouter);
 app.use('/api/flashcard-decks', flashcardsRouter);
 app.use('/api/practice-tests', practiceTestsRouter);
 app.use('/api/coursera', courseraRouter);
+app.use('/api/integrations', integrationsRouter);
+app.use('/api', roadmapsRouter);
+app.use('/api', learningRouter);
+app.use('/api', videosRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {
@@ -173,7 +181,7 @@ app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRe
 //
 // Allow-listed table names (cannot be parameterised in SQL) — these match the
 // `VALID_TABLES` set in generationPipeline.ts and the schema in schema.sql.
-const REAPABLE_TABLES = ['study_guides', 'flashcard_decks', 'practice_tests'] as const;
+const REAPABLE_TABLES = ['study_guides', 'flashcard_decks', 'practice_tests', 'roadmaps'] as const;
 const REAPER_INTERVAL_MS = 60_000;
 
 async function reapStuckGenerations(): Promise<void> {

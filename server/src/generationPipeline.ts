@@ -47,6 +47,7 @@ const VALID_TABLES = new Set([
   'study_guides',
   'flashcard_decks',
   'practice_tests',
+  'roadmaps',
 ]);
 
 // ── Types ───────────────────────────────────────────────────────────────────

@@ -6,7 +6,23 @@ import type { KGGraph, KGNode, KGNodeType } from '../../types/knowledgeGraph';
 interface NodeDetailPanelProps {
   graph: KGGraph;
   onOpenDocument?: (documentId: string) => void;
+  /** Topic nodes taught by a roadmap step: open that step in the learning suite. */
+  onOpenStep?: (stepId: string) => void;
 }
+
+const MASTERY_COLORS: Record<NonNullable<KGNode['mastery']>, string> = {
+  0: '#e8b93b',
+  1: '#38a6cf',
+  2: '#2f9e57',
+  3: '#2f9e57',
+};
+
+const MASTERY_LABELS: Record<NonNullable<KGNode['mastery']>, string> = {
+  0: 'Not started',
+  1: 'In progress',
+  2: 'Learned',
+  3: 'Foundation · assumed known',
+};
 
 const typeColors: Record<KGNodeType, string> = {
   document: '#14b8a6',
@@ -16,6 +32,7 @@ const typeColors: Record<KGNodeType, string> = {
   subject: '#22c55e',
   chat: '#6b7280',
   chapter: '#06b6d4',
+  topic: '#e8b93b',
 };
 
 const typeLabels: Record<KGNodeType, string> = {
@@ -26,6 +43,7 @@ const typeLabels: Record<KGNodeType, string> = {
   subject: 'Subject',
   chat: 'Chat',
   chapter: 'Chapter',
+  topic: 'Topic',
 };
 
 const typeIcons: Record<KGNodeType, React.ReactNode> = {
@@ -36,6 +54,7 @@ const typeIcons: Record<KGNodeType, React.ReactNode> = {
   subject: <HiOutlineBookOpen className="w-3.5 h-3.5" />,
   chat: <HiOutlineChatBubbleLeftRight className="w-3.5 h-3.5" />,
   chapter: <HiOutlineDocumentDuplicate className="w-3.5 h-3.5" />,
+  topic: <HiOutlineAcademicCap className="w-3.5 h-3.5" />,
 };
 
 function getConnectedNodes(node: KGNode, graph: KGGraph): KGNode[] {
@@ -51,13 +70,19 @@ function getConnectedByType(node: KGNode, graph: KGGraph, type: KGNodeType): KGN
   return getConnectedNodes(node, graph).filter((n) => n.type === type);
 }
 
-export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps) {
+/** Topic nodes take their mastery colour (matches GraphViewer); everything else its type colour. */
+function nodeColor(node: KGNode): string {
+  return node.type === 'topic' ? MASTERY_COLORS[node.mastery ?? 0] : typeColors[node.type];
+}
+
+export function NodeDetailPanel({ graph, onOpenDocument, onOpenStep }: NodeDetailPanelProps) {
   const { selectedNode, setSelectedNode } = useKnowledgeGraphStore();
 
   if (!selectedNode) return null;
 
   const connections = getConnectedNodes(selectedNode, graph);
-  const color = typeColors[selectedNode.type];
+  const color = nodeColor(selectedNode);
+  const stepId = selectedNode.type === 'topic' ? selectedNode.stepId : undefined;
 
   return (
     <AnimatePresence>
@@ -70,13 +95,20 @@ export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps)
           transition={{ type: 'spring', damping: 25, stiffness: 250 }}
           className="absolute top-4 right-4 z-10 w-80"
         >
-          <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-2xl overflow-hidden">
+          <div
+            className="card overflow-hidden"
+            style={{
+              background: 'color-mix(in srgb, var(--color-surface) 88%, transparent)',
+              boxShadow: 'var(--shadow-lg)',
+            }}
+          >
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
-              <span className="text-sm font-medium text-slate-400">Node Details</span>
+            <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--color-divider)' }}>
+              <span className="text-sm font-medium" style={{ opacity: 0.6 }}>Node Details</span>
               <button
                 onClick={() => setSelectedNode(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-700/50 transition-colors"
+                className="p-1 transition-colors text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+                style={{ borderRadius: 'var(--radius-md)' }}
               >
                 <HiXMark className="w-4 h-4" />
               </button>
@@ -87,8 +119,8 @@ export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps)
               {/* Type Badge */}
               <div className="flex items-center gap-2">
                 <span
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-white"
-                  style={{ backgroundColor: color }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium"
+                  style={{ backgroundColor: color, color: '#fff', borderRadius: 'var(--radius-sm)' }}
                 >
                   {typeIcons[selectedNode.type]}
                   {typeLabels[selectedNode.type]}
@@ -96,31 +128,32 @@ export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps)
               </div>
 
               {/* Label */}
-              <h3 className="text-lg font-semibold text-slate-100 leading-snug break-words">
+              <h3 className="text-lg leading-snug break-words">
                 {selectedNode.label}
               </h3>
 
               {/* Connections Count */}
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500" />
+              <div className="flex items-center gap-2 text-sm" style={{ opacity: 0.7 }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: 'var(--color-accent)' }} />
                 <span>{connections.length} connection{connections.length !== 1 ? 's' : ''}</span>
               </div>
 
               {/* Divider */}
-              <div className="border-t border-slate-700/50" />
+              <div className="border-t" style={{ borderColor: 'var(--color-divider)' }} />
 
               {/* Type-specific details */}
               {selectedNode.type === 'document' && (
                 <div className="space-y-3">
                   {selectedNode.parentId && (
                     <div>
-                      <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Parent Document</p>
-                      <p className="text-sm text-slate-300">{selectedNode.parentId}</p>
+                      <p className="text-xs uppercase tracking-wider mb-1" style={{ opacity: 0.5 }}>Parent Document</p>
+                      <p className="text-sm" style={{ opacity: 0.75 }}>{selectedNode.parentId}</p>
                     </div>
                   )}
                   <button
                     onClick={() => onOpenDocument?.(selectedNode.id)}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 text-sm font-medium hover:bg-teal-500/20 transition-colors"
+                    className="btn btn-ghost w-full"
+                    style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
                   >
                     <HiOutlineDocumentText className="w-4 h-4" />
                     Open Document
@@ -130,8 +163,8 @@ export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps)
 
               {selectedNode.type === 'tag' && (
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Documents with this tag</p>
-                  <p className="text-sm text-slate-300">
+                  <p className="text-xs uppercase tracking-wider mb-1" style={{ opacity: 0.5 }}>Documents with this tag</p>
+                  <p className="text-sm" style={{ opacity: 0.75 }}>
                     {getConnectedByType(selectedNode, graph, 'document').length} document{getConnectedByType(selectedNode, graph, 'document').length !== 1 ? 's' : ''}
                   </p>
                 </div>
@@ -139,29 +172,52 @@ export function NodeDetailPanel({ graph, onOpenDocument }: NodeDetailPanelProps)
 
               {selectedNode.type === 'course' && (
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Documents in course</p>
-                  <p className="text-sm text-slate-300">
+                  <p className="text-xs uppercase tracking-wider mb-1" style={{ opacity: 0.5 }}>Documents in course</p>
+                  <p className="text-sm" style={{ opacity: 0.75 }}>
                     {getConnectedByType(selectedNode, graph, 'document').length} document{getConnectedByType(selectedNode, graph, 'document').length !== 1 ? 's' : ''}
                   </p>
+                </div>
+              )}
+
+              {selectedNode.type === 'topic' && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wider mb-1" style={{ opacity: 0.5 }}>Mastery</p>
+                    <p className="flex items-center gap-2 text-sm" style={{ opacity: 0.85 }}>
+                      <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                      {MASTERY_LABELS[selectedNode.mastery ?? 0]}
+                    </p>
+                  </div>
+                  {stepId && (
+                    <button
+                      onClick={() => onOpenStep?.(stepId)}
+                      className="btn btn-ghost w-full"
+                      style={{ border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)' }}
+                    >
+                      <HiOutlineBookOpen className="w-4 h-4" />
+                      Open topic
+                    </button>
+                  )}
                 </div>
               )}
 
               {/* Connected Nodes List */}
               {connections.length > 0 && (
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Connected to</p>
+                  <p className="text-xs uppercase tracking-wider mb-2" style={{ opacity: 0.5 }}>Connected to</p>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {connections.map((conn) => (
                       <div
                         key={conn.id}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700/30 transition-colors"
+                        className="flex items-center gap-2 px-2 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+                        style={{ borderRadius: 'var(--radius-md)' }}
                       >
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: typeColors[conn.type] }}
+                          style={{ backgroundColor: nodeColor(conn) }}
                         />
-                        <span className="text-sm text-slate-300 truncate">{conn.label}</span>
-                        <span className="ml-auto text-xs text-slate-500">{typeLabels[conn.type]}</span>
+                        <span className="text-sm truncate">{conn.label}</span>
+                        <span className="ml-auto text-xs" style={{ opacity: 0.5 }}>{typeLabels[conn.type]}</span>
                       </div>
                     ))}
                   </div>

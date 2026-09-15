@@ -1,4 +1,4 @@
-export type KGNodeType = 'document' | 'doctype' | 'tag' | 'course' | 'subject' | 'chat' | 'chapter';
+export type KGNodeType = 'document' | 'doctype' | 'tag' | 'course' | 'subject' | 'chat' | 'chapter' | 'topic';
 
 export interface KGNode {
   id: string;           // prefixed: "doc:<id>", "type:pdf", "tag:seismology", "course:<id>", "subject:Physics"
@@ -6,9 +6,11 @@ export interface KGNode {
   type: KGNodeType;     // determines color, icon, size
   parentId?: string;    // for document nodes: link back to original entity ID
   val?: number;         // node weight (affects force sim — higher = bigger)
+  mastery?: 0 | 1 | 2 | 3; // topic nodes: 0 not started · 1 in progress · 2 learned · 3 foundation
+  stepId?: string;      // topic nodes: roadmap step teaching the topic (→ /learn/steps/:stepId)
 }
 
-export type KGEdgeType = 'is-type' | 'has-tag' | 'in-course' | 'has-subject' | 'related-chat' | 'is-chapter-of';
+export type KGEdgeType = 'is-type' | 'has-tag' | 'in-course' | 'has-subject' | 'related-chat' | 'is-chapter-of' | 'next-topic' | 'builds-on';
 
 export interface KGEdge {
   source: string;
@@ -30,6 +32,7 @@ export interface KGFilters {
   showSubjects: boolean;
   showChats: boolean;
   showChapters: boolean;
+  showTopics: boolean;
   searchQuery: string;
 }
 

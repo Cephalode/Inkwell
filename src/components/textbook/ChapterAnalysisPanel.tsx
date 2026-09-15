@@ -67,11 +67,11 @@ export default function ChapterAnalysisPanel({ chapterId }: ChapterAnalysisPanel
   const doneCount = results.filter(Boolean).length;
 
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-cyan-900/40 backdrop-blur-sm overflow-hidden">
+    <div className="card overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/50 bg-slate-800/70">
-        <HiSparkles className="w-4 h-4 text-cyan-400" />
-        <h3 className="text-sm font-semibold text-slate-200">AI Chapter Analysis</h3>
+      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--color-divider)' }}>
+        <HiSparkles className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
+        <h3 className="text-sm">AI Chapter Analysis</h3>
         <div className="flex-1" />
         <StatusBadge status={status} />
       </div>
@@ -146,7 +146,7 @@ function ProgressView({ status, subsections, results, currentSubsection, totalSu
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10">
         <Spinner size="md" />
-        <span className="text-sm text-slate-300">{message}</span>
+        <span className="text-sm" style={{ opacity: 0.75 }}>{message}</span>
       </div>
     );
   }
@@ -158,21 +158,24 @@ function ProgressView({ status, subsections, results, currentSubsection, totalSu
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm text-slate-200 mb-2">
+        <p className="text-sm mb-2">
           {justDetected ? (
-            <>Found <span className="font-semibold text-cyan-300">{totalSubsections}</span> subsections</>
+            <>Found <span className="font-semibold" style={{ color: 'var(--color-accent-700)' }}>{totalSubsections}</span> subsections</>
           ) : (
-            <>Analyzing subsection <span className="font-semibold text-cyan-300">{Math.min(currentSubsection + 1, totalSubsections)}</span> of {totalSubsections}</>
+            <>Analyzing subsection <span className="font-semibold" style={{ color: 'var(--color-accent-700)' }}>{Math.min(currentSubsection + 1, totalSubsections)}</span> of {totalSubsections}</>
           )}
         </p>
         {/* Progress bar */}
-        <div className="h-2 w-full rounded-full bg-slate-700/60 overflow-hidden">
+        <div
+          className="h-2 w-full overflow-hidden"
+          style={{ borderRadius: 'var(--radius-sm)', background: 'var(--color-neutral-200)' }}
+        >
           <div
-            className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 transition-all duration-500 ease-out"
-            style={{ width: `${progressPct}%` }}
+            className="h-full transition-all duration-500 ease-out"
+            style={{ width: `${progressPct}%`, background: 'var(--color-accent)' }}
           />
         </div>
-        <p className="mt-1 text-xs text-slate-500">{doneCount}/{totalSubsections} complete · {progressPct}%</p>
+        <p className="mt-1 text-xs" style={{ opacity: 0.5 }}>{doneCount}/{totalSubsections} complete · {progressPct}%</p>
       </div>
 
       {/* Subsection list with live status */}
@@ -182,23 +185,30 @@ function ProgressView({ status, subsections, results, currentSubsection, totalSu
           const isDone = !!result;
           const isActive = i === currentSubsection && !isDone;
           return (
-            <li key={i} className="rounded-lg bg-slate-900/40 border border-slate-700/40">
+            <li
+              key={i}
+              style={{
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-neutral-100)',
+                border: '1px solid var(--color-divider)',
+              }}
+            >
               <div className="flex items-start gap-3 px-3 py-2.5">
                 <SubsectionStatus done={isDone} active={isActive} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-200 truncate">{sub.title}</span>
-                    <span className="text-xs text-slate-500 shrink-0">pp. {sub.startPage}–{sub.endPage}</span>
+                    <span className="text-sm truncate">{sub.title}</span>
+                    <span className="text-xs shrink-0" style={{ opacity: 0.5 }}>pp. {sub.startPage}–{sub.endPage}</span>
                   </div>
                   {isActive && (
-                    <span className="text-xs text-cyan-400/80">analyzing…</span>
+                    <span className="text-xs" style={{ color: 'var(--color-accent-700)' }}>analyzing…</span>
                   )}
                 </div>
               </div>
               {/* Live-expand summary as each result arrives */}
               {result && (
                 <div className="px-3 pb-3 -mt-1">
-                  <Markdown content={result.summary} className="text-xs text-slate-400" />
+                  <Markdown content={result.summary} className="text-xs opacity-60" />
                 </div>
               )}
             </li>
@@ -207,7 +217,7 @@ function ProgressView({ status, subsections, results, currentSubsection, totalSu
       </ul>
 
       {status === 'analyzing' && doneCount >= totalSubsections && totalSubsections > 0 && (
-        <div className="flex items-center justify-center gap-2 py-2 text-sm text-slate-400">
+        <div className="flex items-center justify-center gap-2 py-2 text-sm" style={{ opacity: 0.6 }}>
           <Spinner size="sm" />
           Wrapping up…
         </div>
@@ -218,9 +228,9 @@ function ProgressView({ status, subsections, results, currentSubsection, totalSu
 
 /** Status indicator: ✓ done / spinner active / clock pending. */
 function SubsectionStatus({ done, active }: { done: boolean; active: boolean }) {
-  if (done) return <HiCheck className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />;
+  if (done) return <HiCheck className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-success)' }} />;
   if (active) return <div className="mt-0.5 shrink-0"><Spinner size="sm" /></div>;
-  return <HiClock className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />;
+  return <HiClock className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--color-neutral-500)' }} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,11 +336,16 @@ function DoneView({ chapterNotes, subsections, results, analyzedAt }: DoneViewPr
       <div>
         <button
           onClick={readAll}
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+          className={`btn ${ttsIsSpeaking ? '' : 'btn-primary'} transition-colors`}
+          style={
             ttsIsSpeaking
-              ? 'bg-cyan-500/15 text-cyan-200 border-cyan-500/40 hover:bg-cyan-500/25'
-              : 'bg-cyan-600 hover:bg-cyan-700 text-white border-cyan-500/50'
-          }`}
+              ? {
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  color: 'var(--color-accent-700)',
+                  borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                }
+              : undefined
+          }
         >
           <HiVolumeUp className={`w-4 h-4 ${ttsIsSpeaking ? 'animate-pulse' : ''}`} />
           {ttsIsSpeaking ? 'Stop Reading' : 'Read All Aloud'}
@@ -340,11 +355,16 @@ function DoneView({ chapterNotes, subsections, results, analyzedAt }: DoneViewPr
       {/* Chapter-level notes — prominent, collapsible */}
       {chapterNotes && (
         <div
-          className={`rounded-lg border transition-colors ${
-            notesReading
-              ? 'border-cyan-500/60 bg-cyan-950/30 shadow-[0_0_12px_-2px_rgba(34,211,238,0.35)]'
-              : 'border-cyan-800/40 bg-cyan-950/20'
-          }`}
+          className="transition-colors"
+          style={{
+            borderRadius: 'var(--radius-md)',
+            border: notesReading
+              ? '1px solid var(--color-accent)'
+              : '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+            background: notesReading
+              ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
+              : 'color-mix(in srgb, var(--color-accent) 5%, transparent)',
+          }}
         >
           <div className="flex items-center gap-1 w-full px-4 py-3">
             <button
@@ -352,18 +372,18 @@ function DoneView({ chapterNotes, subsections, results, analyzedAt }: DoneViewPr
               className="flex items-center gap-2 flex-1 min-w-0 text-left"
             >
               {notesOpen ? (
-                <HiChevronDown className="w-4 h-4 text-cyan-400 shrink-0" />
+                <HiChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
               ) : (
-                <HiChevronRight className="w-4 h-4 text-cyan-400 shrink-0" />
+                <HiChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
               )}
-              <HiLightBulb className="w-4 h-4 text-cyan-300 shrink-0" />
-              <span className="text-sm font-semibold text-cyan-200">Chapter Key Notes</span>
+              <HiLightBulb className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
+              <span className="text-sm font-semibold" style={{ color: 'var(--color-accent-700)' }}>Chapter Key Notes</span>
               {notesReading && (
-                <HiVolumeUp className="w-3.5 h-3.5 text-cyan-300 animate-pulse shrink-0" />
+                <HiVolumeUp className="w-3.5 h-3.5 animate-pulse shrink-0" style={{ color: 'var(--color-accent-700)' }} />
               )}
             </button>
             {analyzedAt && (
-              <span className="text-xs text-slate-500 shrink-0">
+              <span className="text-xs shrink-0" style={{ opacity: 0.5 }}>
                 {new Date(analyzedAt).toLocaleDateString()}
               </span>
             )}
@@ -371,7 +391,8 @@ function DoneView({ chapterNotes, subsections, results, analyzedAt }: DoneViewPr
               onClick={() => listen('notes', chapterNotes, 'Chapter Notes')}
               title={notesReading ? 'Stop' : 'Listen to chapter notes'}
               aria-label={notesReading ? 'Stop reading chapter notes' : 'Listen to chapter notes'}
-              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-cyan-300 hover:bg-cyan-500/15 transition-colors shrink-0"
+              className="inline-flex items-center justify-center w-7 h-7 hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors shrink-0"
+              style={{ borderRadius: 'var(--radius-md)', color: 'var(--color-accent-700)' }}
             >
               <HiVolumeUp className={`w-4 h-4 ${notesReading ? 'animate-pulse' : ''}`} />
             </button>
@@ -432,38 +453,49 @@ function SubsectionAccordion({
   onListen,
   isReading = false,
 }: SubsectionAccordionProps) {
-  const borderCls = isReading
-    ? 'border-cyan-500/60 bg-cyan-950/30 shadow-[0_0_12px_-2px_rgba(34,211,238,0.35)]'
-    : 'border-slate-700/40 bg-slate-900/40';
+  const readingStyle: React.CSSProperties = isReading
+    ? {
+        border: '1px solid var(--color-accent)',
+        background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+      }
+    : {
+        border: '1px solid var(--color-divider)',
+        background: 'var(--color-neutral-100)',
+      };
   return (
-    <div className={`rounded-lg border transition-colors ${borderCls}`}>
+    <div className="transition-colors" style={{ borderRadius: 'var(--radius-md)', ...readingStyle }}>
       <div className="flex items-center gap-1 px-3 py-2.5">
         <button
           onClick={onToggle}
-          className="flex items-center gap-2 flex-1 min-w-0 text-left hover:bg-slate-800/40 transition-colors rounded-lg -mx-1 px-1 py-0.5"
+          className="flex items-center gap-2 flex-1 min-w-0 text-left hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] transition-colors -mx-1 px-1 py-0.5"
+          style={{ borderRadius: 'var(--radius-md)' }}
         >
           {open ? (
-            <HiChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
+            <HiChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--color-neutral-600)' }} />
           ) : (
-            <HiChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+            <HiChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--color-neutral-600)' }} />
           )}
-          <HiDocumentText className="w-4 h-4 text-teal-400/70 shrink-0" />
-          <span className="text-sm font-medium text-slate-200 flex-1 min-w-0 truncate">
+          <HiDocumentText className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)', opacity: 0.8 }} />
+          <span className="text-sm font-medium flex-1 min-w-0 truncate">
             {index + 1}. {result?.title || title}
           </span>
         </button>
-        <span className="text-xs text-slate-500 shrink-0">pp. {startPage}–{endPage}</span>
+        <span className="text-xs shrink-0" style={{ opacity: 0.5 }}>pp. {startPage}–{endPage}</span>
         {isReading && (
-          <HiVolumeUp className="w-3.5 h-3.5 text-cyan-300 animate-pulse shrink-0" />
+          <HiVolumeUp className="w-3.5 h-3.5 animate-pulse shrink-0" style={{ color: 'var(--color-accent-700)' }} />
         )}
         {result && onListen && (
           <button
             onClick={onListen}
             title={isReading ? 'Stop' : 'Listen to this subsection'}
             aria-label={isReading ? 'Stop reading subsection' : 'Listen to this subsection'}
-            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-cyan-300 hover:bg-cyan-500/15 transition-colors shrink-0"
+            className="inline-flex items-center justify-center w-7 h-7 hover:bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] transition-colors shrink-0"
+            style={{
+              borderRadius: 'var(--radius-md)',
+              color: isReading ? 'var(--color-accent-700)' : 'var(--color-neutral-600)',
+            }}
           >
-            <HiVolumeUp className={`w-4 h-4 ${isReading ? 'text-cyan-300 animate-pulse' : ''}`} />
+            <HiVolumeUp className={`w-4 h-4 ${isReading ? 'animate-pulse' : ''}`} />
           </button>
         )}
       </div>
@@ -477,8 +509,8 @@ function SubsectionAccordion({
               <ul className="space-y-1">
                 {result.keyPoints.map((kp, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-cyan-400 mt-1 shrink-0">•</span>
-                    <span className="flex-1 min-w-0 text-slate-300">
+                    <span className="mt-1 shrink-0" style={{ color: 'var(--color-accent)' }}>•</span>
+                    <span className="flex-1 min-w-0">
                       <Markdown content={kp} compact />
                     </span>
                   </li>
@@ -503,7 +535,8 @@ function SubsectionAccordion({
                 {result.definitions.map((d, i) => (
                   <li
                     key={i}
-                    className="pl-3 border-l-2 border-purple-500/40 text-slate-300"
+                    className="pl-3"
+                    style={{ borderLeft: '2px solid color-mix(in srgb, var(--color-accent-2-700) 40%, transparent)' }}
                   >
                     <Markdown content={d} compact />
                   </li>
@@ -527,13 +560,16 @@ interface DetailBlockProps {
 function DetailBlock({ icon, label, color, children }: DetailBlockProps) {
   const accent =
     color === 'cyan'
-      ? 'text-cyan-300'
+      ? 'var(--color-accent-700)'
       : color === 'teal'
-        ? 'text-teal-300'
-        : 'text-purple-300';
+        ? 'var(--color-accent-600)'
+        : 'var(--color-accent-2-700)';
   return (
     <div>
-      <div className={`flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide ${accent}`}>
+      <div
+        className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide"
+        style={{ color: accent }}
+      >
         {icon}
         {label}
       </div>
@@ -549,14 +585,11 @@ function DetailBlock({ icon, label, color, children }: DetailBlockProps) {
 function ErrorView({ message, onRetry }: { message: string | null; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-      <HiExclamation className="w-8 h-8 text-red-400" />
-      <p className="text-sm text-red-300 max-w-sm">
+      <HiExclamation className="w-8 h-8" style={{ color: 'var(--color-danger)' }} />
+      <p className="text-sm max-w-sm" style={{ color: 'var(--color-danger)' }}>
         {message || 'Something went wrong during analysis.'}
       </p>
-      <button
-        onClick={onRetry}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium transition-colors"
-      >
+      <button onClick={onRetry} className="btn btn-primary">
         <HiRefresh className="w-4 h-4" />
         Retry
       </button>

@@ -33,23 +33,30 @@ export default function MobileDrawer() {
 
           {/* Drawer panel */}
           <motion.div
-            className="fixed left-0 top-0 h-full w-72 bg-slate-900 border-r border-slate-700/50 z-50 flex flex-col"
+            className="fixed left-0 top-0 h-full w-72 z-50 flex flex-col"
+            style={{
+              background: 'var(--color-surface)',
+              borderRight: '1px solid var(--color-divider)',
+            }}
             initial={{ x: -288 }}
             animate={{ x: 0 }}
             exit={{ x: -288 }}
             transition={{ duration: 0.25, ease: 'easeOut' }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between h-16 px-4 border-b border-slate-700/50">
+            <div
+              className="flex items-center justify-between h-16 px-4"
+              style={{ borderBottom: '1px solid var(--color-divider)' }}
+            >
               <div className="flex items-center gap-3">
-                <InkwellLogo className="w-7 h-7 text-cyan-400" />
-                <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-teal-400 bg-clip-text text-transparent">
+                <InkwellLogo className="w-7 h-7 text-[var(--color-accent)]" />
+                <span className="text-lg font-bold" style={{ color: 'var(--color-accent)' }}>
                   Inkwell
                 </span>
               </div>
               <button
                 onClick={closeDrawer}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-[var(--radius-md)] text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] transition-colors"
               >
                 <HiXMark className="w-6 h-6" />
               </button>
@@ -63,10 +70,10 @@ export default function MobileDrawer() {
                   <button
                     key={path}
                     onClick={() => handleNavClick(path)}
-                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-[var(--radius-md)] text-sm font-medium transition-all duration-200 ${
                       isActive
-                        ? 'bg-cyan-600/20 text-cyan-400 border border-cyan-500/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        ? 'bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)] border border-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]'
+                        : 'text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)]'
                     }`}
                   >
                     <Icon className="w-5 h-5 shrink-0" />

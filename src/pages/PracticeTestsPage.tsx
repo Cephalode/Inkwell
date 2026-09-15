@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiPlus, HiX, HiSparkles, HiTrash, HiDocument, HiExclamationCircle } from 'react-icons/hi';
+import { HiPlus, HiX, HiTrash, HiDocument, HiExclamationCircle } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
@@ -82,19 +82,19 @@ export default function PracticeTestsPage() {
     !creating && (sourceType === 'course' ? !!selectedCourseId : !!selectedDocumentId);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6" style={{ maxWidth: 860 }}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            <HiDocument className="w-6 h-6 text-teal-400" />
-            Practice Tests
-          </h1>
-          <p className="text-slate-400">Create and take AI-generated practice tests</p>
+          <div className="card-kicker" style={{ fontSize: 13 }}>Study tools</div>
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Practice Tests</h1>
+          <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>
+            Create and take AI-generated practice tests
+          </p>
         </div>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          className={`btn whitespace-nowrap ${showCreateForm ? 'btn-secondary' : 'btn-primary'}`}
         >
           {showCreateForm ? <HiX className="w-4 h-4" /> : <HiPlus className="w-4 h-4" />}
           {showCreateForm ? 'Cancel' : 'New Test'}
@@ -103,13 +103,13 @@ export default function PracticeTestsPage() {
 
       {/* Create form */}
       {showCreateForm && (
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 space-y-4">
+        <div className="card space-y-4" style={{ padding: 'var(--space-4)' }}>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Test title (optional)"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 text-sm"
+            className="input"
             autoFocus
           />
 
@@ -117,13 +117,13 @@ export default function PracticeTestsPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description (optional)"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500 text-sm resize-none"
+            className="input resize-none"
             rows={2}
           />
 
           {/* Question count */}
           <div>
-            <label className="block text-sm text-slate-300 mb-2">
+            <label className="block text-sm mb-2" style={{ opacity: 0.75 }}>
               Number of questions: {numQuestions}
             </label>
             <input
@@ -133,12 +133,13 @@ export default function PracticeTestsPage() {
               value={numQuestions}
               onChange={(e) => setNumQuestions(parseInt(e.target.value))}
               className="w-full"
+              style={{ accentColor: 'var(--color-accent)' }}
             />
           </div>
 
           {/* Question types */}
           <div>
-            <label className="block text-sm text-slate-300 mb-2">Question types:</label>
+            <label className="block text-sm mb-2" style={{ opacity: 0.75 }}>Question types:</label>
             <div className="flex gap-2">
               {(['mcq', 'true_false', 'short_answer'] as const).map((type) => (
                 <label key={type} className="flex items-center gap-2">
@@ -152,9 +153,8 @@ export default function PracticeTestsPage() {
                         setSelectedTypes(selectedTypes.filter((t) => t !== type));
                       }
                     }}
-                    className="rounded"
                   />
-                  <span className="text-sm text-slate-300">
+                  <span className="text-sm" style={{ opacity: 0.75 }}>
                     {type === 'mcq'
                       ? 'Multiple Choice'
                       : type === 'true_false'
@@ -170,21 +170,13 @@ export default function PracticeTestsPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setSourceType('course')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'course'
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'course' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Course
             </button>
             <button
               onClick={() => setSourceType('document')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'document'
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'document' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Document
             </button>
@@ -195,7 +187,7 @@ export default function PracticeTestsPage() {
             <select
               value={selectedCourseId}
               onChange={(e) => setSelectedCourseId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-teal-500 text-sm"
+              className="input"
             >
               <option value="">Select a course…</option>
               {courses.map((c) => (
@@ -208,7 +200,7 @@ export default function PracticeTestsPage() {
             <select
               value={selectedDocumentId}
               onChange={(e) => setSelectedDocumentId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-teal-500 text-sm"
+              className="input"
             >
               <option value="">Select a document…</option>
               {documents.map((d) => (
@@ -222,7 +214,7 @@ export default function PracticeTestsPage() {
           <button
             onClick={handleCreate}
             disabled={!canCreate || selectedTypes.length === 0}
-            className="px-4 py-2 bg-teal-600 hover:bg-teal-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors w-full"
+            className="btn btn-primary w-full"
           >
             {creating ? 'Creating…' : 'Create & Generate'}
           </button>
@@ -245,61 +237,75 @@ export default function PracticeTestsPage() {
         <div className="space-y-4">
           {/* Fetch error banner */}
           {error && (
-            <div className="bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg p-4 flex items-center justify-between gap-4">
+            <div
+              className="flex items-center justify-between gap-4 p-4"
+              style={{
+                background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--color-danger)',
+              }}
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <HiExclamationCircle className="w-5 h-5 shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium">Couldn't load practice tests</p>
-                  <p className="text-sm text-red-400/80 truncate">{error}</p>
+                  <p className="text-sm truncate" style={{ opacity: 0.8 }}>{error}</p>
                 </div>
               </div>
-              <button
-                onClick={() => void refetch()}
-                className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500 transition-colors"
-              >
+              <button onClick={() => void refetch()} className="btn btn-secondary shrink-0">
                 Retry
               </button>
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tests.map((test) => {
-            const course = courses.find((c) => c.id === test.course_id);
-            const sourceName = course?.name ?? 'Untitled';
-            const prog = generationProgress[test.id];
-            const questionTarget = test.config.numQuestions ?? DEFAULT_QUESTION_TARGET;
-            const isGenerating =
-              test.status === 'generating' ||
-              (prog != null &&
-                ACTIVE_GENERATION_STAGES.includes(prog.stage as (typeof ACTIVE_GENERATION_STAGES)[number]));
+          <div className="flex flex-col">
+            {tests.map((test) => {
+              const course = courses.find((c) => c.id === test.course_id);
+              const sourceName = course?.name ?? 'Untitled';
+              const prog = generationProgress[test.id];
+              const questionTarget = test.config.numQuestions ?? DEFAULT_QUESTION_TARGET;
+              const isGenerating =
+                test.status === 'generating' ||
+                (prog != null &&
+                  ACTIVE_GENERATION_STAGES.includes(prog.stage as (typeof ACTIVE_GENERATION_STAGES)[number]));
 
-            return (
-              <div
-                key={test.id}
-                onClick={() => navigate(`/tests/${test.id}`)}
-                className="group relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 cursor-pointer hover:border-teal-600/50 hover:bg-slate-800/80 transition-all"
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(test.id);
+              return (
+                <div
+                  key={test.id}
+                  onClick={() => navigate(`/tests/${test.id}`)}
+                  className="group grid cursor-pointer items-center"
+                  style={{
+                    gridTemplateColumns: '1fr auto auto auto',
+                    gap: 'var(--space-4)',
+                    padding: '12px 0',
+                    borderTop: '1px solid var(--color-neutral-300)',
                   }}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Delete"
                 >
-                  <HiTrash className="w-4 h-4" />
-                </button>
-
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-teal-500/10 border border-teal-500/20 shrink-0">
-                    <HiSparkles className="w-4 h-4 text-teal-400" />
+                  <div className="min-w-0">
+                    <div className="min-w-0" style={{ fontSize: 15 }}>
+                      <span className="font-semibold">{test.title}</span>{' '}
+                      <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
+                    </div>
+                    {isGenerating && prog && (
+                      <div
+                        className="mt-2 h-1 w-full overflow-hidden"
+                        style={{
+                          background: 'var(--color-neutral-300)',
+                          borderRadius: 'var(--radius-sm)',
+                          maxWidth: 240,
+                        }}
+                      >
+                        <div
+                          className="h-full transition-all duration-500"
+                          style={{
+                            background: 'var(--color-accent)',
+                            width: `${Math.min(100, (prog.itemsGenerated / questionTarget) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1 pr-6">
-                    <h3 className="text-sm font-semibold text-slate-200 truncate">{test.title}</h3>
-                    <p className="text-xs text-slate-500 truncate">{sourceName}</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between">
                   {test.status === 'done' ? (
                     <Badge color="green">Ready</Badge>
                   ) : isGenerating ? (
@@ -309,30 +315,34 @@ export default function PracticeTestsPage() {
                   ) : (
                     <Badge color="gray">Pending</Badge>
                   )}
+
                   {isGenerating && prog?.itemsGenerated ? (
-                    <span className="text-xs text-teal-400">
+                    <span
+                      className="whitespace-nowrap"
+                      style={{ fontSize: 12, color: 'var(--color-accent-700)' }}
+                    >
                       {prog.itemsGenerated} questions
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-500">
+                    <span className="whitespace-nowrap" style={{ fontSize: 12, opacity: 0.5 }}>
                       {new Date(test.updated_at).toLocaleDateString()}
                     </span>
                   )}
-                </div>
 
-                {isGenerating && prog && (
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-slate-700/60 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-teal-500 to-cyan-400 transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, (prog.itemsGenerated / questionTarget) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(test.id);
+                    }}
+                    className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: 'var(--color-danger)', borderRadius: 'var(--radius-md)' }}
+                    title="Delete"
+                  >
+                    <HiTrash className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

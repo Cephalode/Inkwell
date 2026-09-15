@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiPlus, HiX, HiSparkles, HiTrash, HiAcademicCap } from 'react-icons/hi';
+import { HiPlus, HiX, HiTrash, HiAcademicCap } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
@@ -53,19 +53,19 @@ export default function StudyGuidesPage() {
     !creating && (sourceType === 'course' ? !!selectedCourseId : !!selectedDocumentId);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6" style={{ maxWidth: 860 }}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            <HiAcademicCap className="w-6 h-6 text-cyan-400" />
-            Study Guides
-          </h1>
-          <p className="text-slate-400">AI-generated guides synthesized from your course materials</p>
+          <div className="card-kicker" style={{ fontSize: 13 }}>Study tools</div>
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Study Guides</h1>
+          <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>
+            AI-generated guides synthesized from your course materials
+          </p>
         </div>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          className={`btn whitespace-nowrap ${showCreateForm ? 'btn-secondary' : 'btn-primary'}`}
         >
           {showCreateForm ? <HiX className="w-4 h-4" /> : <HiPlus className="w-4 h-4" />}
           {showCreateForm ? 'Cancel' : 'New Guide'}
@@ -74,14 +74,14 @@ export default function StudyGuidesPage() {
 
       {/* Create form */}
       {showCreateForm && (
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 space-y-4">
+        <div className="card space-y-4" style={{ padding: 'var(--space-4)' }}>
           {/* Title */}
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Title (optional — auto-generated from source)"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-sm"
+            className="input"
             autoFocus
           />
 
@@ -89,21 +89,13 @@ export default function StudyGuidesPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setSourceType('course')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'course'
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'course' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Course
             </button>
             <button
               onClick={() => setSourceType('document')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'document'
-                  ? 'bg-cyan-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'document' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Document
             </button>
@@ -114,7 +106,7 @@ export default function StudyGuidesPage() {
             <select
               value={selectedCourseId}
               onChange={(e) => setSelectedCourseId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-cyan-500 text-sm"
+              className="input"
             >
               <option value="">Select a course…</option>
               {courses.map((c) => (
@@ -127,7 +119,7 @@ export default function StudyGuidesPage() {
             <select
               value={selectedDocumentId}
               onChange={(e) => setSelectedDocumentId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-cyan-500 text-sm"
+              className="input"
             >
               <option value="">Select a document…</option>
               {documents.map((d) => (
@@ -138,11 +130,7 @@ export default function StudyGuidesPage() {
             </select>
           )}
 
-          <button
-            onClick={handleCreate}
-            disabled={!canCreate}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <button onClick={handleCreate} disabled={!canCreate} className="btn btn-primary">
             {creating ? 'Creating…' : 'Create & Generate'}
           </button>
         </div>
@@ -161,7 +149,7 @@ export default function StudyGuidesPage() {
           action={{ label: 'Create Study Guide', onClick: () => setShowCreateForm(true) }}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="flex flex-col">
           {guides.map((guide) => {
             const course = courses.find((c) => c.id === guide.courseId);
             const doc = documents.find((d) => d.id === guide.documentId);
@@ -177,52 +165,67 @@ export default function StudyGuidesPage() {
               <div
                 key={guide.id}
                 onClick={() => navigate(`/study-guides/${guide.id}`)}
-                className="group relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 cursor-pointer hover:border-cyan-600/50 hover:bg-slate-800/80 transition-all"
+                className="group grid cursor-pointer items-center"
+                style={{
+                  gridTemplateColumns: '1fr auto auto auto',
+                  gap: 'var(--space-4)',
+                  padding: '12px 0',
+                  borderTop: '1px solid var(--color-neutral-300)',
+                }}
               >
+                <div className="min-w-0">
+                  <div className="min-w-0" style={{ fontSize: 15 }}>
+                    <span className="font-semibold">{guide.title}</span>{' '}
+                    <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
+                  </div>
+                  {/* Progress bar during generation */}
+                  {isGenerating && prog && prog.total > 0 && (
+                    <div
+                      className="mt-2 h-1 w-full overflow-hidden"
+                      style={{
+                        background: 'var(--color-neutral-300)',
+                        borderRadius: 'var(--radius-sm)',
+                        maxWidth: 240,
+                      }}
+                    >
+                      <div
+                        className="h-full transition-all duration-500"
+                        style={{
+                          background: 'var(--color-accent)',
+                          width: `${Math.round((prog.current / prog.total) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <GuideStatusBadge status={guide.status} isGenerating={isGenerating} />
+
+                {isGenerating && prog ? (
+                  <span
+                    className="whitespace-nowrap"
+                    style={{ fontSize: 12, color: 'var(--color-accent-700)' }}
+                  >
+                    {prog.current}/{prog.total}
+                  </span>
+                ) : (
+                  <span className="whitespace-nowrap" style={{ fontSize: 12, opacity: 0.5 }}>
+                    {new Date(guide.updatedAt).toLocaleDateString()}
+                  </span>
+                )}
+
                 {/* Delete button (stops click propagation) */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     deleteGuide(guide.id);
                   }}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                  className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ color: 'var(--color-danger)', borderRadius: 'var(--radius-md)' }}
                   title="Delete"
                 >
                   <HiTrash className="w-4 h-4" />
                 </button>
-
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 shrink-0">
-                    <HiSparkles className="w-4 h-4 text-cyan-400" />
-                  </div>
-                  <div className="min-w-0 flex-1 pr-6">
-                    <h3 className="text-sm font-semibold text-slate-200 truncate">{guide.title}</h3>
-                    <p className="text-xs text-slate-500 truncate">{sourceName}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <GuideStatusBadge status={guide.status} isGenerating={isGenerating} />
-                  {isGenerating && prog ? (
-                    <span className="text-xs text-cyan-400">
-                      {prog.current}/{prog.total}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-slate-500">
-                      {new Date(guide.updatedAt).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-
-                {/* Progress bar during generation */}
-                {isGenerating && prog && prog.total > 0 && (
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-slate-700/60 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 transition-all duration-500"
-                      style={{ width: `${Math.round((prog.current / prog.total) * 100)}%` }}
-                    />
-                  </div>
-                )}
               </div>
             );
           })}

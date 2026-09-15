@@ -1,6 +1,7 @@
 import { IconType } from 'react-icons';
 import {
   HiHome,
+  HiRocketLaunch,
   HiDocumentText,
   HiShare,
   HiBookOpen,
@@ -21,6 +22,7 @@ export interface NavItem {
 // Primary nav items (shown in sidebar and mobile drawer, in render order)
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: HiHome },
+  { path: '/learn', label: 'Learn', icon: HiRocketLaunch },
   { path: '/documents', label: 'Documents', icon: HiDocumentText },
   { path: '/topic-map', label: 'Topic map', icon: HiShare },
   { path: '/textbook', label: 'Textbook', icon: HiBookOpen },

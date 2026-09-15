@@ -150,11 +150,11 @@ export default function FileCard({
   }
 
   return (
-    <Card onClick={() => onSelect(doc)} className="hover:scale-[1.02] transition-transform">
+    <Card onClick={() => onSelect(doc)}>
       <div className="flex items-start gap-2 sm:gap-4">
         <div className="text-2xl sm:text-3xl">{getFileIcon(doc.type)}</div>
         <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-semibold text-slate-200 truncate">{doc.name}</h4>
+          <h4 className="text-sm truncate">{doc.name}</h4>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {category ? (
               <>
@@ -163,27 +163,41 @@ export default function FileCard({
                 ))}
               </>
             ) : isClassifying ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-yellow-500/20 text-yellow-300 border-yellow-500/30 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-bounce" />
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs font-medium border animate-pulse"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-warning) 12%, transparent)',
+                  color: 'var(--color-warning)',
+                  borderColor: 'color-mix(in srgb, var(--color-warning) 35%, transparent)',
+                  borderRadius: 'var(--radius-sm)',
+                }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: 'var(--color-warning)' }}
+                />
                 Classifying…
               </span>
             ) : (
               <Badge color="gray">{doc.type.toUpperCase()}</Badge>
             )}
-            <span className="text-xs text-slate-500">{formatFileSize(doc.size)}</span>
+            <span className="text-xs" style={{ opacity: 0.5 }}>{formatFileSize(doc.size)}</span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs mt-2" style={{ opacity: 0.5 }}>
             {new Date(doc.createdAt).toLocaleDateString()}
           </p>
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
             {docCourses.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-cyan-400/80">
+              <span
+                className="inline-flex items-center gap-1 text-xs"
+                style={{ color: 'var(--color-accent-700)' }}
+              >
                 <HiAcademicCap className="w-3 h-3" />
                 {docCourses.join(', ')}
               </span>
             )}
             {subdocCount > 0 && (
-              <span className="text-xs text-slate-500">
+              <span className="text-xs" style={{ opacity: 0.5 }}>
                 {subdocCount} subdoc{subdocCount !== 1 ? 's' : ''}
               </span>
             )}
@@ -201,7 +215,8 @@ export default function FileCard({
                 setCourseSubmenuOpen(false);
               }
             }}
-            className="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-lg hover:bg-slate-700/50"
+            className="transition-colors p-1 opacity-50 hover:opacity-100 hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+            style={{ borderRadius: 'var(--radius-md)' }}
           >
             <HiDotsVertical className="w-5 h-5" />
           </button>
@@ -209,18 +224,18 @@ export default function FileCard({
           {isOpen && dropdownPos && createPortal(
             <div
               ref={dropdownRef}
-              className={`fixed bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-1.5 z-[9999] ${
+              className={`card fixed p-1.5 z-[9999] ${
                 editingTags ? 'w-64' : 'w-48'
               }`}
-              style={{ top: dropdownPos.top, left: dropdownPos.left }}
+              style={{ top: dropdownPos.top, left: dropdownPos.left, boxShadow: 'var(--shadow-md)' }}
               onClick={(e) => e.stopPropagation()}
             >
               {editingTags ? (
                 /* Tag editor mode */
                 <>
-                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300">
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm">
                     <HiArrowLeft
-                      className="w-4 h-4 cursor-pointer hover:text-white"
+                      className="w-4 h-4 cursor-pointer opacity-60 hover:opacity-100"
                       onClick={() => {
                         setEditingTags(false);
                       }}
@@ -231,11 +246,16 @@ export default function FileCard({
                     {editTags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-slate-700 text-slate-300 border border-slate-600"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs border"
+                        style={{
+                          background: 'var(--color-neutral-200)',
+                          borderColor: 'var(--color-neutral-300)',
+                          borderRadius: 'var(--radius-sm)',
+                        }}
                       >
                         {tag}
                         <HiX
-                          className="w-3 h-3 cursor-pointer hover:text-red-400 transition-colors"
+                          className="w-3 h-3 cursor-pointer transition-colors hover:text-[var(--color-danger)]"
                           onClick={() => removeTag(tag)}
                         />
                       </span>
@@ -248,14 +268,14 @@ export default function FileCard({
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={handleTagKeyDown}
                       placeholder="New tag…"
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-600 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+                      className="input text-sm"
                       autoFocus
                     />
                   </div>
                   <div className="px-3 pb-2">
                     <button
                       onClick={handleDoneTags}
-                      className="w-full px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-600 hover:bg-cyan-500 text-white transition-colors"
+                      className="btn btn-primary w-full"
                     >
                       Done
                     </button>
@@ -271,9 +291,10 @@ export default function FileCard({
                     onMouseLeave={handleCourseSubmenuLeave}
                   >
                     <div
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-700 cursor-pointer transition-colors w-full ${
+                      className={`flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full ${
                         availableCourses.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
+                      style={{ borderRadius: 'var(--radius-md)' }}
                       onClick={
                         availableCourses.length > 0
                           ? () => setCourseSubmenuOpen(!courseSubmenuOpen)
@@ -300,7 +321,8 @@ export default function FileCard({
                     {/* Course submenu */}
                     {courseSubmenuOpen && availableCourses.length > 0 && (
                       <div
-                        className="absolute left-full top-0 ml-1 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-lg p-1 z-50"
+                        className="card absolute left-full top-0 ml-1 w-48 p-1 z-50"
+                        style={{ boxShadow: 'var(--shadow-md)' }}
                         onMouseEnter={handleCourseItemMouseEnter}
                       >
                         {availableCourses.map((course) => (
@@ -310,7 +332,8 @@ export default function FileCard({
                               onMoveToCourse?.(doc.id, course.id);
                               closeDropdown();
                             }}
-                            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-700 cursor-pointer transition-colors w-full text-left"
+                            className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full text-left"
+                            style={{ borderRadius: 'var(--radius-md)' }}
                           >
                             <HiDocumentText className="w-4 h-4 flex-shrink-0" />
                             <span className="truncate">{course.name}</span>
@@ -323,19 +346,21 @@ export default function FileCard({
                   {/* Edit Tags */}
                   <button
                     onClick={openTagEditor}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-700 cursor-pointer transition-colors w-full text-left"
+                    className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full text-left"
+                    style={{ borderRadius: 'var(--radius-md)' }}
                   >
                     <HiPencil className="w-4 h-4 flex-shrink-0" />
                     <span>Edit Tags</span>
                   </button>
 
                   {/* Divider */}
-                  <div className="my-1 border-t border-slate-700" />
+                  <div className="my-1" style={{ borderTop: '1px solid var(--color-divider)' }} />
 
                   {/* Delete */}
                   <button
                     onClick={handleDelete}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 cursor-pointer transition-colors w-full text-left"
+                    className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)] cursor-pointer transition-colors w-full text-left"
+                    style={{ color: 'var(--color-danger)', borderRadius: 'var(--radius-md)' }}
                   >
                     <HiTrash className="w-4 h-4 flex-shrink-0" />
                     <span>Delete</span>

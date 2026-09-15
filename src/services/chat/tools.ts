@@ -92,19 +92,56 @@ async function handleListChapters(args: Record<string, unknown>): Promise<string
 async function handleGetChapter(args: Record<string, unknown>): Promise<string> {
   const id = args.id as string;
   if (!id) return 'Error: "id" parameter is required.';
-  const chapter = await getChapter(id);
-  return JSON.stringify({
-    id: chapter.id,
-    parentId: chapter.parentId,
-    chapterTitle: chapter.chapterTitle,
-    chapterIndex: chapter.chapterIndex,
-    startPage: chapter.startPage,
-    endPage: chapter.endPage,
-    parsedText: chapter.parsedText ? chapter.parsedText.slice(0, 2000) + (chapter.parsedText.length > 2000 ? `... [truncated, ${chapter.parsedText.length} total chars]` : '') : null,
-    tags: chapter.tags,
-    createdAt: chapter.createdAt,
-    updatedAt: chapter.updatedAt,
-  });
+
+  // First try the chapters table endpoint. This works for chapters saved via
+  // the chapter-extraction flow (id format `${parentId}_ch${index}`).
+  let chapter: Awaited<ReturnType<typeof getChapter>> | null = null;
+  try {
+    chapter = await getChapter(id);
+  } catch {
+    // Fall through to the document fallback below.
+    // (Converted-textbook chapters are stored as rows in the `documents` table
+    // with a textbook_id, so their id is a document UUID — the chapters
+    // endpoint returns 404 for them.)
+    chapter = null;
+  }
+
+  if (chapter) {
+    return JSON.stringify({
+      id: chapter.id,
+      parentId: chapter.parentId,
+      chapterTitle: chapter.chapterTitle,
+      chapterIndex: chapter.chapterIndex,
+      startPage: chapter.startPage,
+      endPage: chapter.endPage,
+      parsedText: chapter.parsedText ? chapter.parsedText.slice(0, 2000) + (chapter.parsedText.length > 2000 ? `... [truncated, ${chapter.parsedText.length} total chars]` : '') : null,
+      tags: chapter.tags,
+      createdAt: chapter.createdAt,
+      updatedAt: chapter.updatedAt,
+    });
+  }
+
+  // Fallback: the id may be a document UUID (converted-textbook chapter).
+  // Fetch it via the documents endpoint and present it in a chapter-like shape.
+  try {
+    const doc = await getDocument(id);
+    const title = doc.name.replace(/^\d+\s+/, '').replace(/\.[^.]+$/, '') || doc.name;
+    return JSON.stringify({
+      id: doc.id,
+      parentId: doc.textbookId ?? doc.id,
+      chapterTitle: doc.chapterTitle ?? title,
+      chapterIndex: doc.chapterIndex ?? 0,
+      startPage: doc.startPage ?? null,
+      endPage: doc.endPage ?? null,
+      parsedText: doc.parsedText ? doc.parsedText.slice(0, 2000) + (doc.parsedText.length > 2000 ? `... [truncated, ${doc.parsedText.length} total chars]` : '') : null,
+      tags: doc.tags,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      _source: 'document',
+    });
+  } catch (err) {
+    return `Error: Could not find a chapter or document with id "${id}". (${err instanceof Error ? err.message : String(err)})`;
+  }
 }
 
 async function handleClassifyDocument(args: Record<string, unknown>): Promise<string> {
@@ -118,8 +155,7 @@ async function handleSummarize(args: Record<string, unknown>): Promise<string> {
   let text = args.text as string;
   if (!text) return 'Error: "text" parameter is required.';
   if (text.length > 8000) text = text.slice(0, 8000) + `... [truncated from ${text.length} chars]`;
-  const type = (args.type as 'tldr' | 'keypoints' | 'detailed') || 'keypoints';
-
+  const type = (args.type as 'tldr' | 'keypoints') || 'keypoints';
   const promptFn = SUMMARY_PROMPTS[type] ?? SUMMARY_PROMPTS.keypoints;
   const systemPrompt = promptFn(text);
 
@@ -168,13 +204,14 @@ async function handleGetCurrentContext(): Promise<string> {
   }
 
   const mobileTab = useUIStore.getState().mobileActiveTab;
-  const { currentDocument } = useDocumentStore.getState();
+  const { currentDocument, currentChapter, currentChapterId, currentChapterText, viewerPage } = useDocumentStore.getState();
   const chatState = useChatStore.getState();
 
   const context: Record<string, unknown> = {
     page,
     mobileTab,
     chatMessageCount: chatState.messages.length,
+    viewerPage,
   };
 
   if (currentDocument) {
@@ -188,6 +225,28 @@ async function handleGetCurrentContext(): Promise<string> {
     };
   } else {
     context.currentDocument = null;
+  }
+
+  if (currentChapter) {
+    context.currentChapter = {
+      id: currentChapter.id,
+      title: currentChapter.title,
+      parentId: currentChapter.parentId,
+    };
+  } else {
+    context.currentChapter = null;
+  }
+  context.currentChapterId = currentChapterId ?? null;
+
+  // Surface whether the open chapter's text is already known (proactive
+  // context) so the agent knows it doesn't need to call a tool to read it.
+  if (currentChapterText && currentChapterText.trim().length > 0) {
+    context.currentChapterTextLength = currentChapterText.length;
+    context.currentChapterTextPreview =
+      currentChapterText.slice(0, 500) +
+      (currentChapterText.length > 500 ? `... [truncated, ${currentChapterText.length} total chars]` : '');
+  } else {
+    context.currentChapterTextLength = 0;
   }
 
   return JSON.stringify(context);
@@ -298,9 +357,9 @@ export const toolDefinitions: ToolDefinition[] = [
           },
           type: {
             type: 'string',
-            enum: ['tldr', 'keypoints', 'detailed'],
+            enum: ['tldr', 'keypoints'],
             description:
-              'Summary style: "tldr" for a 2-3 sentence overview, "keypoints" for a bulleted list, "detailed" for a comprehensive summary.',
+              'Summary style: "tldr" for a 2-3 sentence overview, "keypoints" for a bulleted list.',
           },
         },
         required: ['text'],
@@ -330,7 +389,7 @@ export const toolDefinitions: ToolDefinition[] = [
     function: {
       name: 'get_current_context',
       description:
-        'Get the current application context: which page the user is on, the currently selected document (if any), and its chapter markers.',
+        'Get the current application context: which page the user is on, the currently selected document (if any), its chapter markers, and the currently open chapter (id, title, parentId) plus the current viewer page.',
       parameters: {
         type: 'object',
         properties: {},

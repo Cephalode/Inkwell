@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { HiPlus, HiX, HiSparkles, HiTrash, HiBookOpen, HiExclamationCircle } from 'react-icons/hi';
+import { HiPlus, HiX, HiTrash, HiBookOpen, HiExclamationCircle } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
 import Badge from '../components/shared/Badge';
@@ -77,19 +77,19 @@ export default function FlashcardsPage() {
     !creating && (sourceType === 'course' ? !!selectedCourseId : !!selectedDocumentId);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6" style={{ maxWidth: 860 }}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            <HiBookOpen className="w-6 h-6 text-amber-400" />
-            Flashcard Decks
-          </h1>
-          <p className="text-slate-400">Create decks and practice with interactive flashcards</p>
+          <div className="card-kicker" style={{ fontSize: 13 }}>Study tools</div>
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Flashcards</h1>
+          <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>
+            Create decks and practice with interactive flashcards
+          </p>
         </div>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+          className={`btn whitespace-nowrap ${showCreateForm ? 'btn-secondary' : 'btn-primary'}`}
         >
           {showCreateForm ? <HiX className="w-4 h-4" /> : <HiPlus className="w-4 h-4" />}
           {showCreateForm ? 'Cancel' : 'New Deck'}
@@ -98,13 +98,13 @@ export default function FlashcardsPage() {
 
       {/* Create form */}
       {showCreateForm && (
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 space-y-4">
+        <div className="card space-y-4" style={{ padding: 'var(--space-4)' }}>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Deck title (optional)"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 text-sm"
+            className="input"
             autoFocus
           />
 
@@ -112,7 +112,7 @@ export default function FlashcardsPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description (optional)"
-            className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 text-sm resize-none"
+            className="input resize-none"
             rows={2}
           />
 
@@ -120,21 +120,13 @@ export default function FlashcardsPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setSourceType('course')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'course'
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'course' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Course
             </button>
             <button
               onClick={() => setSourceType('document')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sourceType === 'document'
-                  ? 'bg-amber-600 text-white'
-                  : 'bg-slate-700/50 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`btn ${sourceType === 'document' ? 'btn-primary' : 'btn-secondary'}`}
             >
               From Document
             </button>
@@ -145,7 +137,7 @@ export default function FlashcardsPage() {
             <select
               value={selectedCourseId}
               onChange={(e) => setSelectedCourseId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500 text-sm"
+              className="input"
             >
               <option value="">Select a course…</option>
               {courses.map((c) => (
@@ -158,7 +150,7 @@ export default function FlashcardsPage() {
             <select
               value={selectedDocumentId}
               onChange={(e) => setSelectedDocumentId(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-900/50 border border-slate-600 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500 text-sm"
+              className="input"
             >
               <option value="">Select a document…</option>
               {documents.map((d) => (
@@ -169,11 +161,7 @@ export default function FlashcardsPage() {
             </select>
           )}
 
-          <button
-            onClick={handleCreate}
-            disabled={!canCreate}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <button onClick={handleCreate} disabled={!canCreate} className="btn btn-primary">
             {creating ? 'Creating…' : 'Create & Generate'}
           </button>
         </div>
@@ -195,62 +183,74 @@ export default function FlashcardsPage() {
         <div className="space-y-4">
           {/* Fetch error banner */}
           {error && (
-            <div className="bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg p-4 flex items-center justify-between gap-4">
+            <div
+              className="flex items-center justify-between gap-4 p-4"
+              style={{
+                background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--color-danger)',
+              }}
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <HiExclamationCircle className="w-5 h-5 shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium">Couldn't load flashcard decks</p>
-                  <p className="text-sm text-red-400/80 truncate">{error}</p>
+                  <p className="text-sm truncate" style={{ opacity: 0.8 }}>{error}</p>
                 </div>
               </div>
-              <button
-                onClick={() => void refetch()}
-                className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500 transition-colors"
-              >
+              <button onClick={() => void refetch()} className="btn btn-secondary shrink-0">
                 Retry
               </button>
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {decks.map((deck) => {
-            const course = courses.find((c) => c.id === deck.course_id);
-            const sourceName = course?.name ?? 'Untitled';
-            const prog = generationProgress[deck.id];
-            const isGenerating =
-              deck.status === 'generating' ||
-              (prog != null &&
-                ACTIVE_GENERATION_STAGES.includes(prog.stage as (typeof ACTIVE_GENERATION_STAGES)[number]));
+          <div className="flex flex-col">
+            {decks.map((deck) => {
+              const course = courses.find((c) => c.id === deck.course_id);
+              const sourceName = course?.name ?? 'Untitled';
+              const prog = generationProgress[deck.id];
+              const isGenerating =
+                deck.status === 'generating' ||
+                (prog != null &&
+                  ACTIVE_GENERATION_STAGES.includes(prog.stage as (typeof ACTIVE_GENERATION_STAGES)[number]));
 
-            return (
-              <div
-                key={deck.id}
-                onClick={() => navigate(`/flashcards/${deck.id}`)}
-                className="group relative bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 cursor-pointer hover:border-amber-600/50 hover:bg-slate-800/80 transition-all"
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setConfirmDeleteId(deck.id);
+              return (
+                <div
+                  key={deck.id}
+                  onClick={() => navigate(`/flashcards/${deck.id}`)}
+                  className="group grid cursor-pointer items-center"
+                  style={{
+                    gridTemplateColumns: '1fr auto auto auto',
+                    gap: 'var(--space-4)',
+                    padding: '12px 0',
+                    borderTop: '1px solid var(--color-neutral-300)',
                   }}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Delete"
                 >
-                  <HiTrash className="w-4 h-4" />
-                </button>
-
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 shrink-0">
-                    <HiSparkles className="w-4 h-4 text-amber-400" />
+                  <div className="min-w-0">
+                    <div className="min-w-0" style={{ fontSize: 15 }}>
+                      <span className="font-semibold">{deck.title}</span>{' '}
+                      <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
+                    </div>
+                    {isGenerating && prog && (
+                      <div
+                        className="mt-2 h-1 w-full overflow-hidden"
+                        style={{
+                          background: 'var(--color-neutral-300)',
+                          borderRadius: 'var(--radius-sm)',
+                          maxWidth: 240,
+                        }}
+                      >
+                        <div
+                          className="h-full transition-all duration-500"
+                          style={{
+                            background: 'var(--color-accent)',
+                            width: `${Math.min(100, (prog.itemsGenerated / FLASHCARD_TARGET) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1 pr-6">
-                    <h3 className="text-sm font-semibold text-slate-200 truncate">
-                      {deck.title}
-                    </h3>
-                    <p className="text-xs text-slate-500 truncate">{sourceName}</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between">
                   {deck.status === 'done' ? (
                     <Badge color="green">Ready</Badge>
                   ) : isGenerating ? (
@@ -260,28 +260,34 @@ export default function FlashcardsPage() {
                   ) : (
                     <Badge color="gray">Pending</Badge>
                   )}
+
                   {isGenerating && prog?.itemsGenerated ? (
-                    <span className="text-xs text-amber-400">{prog.itemsGenerated} cards</span>
+                    <span
+                      className="whitespace-nowrap"
+                      style={{ fontSize: 12, color: 'var(--color-accent-700)' }}
+                    >
+                      {prog.itemsGenerated} cards
+                    </span>
                   ) : (
-                    <span className="text-xs text-slate-500">
+                    <span className="whitespace-nowrap" style={{ fontSize: 12, opacity: 0.5 }}>
                       {new Date(deck.updated_at).toLocaleDateString()}
                     </span>
                   )}
-                </div>
 
-                {isGenerating && prog && (
-                  <div className="mt-2 h-1.5 w-full rounded-full bg-slate-700/60 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, (prog.itemsGenerated / FLASHCARD_TARGET) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDeleteId(deck.id);
+                    }}
+                    className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: 'var(--color-danger)', borderRadius: 'var(--radius-md)' }}
+                    title="Delete"
+                  >
+                    <HiTrash className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

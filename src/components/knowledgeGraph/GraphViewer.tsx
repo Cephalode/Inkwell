@@ -11,7 +11,21 @@ const NODE_COLORS: Record<KGNodeType, string> = {
   subject: '#22c55e',
   chat: '#6b7280',
   chapter: '#06b6d4',
+  topic: '#e8b93b',
 };
+
+/** Topic nodes are coloured by learning-suite mastery, not by type. */
+const TOPIC_MASTERY_COLORS: Record<NonNullable<KGNode['mastery']>, string> = {
+  0: '#e8b93b', // not started
+  1: '#38a6cf', // in progress
+  2: '#2f9e57', // learned
+  3: '#2f9e57', // foundation — assumed known
+};
+
+function nodeColor(node: KGNode): string {
+  if (node.type === 'topic') return TOPIC_MASTERY_COLORS[node.mastery ?? 0];
+  return NODE_COLORS[node.type] || '#6b7280';
+}
 
 const NODE_RADIUS: Record<KGNodeType, number> = {
   document: 6,
@@ -21,6 +35,7 @@ const NODE_RADIUS: Record<KGNodeType, number> = {
   subject: 9,
   chat: 4,
   chapter: 4,
+  topic: 5,
 };
 
 const EDGE_COLORS: Record<string, string> = {
@@ -30,6 +45,8 @@ const EDGE_COLORS: Record<string, string> = {
   'has-subject': 'rgba(34,197,94,0.3)',
   'related-chat': 'rgba(107,114,128,0.3)',
   'is-chapter-of': 'rgba(6,182,212,0.3)',
+  'next-topic': 'rgba(232,185,59,0.45)',
+  'builds-on': 'rgba(232,185,59,0.3)',
 };
 
 /** Map from filter toggle key → node type it controls */
@@ -41,6 +58,7 @@ const FILTER_TYPE_MAP: Record<string, KGNodeType> = {
   showSubjects: 'subject',
   showChats: 'chat',
   showChapters: 'chapter',
+  showTopics: 'topic',
 };
 
 // ── Initial fit-to-view tuning ───────────────────────────────────
@@ -326,7 +344,7 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     (node: SimNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const kgNode: KGNode = node;
       const { x = 0, y = 0 } = node;
-      const color = NODE_COLORS[kgNode.type] || '#6b7280';
+      const color = nodeColor(kgNode);
       const radius = getNodeRadius(kgNode);
 
       // Dimming when a node is hovered and this one isn't connected
@@ -347,6 +365,15 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
         : 'rgba(255,255,255,0.2)';
       ctx.lineWidth = isDimmed ? 0.3 : 0.5 / globalScale;
       ctx.stroke();
+
+      // Learned topics wear a thin outer ring — the map's "joined the core" mark.
+      if (kgNode.type === 'topic' && kgNode.mastery === 2) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 2.5, 0, 2 * Math.PI);
+        ctx.strokeStyle = isDimmed ? color + '26' : color + 'b3';
+        ctx.lineWidth = Math.max(0.4, 1 / globalScale);
+        ctx.stroke();
+      }
 
       // Label — only show when zoomed in enough or when highlighted
       const showLabel = globalScale > 0.8 || (!isDimmed && connectedNodes !== null);

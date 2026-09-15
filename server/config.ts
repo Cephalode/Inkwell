@@ -19,5 +19,6 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-export const UPSTREAM = 'https://api.z.ai/api/coding/paas/v4/chat/completions';
+// GLM_UPSTREAM lets a local mock or proxy stand in for the real API (tests, offline dev).
+export const UPSTREAM = process.env.GLM_UPSTREAM || 'https://api.z.ai/api/coding/paas/v4/chat/completions';
 export { API_KEY };

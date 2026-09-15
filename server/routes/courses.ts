@@ -8,6 +8,7 @@ interface CourseRow {
   name: string;
   description: string;
   color: string;
+  coursera_slug: string | null;
   document_ids: unknown;
   created_at: string;
   updated_at: string;
@@ -19,6 +20,7 @@ function rowToCourse(row: CourseRow) {
     name: row.name,
     description: row.description,
     color: row.color,
+    courseraSlug: row.coursera_slug ?? undefined,
     documentIds: row.document_ids ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -49,10 +51,10 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { id, name, description = '', color = '', document_ids = [] } = req.body;
+    const { id, name, description = '', color = '', document_ids = [], coursera_slug = null } = req.body;
     const { rows } = await pool.query(
-      'INSERT INTO courses (id, name, description, color, document_ids) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [id, name, description, color, JSON.stringify(document_ids)]
+      'INSERT INTO courses (id, name, description, color, document_ids, coursera_slug) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [id, name, description, color, JSON.stringify(document_ids), coursera_slug]
     );
     res.status(201).json(rowToCourse(rows[0] as CourseRow));
   } catch (err) {
@@ -67,7 +69,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const values: unknown[] = [];
     let i = 1;
     for (const [key, val] of Object.entries(req.body)) {
-      const snake = key === 'documentIds' ? 'document_ids' : key;
+      const snake = { documentIds: 'document_ids', courseraSlug: 'coursera_slug' }[key] ?? key;
       fields.push(`${snake} = $${i}`);
       values.push(key === 'documentIds' ? JSON.stringify(val) : val);
       i++;

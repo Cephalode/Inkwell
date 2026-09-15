@@ -8,6 +8,7 @@ import Spinner from '../components/shared/Spinner';
 import { useCourses } from '../hooks/useCourses';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useFlashcardStore } from '../store/flashcardStore';
+import { useLearningStore } from '../store/learningStore';
 import { getStudyGuide, listStudyGuides } from '../services/api/client';
 import { buildTopicMap, FOUNDATION_HUE } from '../utils/buildTopicMap';
 import type { StudyGuide } from '../types/studyGuide';
@@ -22,8 +23,10 @@ const swatch = (hue: string, size: number): CSSProperties => ({
   flex: 'none',
 });
 
-/** Topic map — the Study Desk prototype's cross-course map, built from study-guide
- *  concept roadmaps, their prerequisites (the green core) and flashcard reviews (mastery). */
+/** Topic map — the Study Desk prototype's cross-course map, built from course roadmaps
+ *  (skills + steps, with their mastery), study-guide concept roadmaps, and guide
+ *  prerequisites (the green core). Flashcard reviews are the fallback mastery for
+ *  topics that only a study guide knows about. */
 export default function TopicMapPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -32,8 +35,12 @@ export default function TopicMapPage() {
   const cardsByDeckId = useFlashcardStore((s) => s.cardsByDeckId);
   const fetchDecks = useFlashcardStore((s) => s.fetchDecks);
   const fetchCards = useFlashcardStore((s) => s.fetchCards);
+  const skills = useLearningStore((s) => s.skills);
+  const loadSkills = useLearningStore((s) => s.loadSkills);
+  const setSkillMastery = useLearningStore((s) => s.setSkillMastery);
 
   const [guides, setGuides] = useState<StudyGuide[] | null>(null);
+  const [skillsReady, setSkillsReady] = useState(false);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const requestedCards = useRef(new Set<string>());
@@ -42,6 +49,12 @@ export default function TopicMapPage() {
     let cancelled = false;
     loadCourses().catch(console.error);
     fetchDecks().catch(() => {});
+    // Skills are the map's primary source; a failed fetch still lets guides draw it.
+    loadSkills()
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSkillsReady(true);
+      });
     (async () => {
       try {
         const list = await listStudyGuides();
@@ -57,7 +70,7 @@ export default function TopicMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadCourses, fetchDecks]);
+  }, [loadCourses, fetchDecks, loadSkills]);
 
   useEffect(() => {
     for (const deck of decks) {
@@ -68,8 +81,8 @@ export default function TopicMapPage() {
   }, [decks, cardsByDeckId, fetchCards]);
 
   const map = useMemo(
-    () => buildTopicMap(courses, guides ?? [], decks, cardsByDeckId),
-    [courses, guides, decks, cardsByDeckId],
+    () => buildTopicMap(courses, guides ?? [], decks, cardsByDeckId, skills ?? []),
+    [courses, guides, decks, cardsByDeckId, skills],
   );
   const selected = useMemo(
     () => (selectedId ? map.topics.find((t) => t.id === selectedId) ?? null : null),
@@ -97,6 +110,30 @@ export default function TopicMapPage() {
     [navigate],
   );
   const handleOpenCourse = useCallback((topic: TopicNode) => navigate(`/courses/${topic.courseId}`), [navigate]);
+  const handleOpenStep = useCallback(
+    (topic: TopicNode) => {
+      if (topic.stepId) navigate(`/learn/steps/${topic.stepId}`);
+    },
+    [navigate],
+  );
+  const handleMarkKnown = useCallback(
+    async (topic: TopicNode) => {
+      if (!topic.skillId) return;
+      const learned = topic.mastery === 2;
+      const ok = window.confirm(
+        learned
+          ? `Reset "${topic.label}" to not started? Its mastery resets in every course that teaches it.`
+          : `Mark "${topic.label}" as already known? It counts as learned in every course that teaches it.`,
+      );
+      if (!ok) return;
+      try {
+        await setSkillMastery(topic.skillId, learned ? 'not_started' : 'learned');
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [setSkillMastery],
+  );
 
   const legend: Array<{ label: string; swatch: CSSProperties }> = [
     {
@@ -129,7 +166,7 @@ export default function TopicMapPage() {
     },
   ];
 
-  const loading = guides === null;
+  const loading = guides === null || !skillsReady;
   const empty = !loading && map.topics.length === 0;
 
   return (
@@ -187,8 +224,8 @@ export default function TopicMapPage() {
         <EmptyState
           icon={<PiGraphDuotone />}
           title="No topic map yet"
-          description="Generate a study guide for a course — its concept roadmap becomes the map, and reviewing flashcards fills it in."
-          action={{ label: 'Go to study guides', onClick: () => navigate('/study-guides') }}
+          description="Build a course roadmap (or a study guide) — its topics become the map, and mastering them fills it in."
+          action={{ label: 'Go to courses', onClick: () => navigate('/courses') }}
         />
       ) : (
         <>
@@ -234,6 +271,8 @@ export default function TopicMapPage() {
               onPick={setSelectedId}
               onReview={handleReview}
               onOpenCourse={handleOpenCourse}
+              onOpenStep={handleOpenStep}
+              onMarkKnown={handleMarkKnown}
             />
           </div>
         </>

@@ -40,22 +40,27 @@ export default function TextbookChat({ onAsk, startPage, endPage, isLoading }: T
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-800/50 rounded-xl border border-slate-700/50">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-700/50">
+    <div className="card flex flex-col h-full">
+      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--color-divider)' }}>
         <Badge color="cyan">Pages {startPage}-{endPage}</Badge>
-        <span className="text-xs text-slate-400">Answering from selected pages only</span>
+        <span className="text-xs" style={{ opacity: 0.6 }}>Answering from selected pages only</span>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[300px] max-h-[500px]">
         {messages.length === 0 && (
-          <div className="text-center text-slate-500 py-10">
+          <div className="text-center py-10" style={{ opacity: 0.5 }}>
             <p>Ask a question about pages {startPage}–{endPage}</p>
           </div>
         )}
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
-              msg.role === 'user' ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-200'
-            }`}>
+            <div
+              className="max-w-[80%] px-4 py-3 text-sm whitespace-pre-wrap"
+              style={
+                msg.role === 'user'
+                  ? { borderRadius: 'var(--radius-lg)', background: 'var(--color-accent)', color: 'var(--color-bg)' }
+                  : { borderRadius: 'var(--radius-lg)', background: 'var(--color-neutral-200)' }
+              }
+            >
               {msg.content}
             </div>
           </div>
@@ -63,14 +68,14 @@ export default function TextbookChat({ onAsk, startPage, endPage, isLoading }: T
         {isLoading && <div className="flex justify-center"><Spinner size="sm" /></div>}
         <div ref={chatEndRef} />
       </div>
-      <div className="p-3 border-t border-slate-700/50">
+      <div className="p-3" style={{ borderTop: '1px solid var(--color-divider)' }}>
         <div className="flex gap-2">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             placeholder="Ask about these pages..."
-            className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="input flex-1"
           />
           <Button onClick={handleSubmit} isLoading={isLoading}>
             <HiPaperAirplane className="w-4 h-4" />

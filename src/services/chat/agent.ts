@@ -37,6 +37,17 @@ export interface SystemMessageContext {
   currentPage: string;
   currentDocumentName?: string;
   currentDocumentId?: string;
+  /** Chapter the student currently has open in the textbook viewer. */
+  currentChapter?: { id: string; title: string; parentId: string } | null;
+  currentChapterId?: string | null;
+  /** Parsed text of the currently open chapter, when available. Included
+   *  directly in the system prompt so the agent can read what's on screen
+   *  without a tool call (Cursor-style proactive context). */
+  currentChapterText?: string | null;
+  /** Current page within the open chapter (1-indexed). */
+  viewerPage?: number;
+  /** Files explicitly @-referenced by the student in their message. */
+  attachedFileRefs?: { id: string; name: string; type: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -56,13 +67,48 @@ export function buildSystemMessage(context: SystemMessageContext): string {
       }`
     : 'No specific document is currently open.';
 
+  // Chapter context — the exact chapter the student has open in the viewer.
+  let chapterInfo = '';
+  if (context.currentChapter) {
+    const parentLabel = context.currentDocumentName ?? context.currentChapter.parentId;
+    chapterInfo = `\nThe user currently has open: Chapter "${context.currentChapter.title}" (ID: ${context.currentChapter.id}) from document "${parentLabel}".`;
+    if (typeof context.viewerPage === 'number' && context.viewerPage > 0) {
+      chapterInfo += `\nCurrent page in chapter: ${context.viewerPage}.`;
+    }
+  }
+
+  // Proactive chapter content — include the parsed text of the open chapter so
+  // the agent can answer questions about what's on screen WITHOUT a tool call.
+  // (Note: for converted textbooks the chapter id is a document UUID, so the
+  //  get_chapter tool would 404 — providing the text here sidesteps that.)
+  let chapterContent = '';
+  const chapterText = context.currentChapterText;
+  if (chapterText && chapterText.trim().length > 0) {
+    const MAX_EXCERPT = 4000;
+    const excerpt = chapterText.length > MAX_EXCERPT
+      ? chapterText.slice(0, MAX_EXCERPT) + `\n... [truncated; ${chapterText.length} total chars available]`
+      : chapterText;
+    const totalChars = chapterText.length;
+    chapterContent = `\n--- BEGIN CONTENT OF THE OPEN CHAPTER ("${context.currentChapter?.title ?? ''}", ${totalChars} chars total) ---\n${excerpt}\n--- END CHAPTER CONTENT ---\nYou already have this chapter's content above — answer questions about it directly. For content beyond this excerpt, use the get_chapter / get_document tools (the chapter ID ${context.currentChapter?.id ?? ''} resolves via the documents endpoint).`;
+  }
+
+  // Explicitly @-referenced files — the agent should prefer reading these.
+  let attachedInfo = '';
+  if (context.attachedFileRefs && context.attachedFileRefs.length > 0) {
+    const list = context.attachedFileRefs
+      .map((r) => `- "${r.name}" (id: ${r.id}, type: ${r.type})`)
+      .join('\n');
+    attachedInfo = `\nThe user explicitly referenced the following files. Use get_document / get_chapter / list_chapters to read their content before answering:\n${list}`;
+  }
+
   const toolDescriptions = toolDefinitions
     .map((t) => `- ${t.function.name}: ${t.function.description}`)
     .join('\n');
 
   return `You are Inkwell AI, an expert study assistant integrated into the Inkwell application. You help students understand their course materials, create study aids, and answer questions based on the provided content. Always cite specific parts of the source material when answering.
 
-${docInfo}. The student is currently on page "${context.currentPage}".
+${docInfo}.${chapterInfo}${chapterContent}${attachedInfo}
+The student is currently on page "${context.currentPage}".
 
 You have access to the following tools. Use them when the student asks you to perform actions that are better handled programmatically (e.g., searching documents, summarizing pages). Only call a tool when it directly helps answer the user's request.
 

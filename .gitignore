@@ -26,3 +26,6 @@ dist/
 
 # Server runtime data
 server/data/files/
+
+# Secrets
+.env

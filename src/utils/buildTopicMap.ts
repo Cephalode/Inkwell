@@ -1,6 +1,7 @@
 import type { Course } from '../types/course';
 import type { StudyGuide } from '../types/studyGuide';
 import type { Flashcard, FlashcardDeck } from '../types/flashcards';
+import { masteryLevel, type SkillWithCourses } from '../types/learning';
 import {
   FOUNDATION_COURSE,
   type TopicEdge,
@@ -33,23 +34,31 @@ const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const LEARNED_RATE = 0.8;
 
 /**
- * Builds the topic map from study guides (concept roadmaps + prerequisites),
- * courses (hues, grouping) and flashcards (mastery, "Review N cards").
+ * Builds the topic map from learning-suite roadmaps (skills + steps), study guides
+ * (concept roadmaps + prerequisites), courses (hues, grouping) and flashcards
+ * (fallback mastery, "Review N cards").
  *
- * - Every roadmap concept becomes a topic in its guide's course (a document guide
- *   joins the course that holds the document; guides for unfiled documents are skipped).
+ * - Every roadmap step becomes a topic in its course, keyed by the shared skill:
+ *   the same skill in two courses is two nodes with one mastery, linked across
+ *   courses. Consecutive steps of a course are linked so the map shows the path.
+ * - Every study-guide roadmap concept becomes a topic in its guide's course (a
+ *   document guide joins the course that holds the document; guides for unfiled
+ *   documents are skipped). A concept that names a skill already on the map in
+ *   the same course merges into that skill topic instead of duplicating it.
  * - Every guide prerequisite becomes a foundation topic in the shared green core.
  * - `dependsOn` names link a topic to the topic it builds on — first inside the course,
  *   then to a foundation, then across courses (a dashed link). Same-named concepts in
  *   two courses are linked too.
- * - Mastery comes from flashcards in the course's decks that mention the topic:
- *   all reviewed and ≥80% correct → learned; some reviewed → in progress.
+ * - Mastery: skill topics take the skill's server-tracked mastery. Guide-only topics
+ *   fall back to flashcards in the course's decks that mention the topic: all reviewed
+ *   and ≥80% correct → learned; some reviewed → in progress.
  */
 export function buildTopicMap(
   courses: Course[],
   guides: StudyGuide[],
   decks: FlashcardDeck[],
   cardsByDeckId: Record<string, Flashcard[]>,
+  skills: SkillWithCourses[] = [],
 ): TopicMap {
   const courseById = new Map(courses.map((c) => [c.id, c]));
   const courseOfGuide = (g: StudyGuide): Course | undefined => {
@@ -65,6 +74,36 @@ export function buildTopicMap(
   const foundations = new Map<string, TopicNode>(); // norm → foundation node
   const foundationCourses = new Map<string, Set<string>>(); // norm → assuming course names
   const dependsOn = new Map<string, string[]>(); // concept id → normalized names it builds on
+  const stepsByCourse = new Map<string, Array<{ id: string; position: number }>>(); // course → its roadmap path
+
+  // ── Roadmap skills first: they own mastery, guides only decorate them ──
+  for (const skill of skills) {
+    const n = norm(skill.label ?? '');
+    if (!n) continue;
+    for (const entry of skill.courses) {
+      if (!courseById.has(entry.courseId)) continue;
+      const key = `${entry.courseId}\0${n}`;
+      if (byCourseKey.has(key)) continue;
+      const node: TopicNode = {
+        id: `topic:${entry.courseId}:skill:${skill.id}`,
+        label: skill.label.trim(),
+        courseId: entry.courseId,
+        mastery: masteryLevel(skill.mastery),
+        masteryScore: skill.masteryScore,
+        description: skill.description ?? '',
+        source: 'Roadmap',
+        cards: 0,
+        skillId: skill.id,
+        stepId: entry.stepId,
+      };
+      topics.push(node);
+      normOf.set(node.id, n);
+      byCourseKey.set(key, node);
+      byNorm.set(n, [...(byNorm.get(n) ?? []), node]);
+      dependsOn.set(node.id, []);
+      stepsByCourse.set(entry.courseId, [...(stepsByCourse.get(entry.courseId) ?? []), { id: node.id, position: entry.position }]);
+    }
+  }
 
   for (const g of guides) {
     if (g.status !== 'done' || !g.content) continue;
@@ -76,7 +115,12 @@ export function buildTopicMap(
       if (!n) continue;
       const key = `${course.id}\0${n}`;
       let node = byCourseKey.get(key);
-      if (!node) {
+      if (node?.skillId) {
+        // Same concept as a roadmap skill: give the skill topic the guide's deep links.
+        node.guideId ??= g.id;
+        node.documentId ??= g.documentId ?? undefined;
+        if (!node.description) node.description = item.description ?? '';
+      } else if (!node) {
         const material = (g.content.perMaterial ?? []).find((m) =>
           [m.summary, ...(m.keyPoints ?? []), ...(m.definitions ?? [])].join(' ').toLowerCase().includes(n),
         );
@@ -88,6 +132,8 @@ export function buildTopicMap(
           description: item.description ?? '',
           source: material?.title ?? g.title,
           cards: 0,
+          guideId: g.id,
+          documentId: g.documentId ?? undefined,
         };
         topics.push(node);
         normOf.set(node.id, n);
@@ -151,8 +197,13 @@ export function buildTopicMap(
   for (const [n, f] of foundations) {
     for (const t of byNorm.get(n) ?? []) addEdge(f.id, t.id);
   }
+  // The roadmap path: consecutive steps of a course, in step order.
+  for (const steps of stepsByCourse.values()) {
+    steps.sort((a, b) => a.position - b.position);
+    for (let i = 1; i < steps.length; i++) addEdge(steps[i - 1].id, steps[i].id);
+  }
 
-  // ── Mastery from flashcards ────────────────────────────────────
+  // ── Flashcards: "Review N cards" for every topic; mastery only for guide-only topics ──
   const cardsByCourse = new Map<string, Flashcard[]>();
   const allCards: Flashcard[] = [];
   for (const deck of decks) {
@@ -172,7 +223,7 @@ export function buildTopicMap(
     const perDeck = new Map<string, number>();
     for (const c of matched) perDeck.set(c.deck_id, (perDeck.get(c.deck_id) ?? 0) + 1);
     t.deckId = [...perDeck.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    if (t.courseId === FOUNDATION_COURSE) continue;
+    if (t.courseId === FOUNDATION_COURSE || t.skillId) continue; // skill mastery is server-tracked
     const reviewed = matched.filter((c) => (c.review_stats?.timesReviewed ?? 0) > 0);
     if (!reviewed.length) continue;
     const attempts = reviewed.reduce((s, c) => s + (c.review_stats?.timesReviewed ?? 0), 0);

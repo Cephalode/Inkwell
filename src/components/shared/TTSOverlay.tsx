@@ -19,8 +19,8 @@ const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
  * layout level (outside any route), audio continues uninterrupted across
  * page navigation — the defining feature of the global TTS refactor.
  *
- * Design: dark frosted-glass bar fixed to the bottom of the viewport with
- * a subtle teal top border and cyan/teal accents.
+ * Design: Broadsheet surface bar fixed to the bottom of the viewport with
+ * a hairline divider top border and accent-token highlights.
  */
 export default function TTSOverlay() {
   const isSpeaking = useTTSStore((s) => s.isSpeaking);
@@ -62,7 +62,7 @@ export default function TTSOverlay() {
   const nextDisabled = !isSequential || currentSectionIndex >= totalSections - 1;
 
   const btnBase =
-    'inline-flex items-center justify-center w-8 h-8 rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center w-8 h-8 rounded-[var(--radius-md)] transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed';
 
   return (
     <div
@@ -73,7 +73,13 @@ export default function TTSOverlay() {
       }`}
       aria-hidden={!isSpeaking}
     >
-      <div className="border-t border-cyan-500/40 bg-slate-950/80 backdrop-blur-md shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.6)]">
+      <div
+        style={{
+          borderTop: '1px solid var(--color-divider)',
+          background: 'var(--color-surface)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
+      >
         <div className="mx-auto flex h-[60px] max-w-screen-2xl items-center gap-2 px-4">
           {/* ── Transport: previous / play-pause / next / stop ─────────── */}
           {isSequential && (
@@ -83,7 +89,7 @@ export default function TTSOverlay() {
               disabled={prevDisabled}
               title="Previous section"
               aria-label="Previous section"
-              className={`${btnBase} text-cyan-300 hover:bg-cyan-500/15`}
+              className={`${btnBase} text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)]`}
             >
               <HiChevronDoubleLeft className="w-4 h-4" />
             </button>
@@ -94,7 +100,8 @@ export default function TTSOverlay() {
             onClick={handlePlayPause}
             title={isPaused ? 'Resume' : 'Pause'}
             aria-label={isPaused ? 'Resume speech' : 'Pause speech'}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-cyan-600 hover:bg-cyan-500 text-white transition-colors shrink-0"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-[var(--color-accent)] hover:bg-[var(--color-accent-600)] transition-colors shrink-0"
+            style={{ color: 'var(--color-bg)' }}
           >
             {isSpeaking && !isPaused ? (
               <HiPause className="w-4 h-4" />
@@ -110,7 +117,7 @@ export default function TTSOverlay() {
               disabled={nextDisabled}
               title="Next section"
               aria-label="Next section"
-              className={`${btnBase} text-cyan-300 hover:bg-cyan-500/15`}
+              className={`${btnBase} text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)]`}
             >
               <HiChevronDoubleRight className="w-4 h-4" />
             </button>
@@ -121,24 +128,24 @@ export default function TTSOverlay() {
             onClick={stop}
             title="Stop"
             aria-label="Stop speech"
-            className={`${btnBase} text-slate-300 hover:bg-slate-700/50 shrink-0`}
+            className={`${btnBase} opacity-75 hover:opacity-100 hover:bg-[var(--color-neutral-200)] shrink-0`}
           >
             <HiStop className="w-4 h-4" />
           </button>
 
           {/* ── Now-reading indicator + section counter ─────────────────── */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <HiVolumeUp className={`w-4 h-4 text-cyan-400 shrink-0 ${isPaused ? '' : 'animate-pulse'}`} />
+            <HiVolumeUp className={`w-4 h-4 shrink-0 ${isPaused ? '' : 'animate-pulse'}`} style={{ color: 'var(--color-accent)' }} />
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-slate-400 leading-tight">
+              <div className="text-xs leading-tight" style={{ opacity: 0.6 }}>
                 {isPaused ? 'Paused' : 'Now reading'}
               </div>
-              <div className="text-sm text-cyan-100 font-medium truncate leading-tight">
+              <div className="text-sm font-medium truncate leading-tight">
                 {currentTitle || 'Untitled'}
               </div>
             </div>
             {isSequential && totalSections > 0 && (
-              <span className="text-xs text-cyan-300/80 tabular-nums shrink-0 whitespace-nowrap">
+              <span className="text-xs tabular-nums shrink-0 whitespace-nowrap" style={{ color: 'var(--color-accent-700)' }}>
                 {currentSectionIndex + 1} / {totalSections}
               </span>
             )}
@@ -151,7 +158,7 @@ export default function TTSOverlay() {
               onClick={toggleMute}
               title={volume === 0 ? 'Unmute' : 'Mute'}
               aria-label={volume === 0 ? 'Unmute' : 'Mute'}
-              className="inline-flex items-center justify-center w-7 h-7 rounded-md text-cyan-300 hover:bg-cyan-500/15 transition-colors"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-[var(--radius-md)] text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] transition-colors"
             >
               {volume === 0 ? (
                 <HiVolumeOff className="w-3.5 h-3.5" />
@@ -168,7 +175,8 @@ export default function TTSOverlay() {
               onChange={(e) => setVolume(parseFloat(e.target.value))}
               aria-label="Volume"
               title={`Volume ${Math.round(volume * 100)}%`}
-              className="w-16 h-1.5 accent-cyan-400 cursor-pointer"
+              className="w-16 h-1.5 cursor-pointer"
+              style={{ accentColor: 'var(--color-accent)' }}
             />
           </div>
 
@@ -178,7 +186,12 @@ export default function TTSOverlay() {
             onClick={cycleSpeed}
             title="Cycle playback speed"
             aria-label={`Playback speed ${rate}×`}
-            className="inline-flex items-center justify-center min-w-[2.75rem] h-8 px-2 rounded-md text-xs font-medium text-teal-200 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 transition-colors shrink-0"
+            className="inline-flex items-center justify-center min-w-[2.75rem] h-8 px-2 text-xs font-medium bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_18%,transparent)] transition-colors shrink-0"
+            style={{
+              color: 'var(--color-accent-700)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)',
+              borderRadius: 'var(--radius-md)',
+            }}
           >
             {rate}×
           </button>
@@ -189,7 +202,13 @@ export default function TTSOverlay() {
             onChange={(e) => setVoice(e.target.value)}
             aria-label="Select voice"
             title="Voice"
-            className="hidden md:block max-w-[9rem] truncate text-xs bg-slate-800 border border-slate-700/60 rounded-md px-1.5 py-1.5 text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 shrink-0"
+            className="hidden md:block max-w-[9rem] truncate text-xs px-1.5 py-1.5 shrink-0"
+            style={{
+              background: 'var(--color-bg)',
+              border: '1px solid var(--color-divider)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--color-text)',
+            }}
           >
             {voices.length === 0 && <option value="">Default voice</option>}
             {voices.map((v) => (

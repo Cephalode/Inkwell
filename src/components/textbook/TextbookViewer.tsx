@@ -96,12 +96,15 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
   const handleZoomOut = () => setScale((s) => Math.max(0.5, s - 0.25));
 
   return (
-    <div className="flex flex-col items-center bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden overflow-x-auto">
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-2 sm:p-3 border-b border-slate-700/50 w-full bg-slate-800/50">
+    <div className="card flex flex-col items-center overflow-hidden overflow-x-auto">
+      <div
+        className="flex flex-wrap items-center gap-2 sm:gap-3 p-2 sm:p-3 w-full"
+        style={{ borderBottom: '1px solid var(--color-divider)' }}
+      >
         <Button size="sm" variant="ghost" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}>
           <HiChevronLeft className="w-4 h-4" />
         </Button>
-        <span className="text-sm text-slate-300">Page {currentPage} of {totalPages}</span>
+        <span className="text-sm" style={{ opacity: 0.75 }}>Page {currentPage} of {totalPages}</span>
         <Button size="sm" variant="ghost" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages}>
           <HiChevronRight className="w-4 h-4" />
         </Button>
@@ -109,7 +112,7 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
         <Button size="sm" variant="ghost" onClick={handleZoomOut} disabled={scale <= 0.5}>
           <HiZoomOut className="w-4 h-4" />
         </Button>
-        <span className="text-xs text-slate-400">{Math.round(scale * 100)}%</span>
+        <span className="text-xs" style={{ opacity: 0.6 }}>{Math.round(scale * 100)}%</span>
         <Button size="sm" variant="ghost" onClick={handleZoomIn} disabled={scale >= 3}>
           <HiZoomIn className="w-4 h-4" />
         </Button>
@@ -117,31 +120,35 @@ export default function TextbookViewer({ file, currentPage, onPageChange, totalP
 
       <div className="p-4 overflow-auto max-h-[600px] w-full flex justify-center items-center relative min-h-[200px]">
         {!file ? (
-          <div className="text-center text-slate-400 py-20">
+          <div className="text-center py-20" style={{ opacity: 0.6 }}>
             <p>📄 No PDF loaded</p>
             <p className="text-sm mt-2">Select a PDF to start viewing</p>
           </div>
         ) : error ? (
-          <div className="text-center text-red-400 py-20">
+          <div className="text-center py-20" style={{ color: 'var(--color-danger)' }}>
             <p>⚠️ Failed to render page</p>
-            <p className="text-sm mt-2 text-red-300">{error}</p>
+            <p className="text-sm mt-2">{error}</p>
           </div>
         ) : (
           <>
             {isRendering && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 z-10">
+              <div
+                className="absolute inset-0 flex items-center justify-center z-10"
+                style={{ background: 'color-mix(in srgb, var(--color-bg) 60%, transparent)' }}
+              >
                 <div className="flex flex-col items-center gap-2">
-                  <svg className="animate-spin h-8 w-8 text-cyan-400" viewBox="0 0 24 24">
+                  <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" style={{ color: 'var(--color-accent)' }}>
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  <span className="text-sm text-slate-300">Rendering page…</span>
+                  <span className="text-sm" style={{ opacity: 0.75 }}>Rendering page…</span>
                 </div>
               </div>
             )}
             <canvas
               ref={canvasRef}
-              className="max-w-full h-auto shadow-lg rounded"
+              className="max-w-full h-auto"
+              style={{ boxShadow: 'var(--shadow-md)', borderRadius: 'var(--radius-md)' }}
             />
           </>
         )}

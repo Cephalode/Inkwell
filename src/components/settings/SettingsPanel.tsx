@@ -6,7 +6,7 @@ import { HiEye, HiEyeOff, HiCheck, HiStatusOffline, HiStatusOnline } from 'react
 import { checkBackendHealth } from '../../services/ai/client';
 
 export default function SettingsPanel() {
-  const { settings, setApiKey, setProvider, setBaseUrl, setModel, setDefaultSummaryType } = useSettingsStore();
+  const { settings, setApiKey, setProvider, setBaseUrl, setModel } = useSettingsStore();
   const [showKey, setShowKey] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
@@ -46,16 +46,30 @@ export default function SettingsPanel() {
     }
   };
 
+  const statusStyle =
+    backendOnline === null
+      ? { background: 'var(--color-neutral-200)', opacity: 0.7 }
+      : backendOnline
+        ? {
+            background: 'color-mix(in srgb, var(--color-success) 12%, transparent)',
+            color: 'var(--color-success)',
+            border: '1px solid color-mix(in srgb, var(--color-success) 35%, transparent)',
+          }
+        : {
+            background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+            color: 'var(--color-danger)',
+            border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
+          };
+
   return (
     <div className="max-w-2xl w-full space-y-4 sm:space-y-6">
-      <Card header={<h3 className="text-white font-semibold">🤖 AI Configuration</h3>}>
+      <Card header={<h3 className="section-label" style={{ margin: 0 }}>AI Configuration</h3>}>
         <div className="space-y-4">
           {/* Backend status indicator */}
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-            backendOnline === null ? 'bg-slate-700 text-slate-400' :
-            backendOnline ? 'bg-green-900/30 text-green-400 border border-green-800' :
-            'bg-red-900/30 text-red-400 border border-red-800'
-          }`}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 text-sm"
+            style={{ borderRadius: 'var(--radius-md)', ...statusStyle }}
+          >
             {backendOnline === null && <HiStatusOffline className="w-4 h-4" />}
             {backendOnline === true && <HiStatusOnline className="w-4 h-4" />}
             {backendOnline === false && <HiStatusOffline className="w-4 h-4" />}
@@ -66,27 +80,19 @@ export default function SettingsPanel() {
 
           {/* Mode toggle */}
           <div>
-            <label className="block text-sm text-slate-400 mb-2">AI Source</label>
+            <label className="block text-sm mb-2" style={{ opacity: 0.6 }}>AI Source</label>
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={() => handleToggleUseCustom(false)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  !useCustomKey
-                    ? 'bg-cyan-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                className={`btn ${!useCustomKey ? 'btn-primary' : 'btn-secondary'}`}
               >
-                🔧 Built-in AI (GLM-5.1)
+                Built-in AI (GLM-5.1)
               </button>
               <button
                 onClick={() => handleToggleUseCustom(true)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  useCustomKey
-                    ? 'bg-cyan-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
+                className={`btn ${useCustomKey ? 'btn-primary' : 'btn-secondary'}`}
               >
-                🔑 Custom API Key
+                Custom API Key
               </button>
             </div>
           </div>
@@ -95,7 +101,7 @@ export default function SettingsPanel() {
           {useCustomKey && (
             <>
               <div>
-                <label className="block text-sm text-slate-400 mb-1">API Key</label>
+                <label className="block text-sm mb-1" style={{ opacity: 0.6 }}>API Key</label>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
                     <input
@@ -103,59 +109,45 @@ export default function SettingsPanel() {
                       value={settings.ai.apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       placeholder="sk-..."
-                      className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-cyan-500"
+                      className="input pr-10"
                     />
-                    <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ opacity: 0.6 }}>
                       {showKey ? <HiEyeOff className="w-4 h-4" /> : <HiEye className="w-4 h-4" />}
                     </button>
                   </div>
                   <Button size="sm" onClick={testApiKey} isLoading={testStatus === 'testing'}>
-                    {testStatus === 'ok' && <HiCheck className="w-4 h-4 text-green-400" />}
+                    {testStatus === 'ok' && <HiCheck className="w-4 h-4" style={{ color: 'var(--color-success)' }} />}
                     Test
                   </Button>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Provider</label>
-                  <select value={settings.ai.provider} onChange={(e) => setProvider(e.target.value as 'openai' | 'custom')} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm">
+                  <label className="block text-sm mb-1" style={{ opacity: 0.6 }}>Provider</label>
+                  <select value={settings.ai.provider} onChange={(e) => setProvider(e.target.value as 'openai' | 'custom')} className="input">
                     <option value="openai">OpenAI</option>
                     <option value="custom">Custom (OpenAI-compatible)</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Model</label>
-                  <input value={settings.ai.model} onChange={(e) => setModel(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm" />
+                  <label className="block text-sm mb-1" style={{ opacity: 0.6 }}>Model</label>
+                  <input value={settings.ai.model} onChange={(e) => setModel(e.target.value)} className="input" />
                 </div>
               </div>
               {settings.ai.provider === 'custom' && (
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Base URL</label>
-                  <input value={settings.ai.baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-200 text-sm" />
+                  <label className="block text-sm mb-1" style={{ opacity: 0.6 }}>Base URL</label>
+                  <input value={settings.ai.baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="input" />
                 </div>
               )}
             </>
           )}
 
           {!useCustomKey && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs" style={{ opacity: 0.5 }}>
               Using the built-in Inkwell AI backend with GLM-5.1. The backend proxy runs on port 3002 and handles API authentication automatically.
             </p>
           )}
-        </div>
-      </Card>
-
-      <Card header={<h3 className="text-white font-semibold">📝 Default Summary Type</h3>}>
-        <div className="flex flex-wrap gap-3">
-          {(['tldr', 'keypoints', 'detailed'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setDefaultSummaryType(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${settings.defaultSummaryType === t ? 'bg-cyan-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-            >
-              {t === 'tldr' ? 'TL;DR' : t === 'keypoints' ? 'Key Points' : 'Detailed'}
-            </button>
-          ))}
         </div>
       </Card>
     </div>

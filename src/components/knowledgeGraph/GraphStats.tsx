@@ -25,38 +25,44 @@ export function GraphStats({ graph }: GraphStatsProps) {
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-10">
-      <div className="bg-slate-800/80 backdrop-blur-sm border-t border-slate-700/50 px-4 py-2.5">
+      <div
+        className="px-4 py-2.5"
+        style={{
+          background: 'color-mix(in srgb, var(--color-surface) 88%, transparent)',
+          borderTop: '1px solid var(--color-divider)',
+        }}
+      >
         <div className="flex items-center justify-center gap-5 text-sm flex-wrap">
           {/* Total Nodes */}
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <span className="font-semibold text-slate-200">{totalNodes}</span>
-            <span>nodes</span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-semibold">{totalNodes}</span>
+            <span style={{ opacity: 0.6 }}>nodes</span>
           </span>
 
           {/* Separator */}
-          <span className="text-slate-600">•</span>
+          <span style={{ opacity: 0.4 }}>•</span>
 
           {/* Total Edges */}
-          <span className="flex items-center gap-1.5 text-slate-400">
-            <span className="font-semibold text-slate-200">{totalEdges}</span>
-            <span>edges</span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-semibold">{totalEdges}</span>
+            <span style={{ opacity: 0.6 }}>edges</span>
           </span>
 
           {/* Separator */}
-          <span className="text-slate-600">•</span>
+          <span style={{ opacity: 0.4 }}>•</span>
 
           {/* Per-type counts */}
           {typeConfig.map(({ key, shortLabel, color }) => {
             const count = countsByType[key] ?? 0;
             if (count === 0) return null;
             return (
-              <span key={key} className="flex items-center gap-1.5 text-slate-400">
+              <span key={key} className="flex items-center gap-1.5">
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: color }}
                 />
-                <span className="font-semibold text-slate-200">{count}</span>
-                <span>{shortLabel}</span>
+                <span className="font-semibold">{count}</span>
+                <span style={{ opacity: 0.6 }}>{shortLabel}</span>
               </span>
             );
           })}
