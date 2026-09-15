@@ -102,6 +102,8 @@ export function useDocuments() {
             name: updated.name,
             classifyStatus: updated.classifyStatus,
             videoSummary: updated.videoSummary,
+            summary: updated.summary,
+            summaryStatus: updated.summaryStatus,
           });
         } catch {
           /* classification may still be in-flight; non-fatal */

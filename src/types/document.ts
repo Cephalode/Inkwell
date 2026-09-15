@@ -42,10 +42,19 @@ export interface DocumentFile {
   tags: string[];
   classifyStatus?: ClassifyStatus;
   videoSummary?: VideoSummary | null;
+  /** Auto-generated markdown summary (TL;DR + Key Points). */
+  summary?: string | null;
+  /** 'pending' | 'generating' | 'done' | 'failed' | 'skipped' */
+  summaryStatus?: string;
   /** Server-side path or, for YouTube docs, the source URL. */
   filePath?: string | null;
   /** If this document is a chapter inside a textbook, this is the textbook ID. */
   textbookId?: string | null;
+  /** Page range / chapter metadata, populated when a document is a converted textbook chapter. */
+  startPage?: number | null;
+  endPage?: number | null;
+  chapterIndex?: number | null;
+  chapterTitle?: string | null;
   createdAt: number;
   updatedAt: number;
 }

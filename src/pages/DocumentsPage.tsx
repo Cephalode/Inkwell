@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useCallback, useState, useMemo, useRef, lazy, Suspense } from 'react';
 import UploadZone from '../components/upload/UploadZone';
 import FileList from '../components/upload/FileList';
 import EmptyState from '../components/shared/EmptyState';
@@ -16,10 +16,15 @@ import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
 import { useChatStore } from '../store/chatStore';
 import { useKnowledgeGraphStore } from '../store/knowledgeGraphStore';
-import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook } from '../services/api/client';
+import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook, listStudyGuides, getStudyGuide } from '../services/api/client';
 import { buildKnowledgeGraph } from '../utils/buildKnowledgeGraph';
+import { extendGraphWithTopics } from '../utils/graphTopics';
+import { buildTopicMap } from '../utils/buildTopicMap';
+import { useFlashcardStore } from '../store/flashcardStore';
+import { useLearningStore } from '../store/learningStore';
+import type { StudyGuide } from '../types/studyGuide';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash, HiExclamationCircle } from 'react-icons/hi';
 import { HiOutlineListBullet } from 'react-icons/hi2';
 import type { KGNode } from '../types/knowledgeGraph';
@@ -32,6 +37,12 @@ export default function DocumentsPage() {
   const { courses, loadCourses, addDocumentToCourse } = useCourses();
   const sessions = useChatStore((s) => s.sessions);
   const safeSessions = useMemo(() => sessions ?? [], [sessions]);
+  const decks = useFlashcardStore((s) => s.decks);
+  const cardsByDeckId = useFlashcardStore((s) => s.cardsByDeckId);
+  const fetchDecks = useFlashcardStore((s) => s.fetchDecks);
+  const fetchCards = useFlashcardStore((s) => s.fetchCards);
+  const skills = useLearningStore((s) => s.skills);
+  const loadSkills = useLearningStore((s) => s.loadSkills);
   const setSelectedNode = useKnowledgeGraphStore((s) => s.setSelectedNode);
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
@@ -39,8 +50,53 @@ export default function DocumentsPage() {
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [textbookError, setTextbookError] = useState(false);
   const [expandedTextbooks, setExpandedTextbooks] = useState<Set<string>>(new Set());
+  const [guides, setGuides] = useState<StudyGuide[] | null>(null);
+  const [searchParams] = useSearchParams();
+  const searchQuery = (searchParams.get('q') || '').toLowerCase();
+  const filteredDocuments = useMemo(
+    () => searchQuery
+      ? documents.filter(d =>
+          d.name.toLowerCase().includes(searchQuery) ||
+          (d.tags ?? []).some(t => t.toLowerCase().includes(searchQuery)))
+      : documents,
+    [documents, searchQuery]
+  );
 
-  useEffect(() => { loadDocuments(); loadCourses(); }, [loadDocuments, loadCourses]);
+  useEffect(() => {
+    loadDocuments();
+    loadCourses();
+    fetchDecks().catch(() => {});
+    // Roadmap skills give topic nodes their mastery on the graph.
+    loadSkills().catch(() => {});
+  }, [loadDocuments, loadCourses, fetchDecks, loadSkills]);
+
+  // Fetch flashcard contents for mastery on the graph (mirrors TopicMapPage).
+  const requestedCards = useRef(new Set<string>());
+  useEffect(() => {
+    for (const deck of decks) {
+      if (deck.status !== 'done' || cardsByDeckId[deck.id] || requestedCards.current.has(deck.id)) continue;
+      requestedCards.current.add(deck.id);
+      fetchCards(deck.id).catch(() => {});
+    }
+  }, [decks, cardsByDeckId, fetchCards]);
+
+  // Roadmap topics come from completed study guides.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listStudyGuides();
+        const full = await Promise.all(
+          list.filter((g) => g.status === 'done').map((g) => getStudyGuide(g.id).catch(() => null)),
+        );
+        if (!cancelled) setGuides(full.filter((g): g is StudyGuide => !!g));
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setGuides([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Fetch chapters from backend API for each document
   useEffect(() => {
@@ -113,9 +169,17 @@ export default function DocumentsPage() {
     return counts;
   }, [chapters]);
 
-  const graph = useMemo(
+  const baseGraph = useMemo(
     () => buildKnowledgeGraph(documents, courses, safeSessions, chapters),
     [documents, courses, safeSessions, chapters],
+  );
+  const topicMap = useMemo(
+    () => (guides ? buildTopicMap(courses, guides, decks, cardsByDeckId, skills ?? []) : null),
+    [guides, courses, decks, cardsByDeckId, skills],
+  );
+  const graph = useMemo(
+    () => extendGraphWithTopics(baseGraph.nodes, baseGraph.edges, topicMap),
+    [baseGraph, topicMap],
   );
 
   const handleGraphNodeClick = useCallback(
@@ -135,26 +199,32 @@ export default function DocumentsPage() {
     [graph.nodes, navigate],
   );
 
+  const handleOpenStep = useCallback((stepId: string) => navigate(`/learn/steps/${stepId}`), [navigate]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-1">📄 Documents</h1>
-          <p className="text-slate-400">Upload and manage your study materials</p>
+          <div className="card-kicker" style={{ fontSize: 13 }}>Library</div>
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-2)' }}>Documents</h1>
+          <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>Upload and manage your study materials</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400">
+          <span className="text-sm" style={{ opacity: 0.6 }}>
             {documents.length} document{documents.length !== 1 ? 's' : ''}
           </span>
           {/* View toggle */}
-          <div className="flex items-center rounded-lg bg-slate-800 p-0.5">
+          <div
+            className="flex items-center p-0.5"
+            style={{ background: 'var(--color-neutral-200)', borderRadius: 'var(--radius-md)' }}
+          >
             <button
               onClick={() => setViewMode('list')}
-              className={
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ' +
-                (viewMode === 'list'
-                  ? 'bg-teal-600 text-white'
-                  : 'text-slate-400 hover:text-white')
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors"
+              style={
+                viewMode === 'list'
+                  ? { background: 'var(--color-accent)', color: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }
+                  : { opacity: 0.6, borderRadius: 'var(--radius-md)' }
               }
               title="List view"
             >
@@ -163,11 +233,11 @@ export default function DocumentsPage() {
             </button>
             <button
               onClick={() => setViewMode('graph')}
-              className={
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ' +
-                (viewMode === 'graph'
-                  ? 'bg-teal-600 text-white'
-                  : 'text-slate-400 hover:text-white')
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors"
+              style={
+                viewMode === 'graph'
+                  ? { background: 'var(--color-accent)', color: 'var(--color-bg)', borderRadius: 'var(--radius-md)' }
+                  : { opacity: 0.6, borderRadius: 'var(--radius-md)' }
               }
               title="Graph view"
             >
@@ -185,7 +255,7 @@ export default function DocumentsPage() {
       {isLoading && documents.length === 0 ? (
         <div className="flex justify-center py-10"><Spinner /></div>
       ) : viewMode === 'graph' ? (
-        <div className="relative rounded-xl border border-slate-700/50 bg-slate-900/50 overflow-hidden h-[calc(100vh-12rem)]">
+        <div className="card relative overflow-hidden h-[calc(100vh-12rem)]">
           {graph.nodes.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <EmptyState
@@ -207,8 +277,11 @@ export default function DocumentsPage() {
                 fallback={
                   <div className="flex items-center justify-center h-full">
                     <div className="flex flex-col items-center gap-3">
-                      <div className="w-10 h-10 rounded-full border-3 border-slate-700 border-t-teal-400 animate-spin" />
-                      <p className="text-sm text-slate-500">Loading graph…</p>
+                      <div
+                        className="w-10 h-10 rounded-full border-3 animate-spin"
+                        style={{ borderColor: 'var(--color-neutral-300)', borderTopColor: 'var(--color-accent)' }}
+                      />
+                      <p className="text-sm" style={{ opacity: 0.5 }}>Loading graph…</p>
                     </div>
                   </div>
                 }
@@ -217,7 +290,7 @@ export default function DocumentsPage() {
               </Suspense>
 
               {/* Node Detail Panel — right side, slides in */}
-              <NodeDetailPanel graph={graph} onOpenDocument={handleOpenDocument} />
+              <NodeDetailPanel graph={graph} onOpenDocument={handleOpenDocument} onOpenStep={handleOpenStep} />
 
               {/* Stats Bar — bottom overlay */}
               <GraphStats graph={graph} />
@@ -234,18 +307,23 @@ export default function DocumentsPage() {
         <div className="space-y-2">
           {/* Textbook fetch error banner */}
           {textbookError && (
-            <div className="bg-red-900/30 border border-red-700/50 text-red-300 rounded-lg p-4 flex items-center justify-between gap-4">
+            <div
+              className="p-4 flex items-center justify-between gap-4"
+              style={{
+                background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
+                color: 'var(--color-danger)',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <HiExclamationCircle className="w-5 h-5 shrink-0" />
                 <div className="min-w-0">
                   <p className="font-medium">Couldn't load textbooks</p>
-                  <p className="text-sm text-red-400/80">Something went wrong fetching your textbooks.</p>
+                  <p className="text-sm" style={{ opacity: 0.8 }}>Something went wrong fetching your textbooks.</p>
                 </div>
               </div>
-              <button
-                onClick={loadTextbooks}
-                className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-500 transition-colors"
-              >
+              <button onClick={loadTextbooks} className="btn btn-primary shrink-0">
                 Retry
               </button>
             </div>
@@ -254,27 +332,25 @@ export default function DocumentsPage() {
           {textbooks.map((tb) => {
             const expanded = expandedTextbooks.has(tb.id);
             return (
-              <div
-                key={tb.id}
-                className="rounded-xl border border-slate-700/50 bg-slate-800/40 overflow-hidden"
-              >
+              <div key={tb.id} className="card overflow-hidden">
                 {/* Textbook header row */}
                 <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-800/70 transition-colors"
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
                   onClick={() => toggleTextbook(tb.id)}
                 >
                   {expanded
-                    ? <HiChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                    : <HiChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                    ? <HiChevronDown className="w-4 h-4 shrink-0" style={{ opacity: 0.6 }} />
+                    : <HiChevronRight className="w-4 h-4 shrink-0" style={{ opacity: 0.6 }} />
                   }
-                  <HiBookOpen className="w-5 h-5 text-cyan-400 shrink-0" />
+                  <HiBookOpen className="w-5 h-5 shrink-0" style={{ color: 'var(--color-accent)' }} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-200 truncate">{tb.name}</p>
-                    <p className="text-xs text-slate-500">{tb.documents.length} chapter{tb.documents.length !== 1 ? 's' : ''}</p>
+                    <p className="text-sm font-medium truncate">{tb.name}</p>
+                    <p className="text-xs" style={{ opacity: 0.5 }}>{tb.documents.length} chapter{tb.documents.length !== 1 ? 's' : ''}</p>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDeleteTextbook(tb.id); }}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-700/50 transition-colors"
+                    className="p-1.5 transition-colors hover:text-[var(--color-danger)] hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+                    style={{ opacity: 0.6, borderRadius: 'var(--radius-md)' }}
                     title="Delete textbook"
                   >
                     <HiTrash className="w-4 h-4" />
@@ -283,7 +359,7 @@ export default function DocumentsPage() {
 
                 {/* Expanded chapter list */}
                 {expanded && (
-                  <div className="border-t border-slate-700/30 bg-slate-900/30 px-3 py-2">
+                  <div className="px-3 py-2" style={{ borderTop: '1px solid var(--color-divider)' }}>
                     <FileList
                       documents={tb.documents}
                       onDelete={undefined}
@@ -301,7 +377,7 @@ export default function DocumentsPage() {
 
           {/* Regular documents */}
           <FileList
-            documents={documents}
+            documents={filteredDocuments}
             onDelete={deleteDocumentById}
             onSelect={handleSelectDoc}
             courses={courses.map(c => ({ id: c.id, name: c.name, documentIds: c.documentIds }))}
