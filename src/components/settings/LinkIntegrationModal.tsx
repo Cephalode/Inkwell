@@ -19,7 +19,7 @@ export default function LinkIntegrationModal({ integration, onClose, onLinked }:
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [linking, setLinking] = useState(false);
-  const Icon = providerIcon(integration.id);
+  const Icon = providerIcon(integration.id); // lookup, not creation
 
   const submit = async () => {
     const missing = integration.fields.find((f) => !values[f.key]?.trim());
@@ -46,7 +46,7 @@ export default function LinkIntegrationModal({ integration, onClose, onLinked }:
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Icon className="w-6 h-6 shrink-0 text-[var(--color-accent)]" />
+                {Icon({ className: "w-6 h-6 shrink-0 text-[var(--color-accent)]" })}
                 <div>
                   <h3 className="leading-tight" style={{ fontSize: 18 }}>{integration.label}</h3>
                   {integration.docsUrl && (

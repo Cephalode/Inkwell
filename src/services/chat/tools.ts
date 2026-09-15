@@ -103,7 +103,6 @@ async function handleGetChapter(args: Record<string, unknown>): Promise<string> 
     // (Converted-textbook chapters are stored as rows in the `documents` table
     // with a textbook_id, so their id is a document UUID — the chapters
     // endpoint returns 404 for them.)
-    chapter = null;
   }
 
   if (chapter) {

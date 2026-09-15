@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../store/documentStore';
 import SummaryPanel from '../components/summary/SummaryPanel';
@@ -71,26 +71,25 @@ export default function DocumentDetailPage() {
   const doc = currentDocument;
 
   // Refresh this doc from the server — used to poll while the auto-summary
-  // is generating server-side.
-  const refreshSummary = useCallback(async () => {
-    if (!currentDocument) return;
-    const updated = await getDocument(currentDocument.id);
-    useDocumentStore.getState().updateDocument(currentDocument.id, {
+  // is generating server-side. Plain functions (not hooks): they sit after the
+  // loading early-return, and all state goes through the store's getState().
+  const refreshSummary = async (docId: string = doc.id) => {
+    const updated = await getDocument(docId);
+    useDocumentStore.getState().updateDocument(docId, {
       summary: updated.summary,
       summaryStatus: updated.summaryStatus,
     });
-  }, [currentDocument]);
+  };
 
   // Regenerate after a failure — POSTs the summary endpoint and stores the
   // result directly (the endpoint resolves with the finished summary).
-  const regenerateSummary = useCallback(async () => {
-    if (!currentDocument) return;
-    const result = await generateSummary(currentDocument.id);
-    useDocumentStore.getState().updateDocument(currentDocument.id, {
+  const regenerateSummary = async (docId: string = doc.id) => {
+    const result = await generateSummary(docId);
+    useDocumentStore.getState().updateDocument(docId, {
       summary: result.summary,
       summaryStatus: result.status,
     });
-  }, [currentDocument]);
+  };
 
   const isYoutube = doc.type === 'youtube';
   const videoId = isYoutube && doc.filePath ? getYouTubeVideoId(doc.filePath) : null;

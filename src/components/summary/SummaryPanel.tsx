@@ -34,9 +34,11 @@ export default function SummaryPanel({ summary, summaryStatus, onPoll, onRetry }
   // Poll while the server-side auto-summary is in flight. Bounded: if it
   // never resolves (stuck server), fall through to the retry UI.
   const [pollCount, setPollCount] = useState(0);
-  useEffect(() => {
-    setPollCount(0);
-  }, [summaryStatus, onPoll]);
+  const [lastStatus, setLastStatus] = useState('');
+  if (summaryStatus !== lastStatus) {
+    setLastStatus(summaryStatus);
+    setPollCount(0); // adjust-state-on-render: reset the bounded poll per status change
+  }
   useEffect(() => {
     if (!generating || pollCount >= 24) return; // ~2 min at 5s intervals
     let cancelled = false;

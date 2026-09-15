@@ -319,11 +319,10 @@ export default function GlobalChat() {
   }, [mentionItems, mentionQuery]);
 
   // Keep the active highlight within bounds as the filtered list changes.
-  useEffect(() => {
-    if (mentionIndex >= filteredMentionItems.length) {
-      setMentionIndex(0);
-    }
-  }, [filteredMentionItems.length, mentionIndex]);
+  // Derived on render instead of a setState-in-effect (lint: cascading renders).
+  const clampedMentionIndex = filteredMentionItems.length
+    ? mentionIndex % filteredMentionItems.length
+    : 0;
 
   // Load textbooks once so chapter names are available for @ mentions.
   useEffect(() => {
@@ -721,7 +720,7 @@ export default function GlobalChat() {
                     }
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      handleMentionSelect(filteredMentionItems[mentionIndex]);
+                      handleMentionSelect(filteredMentionItems[clampedMentionIndex]);
                       return;
                     }
                     if (e.key === 'Escape') {
@@ -741,7 +740,7 @@ export default function GlobalChat() {
               {mentionOpen && (
                 <MentionPopover
                   items={filteredMentionItems}
-                  activeIndex={mentionIndex}
+                  activeIndex={clampedMentionIndex}
                   onSelect={handleMentionSelect}
                   onClose={() => setMentionOpen(false)}
                 />

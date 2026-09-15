@@ -24,7 +24,13 @@ export default function IntegrationsSection() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load integrations'));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    listIntegrations()
+      .then((res) => { if (!cancelled) setItems(res); })
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load integrations'); });
+    return () => { cancelled = true; };
+  }, []);
 
   const refreshAll = async () => {
     setRefreshingAll(true);

@@ -134,6 +134,7 @@ export default function TextbookPage() {
   const handleSelectChapter = (ch: Chapter) => {
     setSelectedChapter(ch);
     setChapterLocalPage(1);
+    setViewerPage(1);
     setStartPage(ch.page);
     const idx = chapters.findIndex((c) => c.title === ch.title && c.page === ch.page);
     const endPageNum = idx + 1 < chapters.length ? chapters[idx + 1].page - 1 : pageCount;
@@ -201,13 +202,6 @@ export default function TextbookPage() {
     }
   }, [currentDocument, initChapters]);
 
-  // ── Keep the store's viewerPage in sync with the local chapter page ────
-  useEffect(() => {
-    if (selectedChapter) {
-      setViewerPage(chapterLocalPage);
-    }
-  }, [chapterLocalPage, selectedChapter, setViewerPage]);
-
   // Clear the store's chapter context when the page unmounts
   useEffect(() => {
     return () => {
@@ -236,14 +230,19 @@ export default function TextbookPage() {
     const tb = serverTextbooks.find((t) => t.id === docParam);
     if (tb) {
       restoredRef.current = true;
+      startTransition(() => {
       setLoadedTextbook(tb);
       setCurrentDocument(null);
       clearCurrentChapter();
+      });
       if (chapterParam) {
         const chapDoc = tb.documents.find((d) => d.id === chapterParam);
         if (chapDoc) {
-          // handleSelectChapterDocument is async; restore the page after it
-          void handleSelectChapterDocument(chapDoc).then(() => {
+          // handleSelectChapterDocument is async; restore the page after it.
+          // ponytail: deferred so the effect body has no sync setState (lint); restore-once
+          // semantics kept by restoredRef above.
+          setTimeout(() => {
+            void handleSelectChapterDocument(chapDoc).then(() => {
             if (pageParam) {
               const p = Number(pageParam);
               if (Number.isFinite(p) && p > 0) {
@@ -252,7 +251,8 @@ export default function TextbookPage() {
                 updateUrlParams({ page: String(p) });
               }
             }
-          });
+            });
+          }, 0);
         }
       }
       return;
@@ -262,7 +262,7 @@ export default function TextbookPage() {
     const pdf = pdfs.find((d) => d.id === docParam);
     if (pdf) {
       restoredRef.current = true;
-      void handleSelectPDF(pdf);
+      setTimeout(() => { void handleSelectPDF(pdf); }, 0); // ponytail: deferred, see above
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverTextbooks, pdfs]);

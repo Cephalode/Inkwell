@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Inkwell — Instructor Console</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖋</text></svg>">
+<script>try{var t=localStorage.getItem("tui-theme");if(t)document.documentElement.dataset.theme=t;else if(matchMedia("(prefers-color-scheme: light)").matches)document.documentElement.dataset.theme="light";}catch(e){}</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">🖋</div>
+      <div>
+        <div class="brand-name">Inkwell</div>
+        <div class="brand-sub">Instructor Console</div>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Primary">
+      <a href="#overview" data-view="overview" class="nav-item active"><span class="nav-ico" aria-hidden="true">▤</span>Overview</a>
+      <a href="#courses" data-view="courses" class="nav-item"><span class="nav-ico" aria-hidden="true">🎓</span>Courses</a>
+      <a href="#learners" data-view="learners" class="nav-item"><span class="nav-ico" aria-hidden="true">☺</span>Learners</a>
+      <a href="#content" data-view="content" class="nav-item"><span class="nav-ico" aria-hidden="true">🗎</span>Content</a>
+      <a href="#items" data-view="items" class="nav-item"><span class="nav-ico" aria-hidden="true">✎</span>Item Analysis</a>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="env-row"><span class="dot ok"></span> api <span class="mono">server/index.ts</span></div>
+      <div class="env-row"><span class="dot ok"></span> 68 learners active</div>
+      <button class="btn ghost small" id="themeToggle">Toggle theme</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="topbar-right">
+        <span class="badge env">Fall 2026 term</span>
+        <input class="search" aria-label="Search" placeholder="Search learners, content…">
+        <div class="avatar" title="instructor">IN</div>
+      </div>
+    </header>
+    <section class="content" id="content"></section>
+  </main>
+</div>
+
+<div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+  <div class="drawer-head">
+    <div class="drawer-title" id="drawerTitle">Details</div>
+    <button class="btn ghost small" id="drawerClose" aria-label="Close details">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+<div class="drawer-scrim" id="drawerScrim"></div>
+
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
