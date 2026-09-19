@@ -22,6 +22,7 @@ import integrationsRouter from './routes/integrations.js';
 import roadmapsRouter from './routes/roadmaps.js';
 import learningRouter from './routes/learning.js';
 import videosRouter from './routes/videos.js';
+import ttsRouter from './routes/tts.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -99,6 +100,7 @@ app.use('/api/integrations', integrationsRouter);
 app.use('/api', roadmapsRouter);
 app.use('/api', learningRouter);
 app.use('/api', videosRouter);
+app.use('/api', ttsRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {

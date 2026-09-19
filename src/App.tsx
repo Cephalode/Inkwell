@@ -4,6 +4,7 @@ import Layout from './components/layout/Layout';
 import ErrorBoundary from './components/shared/ErrorBoundary';
 import LoadingScreen from './components/shared/LoadingScreen';
 import DashboardPage from './pages/DashboardPage';
+import SelectionTTS from './components/shared/SelectionTTS';
 import DocumentsPage from './pages/DocumentsPage';
 import DocumentDetailPage from './pages/DocumentDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -78,6 +79,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <RouteEffects />
+        <SelectionTTS />
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<DashboardPage />} />
