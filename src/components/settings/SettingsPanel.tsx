@@ -86,7 +86,7 @@ export default function SettingsPanel() {
                 onClick={() => handleToggleUseCustom(false)}
                 className={`btn ${!useCustomKey ? 'btn-primary' : 'btn-secondary'}`}
               >
-                Built-in AI (GLM-5.1)
+                Built-in AI (GLM-5.3-Flash)
               </button>
               <button
                 onClick={() => handleToggleUseCustom(true)}
@@ -145,7 +145,7 @@ export default function SettingsPanel() {
 
           {!useCustomKey && (
             <p className="text-xs" style={{ opacity: 0.5 }}>
-              Using the built-in Inkwell AI backend with GLM-5.1. The backend proxy runs on port 3002 and handles API authentication automatically.
+              Using the built-in Inkwell AI backend with GLM-5.3-Flash. The backend proxy runs on port 3002 and handles API authentication automatically.
             </p>
           )}
         </div>
