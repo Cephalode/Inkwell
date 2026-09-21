@@ -1,0 +1,8 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- B · Line art: stroked bottle + one quill stroke, no fills -->
+  <g fill="none" stroke="#191817" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M24 10 L40 10 L40 15 Q40 18 44 20 Q50 23 50 31 L50 47 Q50 53 44 53 L20 53 Q14 53 14 47 L14 31 Q14 23 20 20 Q24 18 24 15 Z"/>
+    <path d="M54 5 Q46 6 39 17"/>
+    <path d="M36 12 L54 5"/>
+  </g>
+</svg>
