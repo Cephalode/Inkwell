@@ -29,3 +29,6 @@ server/data/files/
 
 # Secrets
 .env
+
+# Syncthing conflict copies
+*sync-conflict*
