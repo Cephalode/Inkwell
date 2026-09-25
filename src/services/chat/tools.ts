@@ -15,6 +15,11 @@ import {
   listChapters,
   getChapter,
   classifyDocument,
+  createPracticeTest,
+  generatePracticeTest,
+  createFlashcardDeck,
+  generateFlashcardDeck,
+  generatePodcast,
 } from '../api/client';
 import { chatCompletion } from '../ai/client';
 import { SUMMARY_PROMPTS } from '../ai/prompts';
@@ -183,6 +188,69 @@ async function handleSearchDocuments(args: Record<string, unknown>): Promise<str
       classifyStatus: d.classifyStatus,
     })),
   );
+}
+
+/** Generator tools (E7 / PRD 7): chat is the command line for every generator. */
+
+/** Explicit documentId arg, else the document currently open in the viewer. */
+function resolveDocumentId(args: Record<string, unknown>): string | null {
+  const explicit = args.documentId as string | undefined;
+  if (explicit) return explicit;
+  return useDocumentStore.getState().currentDocument?.id ?? null;
+}
+
+/** Drain a generation SSE stream to completion (the pipeline stops on disconnect). */
+async function drainGeneration(res: Response): Promise<void> {
+  await res.text();
+}
+
+async function handleGenerateQuiz(args: Record<string, unknown>): Promise<string> {
+  const documentId = resolveDocumentId(args);
+  if (!documentId) return 'Error: no documentId provided and no document is currently open.';
+  const count = Math.max(1, Math.min(50, Number(args.count) || 10));
+  const focus = typeof args.focus === 'string' ? args.focus.trim() : '';
+  const test = await createPracticeTest({
+    title: 'Quiz from chat',
+    source: { type: 'document', ids: [documentId] },
+    config: { numQuestions: count, instructions: focus || undefined },
+  });
+  await drainGeneration(await generatePracticeTest(test.id));
+  const status = (await (await fetch(`/api/practice-tests/${test.id}`)).json()) as { status: string };
+  return JSON.stringify({ status: status.status === 'done' ? 'done' : status.status, testId: test.id, url: `/tests/${test.id}`, questions: count });
+}
+
+async function handleGenerateFlashcards(args: Record<string, unknown>): Promise<string> {
+  const documentId = resolveDocumentId(args);
+  if (!documentId) return 'Error: no documentId provided and no document is currently open.';
+  const count = Math.max(1, Math.min(50, Number(args.count) || 20));
+  const instructions = typeof args.instructions === 'string' ? args.instructions.trim() : '';
+  const deck = await createFlashcardDeck({
+    title: 'Deck from chat',
+    source: { type: 'document', ids: [documentId] },
+    config: { count, instructions: instructions || undefined },
+  });
+  await drainGeneration(await generateFlashcardDeck(deck.id));
+  return JSON.stringify({ status: 'done', deckId: deck.id, url: `/flashcards/${deck.id}`, cards: count });
+}
+
+async function handleGeneratePodcast(args: Record<string, unknown>): Promise<string> {
+  const documentId = resolveDocumentId(args);
+  if (!documentId) return 'Error: no documentId provided and no document is currently open.';
+  const result = await generatePodcast(documentId);
+  return JSON.stringify({ status: result.status, url: `/documents/${documentId}`, note: 'Podcast audio is on the document page, Summary tab.' });
+}
+
+async function handleGenerateLesson(args: Record<string, unknown>): Promise<string> {
+  const documentId = resolveDocumentId(args);
+  if (!documentId) return 'Error: no documentId provided and no document is currently open.';
+  const res = await fetch('/api/lessons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentId }),
+  });
+  if (!res.ok) return `Error: lesson creation failed (${res.status}).`;
+  const lesson = (await res.json()) as { id: string };
+  return JSON.stringify({ status: 'generating', lessonId: lesson.id, url: `/lessons/${lesson.id}`, note: 'Sections stream in over the next few minutes.' });
 }
 
 async function handleGetCurrentContext(): Promise<string> {
@@ -386,6 +454,70 @@ export const toolDefinitions: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'generate_quiz',
+      description:
+        'Generate an AI practice quiz from a document. Uses the currently open document when no documentId is given. Returns the quiz URL.',
+      parameters: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: 'Document ID. Omit to use the currently open document.' },
+          count: { type: 'number', description: 'Number of questions (1-50, default 10).' },
+          focus: { type: 'string', description: 'Optional focus instructions, e.g. "chapter 3 only", "exam style".' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_flashcards',
+      description:
+        'Generate a flashcard deck from a document. Uses the currently open document when no documentId is given. Returns the deck URL.',
+      parameters: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: 'Document ID. Omit to use the currently open document.' },
+          count: { type: 'number', description: 'Number of cards (1-50, default 20).' },
+          instructions: { type: 'string', description: 'Optional instructions, e.g. "focus on definitions".' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_podcast',
+      description:
+        'Generate the two-host podcast audio overview for a document (requires its summary to exist). Uses the currently open document when no documentId is given.',
+      parameters: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: 'Document ID. Omit to use the currently open document.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_lesson',
+      description:
+        'Create a guided, section-by-section lesson with checkpoint quizzes from a document. Uses the currently open document when no documentId is given.',
+      parameters: {
+        type: 'object',
+        properties: {
+          documentId: { type: 'string', description: 'Document ID. Omit to use the currently open document.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_current_context',
       description:
         'Get the current application context: which page the user is on, the currently selected document (if any), its chapter markers, and the currently open chapter (id, title, parentId) plus the current viewer page.',
@@ -425,6 +557,14 @@ export async function executeToolCall(
       return handleSummarize(args);
     case 'search_documents':
       return handleSearchDocuments(args);
+    case 'generate_quiz':
+      return handleGenerateQuiz(args);
+    case 'generate_flashcards':
+      return handleGenerateFlashcards(args);
+    case 'generate_podcast':
+      return handleGeneratePodcast(args);
+    case 'generate_lesson':
+      return handleGenerateLesson(args);
     case 'get_current_context':
       return handleGetCurrentContext();
     default:

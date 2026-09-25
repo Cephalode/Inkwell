@@ -67,7 +67,9 @@ function anchor(t: TopicNode, state: SimState, input: SimInput): { ax: number; a
   const cy = h / 2;
   if (isKnown(t)) return { ax: cx, ay: cy, st: 0.02 };
   const R = Math.min(w, h) / 2;
-  const idx = input.courseIds.indexOf(t.courseId);
+  // Shared topics sit on the branch of their first course that is still shown.
+  const cid = t.courseIds.find((c) => !input.hidden.has(c)) ?? t.courseId;
+  const idx = input.courseIds.indexOf(cid);
   const a = courseAngle(Math.max(idx, 0), input.courseIds.length) + (state.branchOff?.[t.id] ?? 0);
   const inProgress = t.mastery === 1;
   return {
@@ -124,7 +126,10 @@ export function stepSimulation(state: SimState, input: SimInput): void {
     const a = ns[e.a];
     const b = ns[e.b];
     if (!a || !b) continue;
-    const related = A.courseId === B.courseId || A.courseId === FOUNDATION_COURSE || B.courseId === FOUNDATION_COURSE;
+    const related =
+      A.courseId === FOUNDATION_COURSE ||
+      B.courseId === FOUNDATION_COURSE ||
+      A.courseIds.some((c) => B.courseIds.includes(c));
     const rest = isKnown(A) && isKnown(B) ? 72 : related ? 95 : 165;
     let dx = b.x - a.x;
     let dy = b.y - a.y;

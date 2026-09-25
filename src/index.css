@@ -5,6 +5,9 @@
    Dark is the app default (:root); html.light overrides — matches the
    existing theme mechanism (settingsStore sets the class on <html>). */
 :root {
+  /* Real chrome height (TopBar h-14 = 56px); Layout children use it for
+     calc(100vh - …) sizing so full-height workspaces never overflow the page. */
+  --header-height: 56px;
   --color-bg: #191817;
   --color-surface: #22201f;
   --color-text: #ebe7e5;
@@ -212,3 +215,11 @@ input[type='checkbox'] {
   font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase;
   opacity: 0.55;
 }
+
+/* Read-aloud karaoke highlight — current spoken word (Markdown data-w spans) */
+.tts-hl {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  border-radius: 3px;
+  box-shadow: 0 -2px 0 color-mix(in srgb, var(--color-accent) 24%, transparent) inset;
+}
+.tts-hl strong, .tts-hl em, .tts-hl b, .tts-hl i { color: var(--color-accent-700); }

@@ -8,6 +8,11 @@ import { skillSlug, type Mastery } from '../src/mastery.js';
 
 const router = Router();
 
+// ponytail: E8 — every route here trusts the single user (no `user_id` scoping,
+// single-user install). When multi-user lands, scope roadmaps/steps/activities
+// by the authenticated user in this file AND server/routes/learning.ts.
+
+
 // ── Row types ───────────────────────────────────────────────────────────────
 
 interface RoadmapRow {
@@ -213,10 +218,19 @@ router.post('/courses/:courseId/roadmap', async (req: Request, res: Response) =>
       `INSERT INTO roadmaps (course_id, title, status)
        VALUES ($1, $2, 'pending')
        ON CONFLICT (course_id) DO UPDATE SET status = 'pending', error = NULL, updated_at = now()
+       -- Never reset a live generation back to pending — that would let a
+       -- second generate slip past the guard below (double GLM spend).
+       -- Stale window mirrors GENERATION_TIMEOUT_MS (10 min).
+       WHERE roadmaps.status <> 'generating' OR roadmaps.updated_at < now() - interval '10 minutes'
        RETURNING *`,
       [courseId, `${courseRows[0].name} roadmap`],
     );
-    res.status(201).json(await loadRoadmapView(rows[0] as RoadmapRow));
+    let roadmap = rows[0] as RoadmapRow | undefined;
+    if (!roadmap) {
+      // Already generating elsewhere — return it as-is instead of resetting.
+      roadmap = (await pool.query('SELECT * FROM roadmaps WHERE course_id = $1', [courseId])).rows[0] as RoadmapRow;
+    }
+    res.status(201).json(await loadRoadmapView(roadmap));
   } catch (err) {
     console.error('Error creating roadmap:', err);
     res.status(500).json({ error: 'Failed to create roadmap' });
@@ -278,6 +292,19 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
   const id = String(req.params.id);
   const { rows } = await pool.query('SELECT * FROM roadmaps WHERE id = $1', [id]);
   if (rows.length === 0) return res.status(404).json({ error: 'Roadmap not found' });
+
+  // Atomic claim: only one pipeline per roadmap. Double-click, second tab, or
+  // a raced retry gets 409 instead of double GLM spend + interleaved writes.
+  // Stale rows (>10 min in 'generating', keep in sync with
+  // GENERATION_TIMEOUT_MS) re-qualify so a crashed run can be retried.
+  const claim = await pool.query(
+    `UPDATE roadmaps SET status = 'generating', error = NULL, updated_at = now()
+     WHERE id = $1 AND (status <> 'generating' OR updated_at < now() - interval '10 minutes')`,
+    [id],
+  );
+  if (claim.rowCount === 0) {
+    return res.status(409).json({ error: 'This roadmap is already generating' });
+  }
   const roadmap = rows[0] as RoadmapRow;
 
   const { rows: courseRows } = await pool.query('SELECT name, coursera_slug FROM courses WHERE id = $1', [roadmap.course_id]);
@@ -293,6 +320,7 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
     id,
     req,
     res,
+    concurrency: 4, // ponytail: MAP calls are independent; 4 keeps GLM rate limits happy
 
     collectMaterials: async () => {
       if (courseraSlug) {
@@ -357,8 +385,17 @@ Respond with ONLY JSON: {"topics": [{"name": "...", "description": "...", "objec
       const { rows: skillRows } = await pool.query(
         'SELECT label, mastery FROM skills ORDER BY updated_at DESC LIMIT 200',
       );
+      const known = (skillRows as Array<{ label: string; mastery: string }>).filter((s) => s.mastery === 'learned');
+      const knownSlugs = new Set(known.map((s) => skillSlug(s.label)));
+      // Already-mastered skills are dropped outright — switching courses must
+      // not make the learner sit through topics they've already proven. Steps
+      // that teach them are pruned below (their deps re-point to real steps).
+      const knownLine = known.length
+        ? `\nSkills the learner has ALREADY mastered (never build a step for these; a step that only covers one of them should be dropped, and if most of a step is old material, refine the step to cover just what's new):\n${known.map((s) => `- ${s.label}`).join('\n')}\n`
+        : '';
       const existing = (skillRows as Array<{ label: string; mastery: string }>)
-        .map((s) => `- ${s.label}${s.mastery === 'learned' ? ' (already learned)' : ''}`)
+        .filter((s) => s.mastery !== 'learned')
+        .map((s) => `- ${s.label}`)
         .join('\n');
 
       const synth = await callGLMJson<{ title?: string; overview?: string; steps?: unknown }>(
@@ -374,7 +411,7 @@ Respond with ONLY JSON: {"topics": [{"name": "...", "description": "...", "objec
 
 Topics extracted from every material in the course (index = material number):
 ${JSON.stringify(extracted.map((t, i) => ({ i, ...t })))}
-${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}
+${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library but are NOT yet mastered. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}${knownLine}
 Build the roadmap:
 - Merge duplicate/overlapping extracted topics into one step each. Aim for 6-16 steps; never more than 20.
 - Order from foundations to advanced. Each step lists the titles of earlier steps it depends on (empty for foundations). No cycles.
@@ -436,7 +473,14 @@ Respond with ONLY JSON: {"title": "...", "overview": "3-4 sentence overview of t
           prev.dependsOn = [...new Set([...prev.dependsOn, ...s.dependsOn])];
         }
       }
-      const finalSteps = [...bySlug.values()];
+      const finalSteps = [...bySlug.values()]
+        // Don't reteach: a step whose skill is already mastered is dropped for
+        // good. The LLM was told to skip these; this is the guarantee when it
+        // doesn't (label drift, merged steps, etc.).
+        .filter((s) => !knownSlugs.has(skillSlug(s.title)));
+      if (finalSteps.length === 0) {
+        throw new Error('Every topic in this course is already mastered — no steps needed. Add new material or reset a skill to rebuild.');
+      }
 
       // Persist atomically: replace steps, upsert skills.
       const client = await pool.connect();

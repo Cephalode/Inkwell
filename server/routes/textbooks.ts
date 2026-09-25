@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import pool from '../db.js';
 import { storageDelete, isStorageKey } from '../src/storage.js';
+import { uid } from '../src/auth.js';
 
 const router = Router();
 
@@ -71,14 +72,16 @@ function rowToDoc(row: DocRow) {
 }
 
 // ── GET /api/textbooks — List all textbooks with their chapter documents ───
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { rows: textbooks } = await pool.query(
-      'SELECT * FROM textbooks ORDER BY updated_at DESC',
+      'SELECT * FROM textbooks WHERE user_id = $1 ORDER BY updated_at DESC',
+      [uid(req)],
     );
 
     const { rows: allDocs } = await pool.query(
-      'SELECT * FROM documents WHERE textbook_id IS NOT NULL ORDER BY created_at ASC',
+      'SELECT * FROM documents WHERE textbook_id IS NOT NULL AND user_id = $1 ORDER BY created_at ASC',
+      [uid(req)],
     );
     const docsByTextbook = new Map<string, DocRow[]>();
     for (const doc of allDocs as DocRow[]) {
@@ -103,14 +106,14 @@ router.get('/', async (_req: Request, res: Response) => {
 // ── GET /api/textbooks/:id — Get single textbook with documents ───────────
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM textbooks WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM textbooks WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Textbook not found' });
     }
 
     const { rows: docs } = await pool.query(
-      'SELECT * FROM documents WHERE textbook_id = $1 ORDER BY created_at ASC',
-      [req.params.id],
+      'SELECT * FROM documents WHERE textbook_id = $1 AND user_id = $2 ORDER BY created_at ASC',
+      [req.params.id, uid(req)],
     );
 
     res.json({

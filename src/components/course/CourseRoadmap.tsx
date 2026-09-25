@@ -378,16 +378,20 @@ function StepRow({
       <div
         role="button"
         tabIndex={0}
-        onClick={onOpen}
+        onClick={() => {
+          if (isLocked) return; // ponytail: UI gate only; deep links/Next-topic still resolve
+          onOpen();
+        }}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return; // the chip handles its own keys
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
+            if (isLocked) return;
             onOpen();
           }
         }}
         className="group flex w-full items-stretch gap-3 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_5%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
-        style={{ borderRadius: 'var(--radius-md)', paddingRight: 8, cursor: 'pointer' }}
+        style={{ borderRadius: 'var(--radius-md)', paddingRight: 8, cursor: isLocked ? 'default' : 'pointer' }}
       >
         <div className="relative shrink-0" style={{ width: colWidth }}>
           {nextOffset !== null && (
@@ -428,12 +432,27 @@ function StepRow({
   );
 }
 
-/** Course roadmap — the server-built learning path: an up-next hero and a
- *  Duolingo-style trail of steps, each pointing at a skill shared across courses. */
-export default function CourseRoadmap({ course }: { course: Course }) {
+/**
+ * Course roadmap — the server-built learning path: an up-next hero and a
+ *  Duolingo-style trail of steps, each pointing at a skill shared across courses.
+ *  Also renders the merged "All courses" view (`isMerged` + a prebuilt `roadmap`
+ *  from mergeRoadmaps) — in that mode the per-course actions are hidden.
+ */
+export default function CourseRoadmap({
+  course,
+  isMerged = false,
+  roadmap: provided,
+}: {
+  course: Course;
+  /** Merged "All courses" mode: `roadmap` is prebuilt, per-course actions hidden. */
+  isMerged?: boolean;
+  /** Prebuilt roadmap (merged mode); otherwise loaded from the store. */
+  roadmap?: Roadmap;
+}) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const roadmap: Roadmap | null | undefined = useLearningStore((s) => s.roadmapsByCourseId[course.id]);
+  const cached = useLearningStore((s) => s.roadmapsByCourseId[course.id]);
+  const roadmap: Roadmap | null | undefined = provided ?? cached;
   const progress: GenerationProgress | undefined = useLearningStore((s) => s.generation[course.id]);
   const loadRoadmap = useLearningStore((s) => s.loadRoadmap);
   const generateRoadmap = useLearningStore((s) => s.generateRoadmap);
@@ -442,6 +461,7 @@ export default function CourseRoadmap({ course }: { course: Course }) {
   const [overviewOpen, setOverviewOpen] = useState(false);
 
   useEffect(() => {
+    if (isMerged) return; // merged view is prebuilt by the caller
     let cancelled = false;
     loadRoadmap(course.id).catch((err: unknown) => {
       if (!cancelled) setLoadError({ courseId: course.id, message: errorMessage(err) });
@@ -449,7 +469,7 @@ export default function CourseRoadmap({ course }: { course: Course }) {
     return () => {
       cancelled = true;
     };
-  }, [course.id, loadRoadmap]);
+  }, [course.id, loadRoadmap, isMerged]);
 
   // A roadmap generating elsewhere (another tab, a reload mid-stream) has no
   // local progress to follow; poll until the server reports it finished.
@@ -478,7 +498,7 @@ export default function CourseRoadmap({ course }: { course: Course }) {
 
   const regenerate = () => {
     const ok = window.confirm(
-      `Rebuild the learning path for ${course.name}?\n\nInkwell will re-read the materials and lay the topics out again. Your progress is safe — mastery lives on skills, not on the path.`,
+      `Rebuild the learning path for ${course.name}?\n\nInkwell will re-read the materials and lay the topics out again. Your progress is safe — mastery lives on skills, not on the path, and topics you've already mastered won't be taught again.`,
     );
     if (ok) void generate();
   };
@@ -573,6 +593,9 @@ export default function CourseRoadmap({ course }: { course: Course }) {
     const learned = roadmap.counts.learned;
     const pct = total ? Math.round((learned / total) * 100) : 0;
     const complete = total > 0 && learned >= total;
+    const minutesLeft = steps
+      .filter((s) => s.state !== 'learned')
+      .reduce((sum, s) => sum + s.estimatedMinutes, 0);
     const current = steps.find((s) => s.id === roadmap.nextStepId) ?? steps.find((s) => s.state === 'current') ?? null;
     const overview = roadmap.overview.trim();
     const clamped = overview.length > OVERVIEW_CLAMP;
@@ -663,32 +686,36 @@ export default function CourseRoadmap({ course }: { course: Course }) {
           <div className="flex items-center gap-3">
             <span className="section-label">Roadmap</span>
             <span className="text-xs" style={{ opacity: 0.55 }}>
-              {learned}/{total} learned · {pct}%
+              {learned}/{total} learned · {pct}%{minutesLeft > 0 && <> · ≈ {minutesLeft} min left</>}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              className="btn btn-ghost"
-              style={GHOST_BTN}
-              onClick={() => navigate(`/learn/videos?courseId=${encodeURIComponent(course.id)}`)}
-              title="YouTube videos judged against this course's milestones"
-            >
-              <HiOutlineVideoCamera className="h-3.5 w-3.5" />
-              Videos
-            </button>
+            {!isMerged && (
+              <button
+                className="btn btn-ghost"
+                style={GHOST_BTN}
+                onClick={() => navigate(`/learn/videos?courseId=${encodeURIComponent(course.id)}`)}
+                title="YouTube videos judged against this course's milestones"
+              >
+                <HiOutlineVideoCamera className="h-3.5 w-3.5" />
+                Videos
+              </button>
+            )}
             <button className="btn btn-ghost" style={GHOST_BTN} onClick={() => navigate('/topic-map')}>
               <HiOutlineMap className="h-3.5 w-3.5" />
               Topic map
             </button>
-            <button
-              className="btn btn-ghost"
-              style={GHOST_BTN}
-              onClick={regenerate}
-              title="Rebuild the path from the course materials. Mastery is kept — it lives on skills."
-            >
-              <HiOutlineArrowPath className="h-3.5 w-3.5" />
-              Regenerate
-            </button>
+            {!isMerged && (
+              <button
+                className="btn btn-ghost"
+                style={GHOST_BTN}
+                onClick={regenerate}
+                title="Rebuild the path from the course materials. Mastery is kept — it lives on skills, and topics you've already mastered are left out."
+              >
+                <HiOutlineArrowPath className="h-3.5 w-3.5" />
+                Regenerate
+              </button>
+            )}
           </div>
         </div>
 

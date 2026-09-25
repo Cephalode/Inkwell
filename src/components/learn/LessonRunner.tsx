@@ -1,7 +1,9 @@
-import { useState } from 'react';
-import { HiCheck, HiOutlineClock } from 'react-icons/hi2';
+import { useEffect, useState } from 'react';
+import { HiCheck, HiOutlineClock, HiSpeakerWave } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
+import { speakAll, stopSpeak } from '../shared/SelectionTTS';
 import { useLearningStore } from '../../store/learningStore';
+import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
 import type { LessonContent } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
 
@@ -18,6 +20,26 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
   const [grades, setGrades] = useState<Record<number, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+
+  const readAloud = async () => {
+    if (reading) {
+      stopSpeak(); // audio 'pause' flips the bar off; just sync our button
+      setReading(false);
+      return;
+    }
+    setError(null);
+    setReading(true);
+    try {
+      // Parse the markdown SOURCE: formatting markers, code blocks and the
+      // like are skipped, math is converted to speakable words.
+      await speakAll(chunkSpeechText(buildSpeakable(content?.markdown ?? '')), true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read the lesson aloud');
+    } finally {
+      setReading(false);
+    }
+  };
 
   if (!content || !content.markdown) {
     return (
@@ -56,8 +78,20 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
     <div className="space-y-5">
       {/* Reading */}
       <article className="card" style={{ padding: 'var(--space-6)' }}>
-        <div className="mb-4 flex items-center gap-1.5 text-xs" style={{ opacity: 0.55 }}>
-          <HiOutlineClock className="h-3.5 w-3.5" />≈ {content.estimatedMinutes} min read
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-xs" style={{ opacity: 0.55 }}>
+            <HiOutlineClock className="h-3.5 w-3.5" />≈ {content.estimatedMinutes} min read
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary shrink-0"
+            style={{ fontSize: 13 }}
+            onClick={() => void readAloud()}
+            title="Read the whole lesson aloud"
+          >
+            <HiSpeakerWave className="h-4 w-4" />
+            {reading ? 'Stop reading' : 'Listen'}
+          </button>
         </div>
         <Markdown content={content.markdown} className="text-[15px]" />
       </article>

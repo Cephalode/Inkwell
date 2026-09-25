@@ -56,13 +56,13 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/flashcard-decks
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { title, description, course_id, source } = req.body;
+    const { title, description, course_id, source, config } = req.body;
 
     const result = await db.query(
-      `INSERT INTO flashcard_decks (title, description, course_id, source, status)
-       VALUES ($1, $2, $3, $4, 'pending')
-       RETURNING id, title, description, course_id, source, status, created_at, updated_at`,
-      [title, description, course_id || null, JSON.stringify(source)]
+      `INSERT INTO flashcard_decks (title, description, course_id, source, config, status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')
+       RETURNING id, title, description, course_id, source, config, status, created_at, updated_at`,
+      [title, description, course_id || null, JSON.stringify(source), JSON.stringify(config)]
     );
 
     res.json(result.rows[0]);
@@ -98,8 +98,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
 //
 // Flashcards have no REDUCE/synthesis step, so no `finalize` is supplied.
 
-// Hard cap on the number of cards a single deck may contain.
-const MAX_CARDS = 30;
+// Card target for a deck: user-requested count (default 30), hard-capped at 50.
+const deckTarget = (config: unknown): number =>
+  Math.min(50, Math.max(1, (config as { count?: number } | null)?.count || 30));
 
 router.post('/:id/generate', async (req: Request, res: Response) => {
   const id = String(req.params.id);
@@ -107,7 +108,7 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
   // Resolve the deck up-front so a missing row yields a clean 404 before the
   // SSE stream is opened (the pipeline flushes headers immediately).
   const deck = await db.query(
-    'SELECT source, course_id FROM flashcard_decks WHERE id = $1',
+    'SELECT source, course_id, config FROM flashcard_decks WHERE id = $1',
     [id]
   );
 
@@ -115,7 +116,9 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Deck not found' });
   }
 
-  const { source, course_id } = deck.rows[0];
+  const { source, course_id, config } = deck.rows[0];
+  const maxCards = deckTarget(config);
+  const instructions: string = (config as { instructions?: string } | null)?.instructions || '';
 
   // Running position across the whole deck; shared between collect (reset) and
   // the per-material processing callback.
@@ -145,8 +148,8 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
 
     // ── MAP: generate flashcards for a single material unit ──
     processMaterial: async (material) => {
-      // Stop once the 30-card cap has been reached.
-      if (position >= MAX_CARDS) return 0;
+      // Stop once the requested card count has been reached.
+      if (position >= maxCards) return 0;
 
       // Generate flashcards from material
       let cards: Array<{ front: string; back: string }> = [];
@@ -156,7 +159,7 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
           [
             {
               role: 'user',
-              content: `Create flashcard questions and answers from this material. Generate simple, focused cards suitable for learning and memorization.
+              content: `Create flashcard questions and answers from this material. Generate simple, focused cards suitable for learning and memorization.${instructions ? `\n\nSpecial instructions: ${instructions}` : ''}
 
 Material:
 ${material.text}
@@ -176,7 +179,7 @@ Respond with valid JSON: {"cards": [{"front": "question", "back": "answer"}, ...
       }
 
       // Cap total cards across the deck.
-      cards = cards.slice(0, Math.max(0, MAX_CARDS - position));
+      cards = cards.slice(0, Math.max(0, maxCards - position));
 
       // Insert cards
       for (let i = 0; i < cards.length; i++) {

@@ -175,6 +175,7 @@ export default function StepVideos({ step }: { step: StepDetail }) {
       .sort((a, b) => Number(b.unlearnedMilestones >= 2) - Number(a.unlearnedMilestones >= 2))
       .slice(0, TOP);
     const n = data.videos.length;
+    const judged = data.videosJudged ?? n;
     body = (
       <>
         {top.length === 0 ? (
@@ -190,7 +191,8 @@ export default function StepVideos({ step }: { step: StepDetail }) {
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs" style={{ opacity: 0.5 }}>
-            {n} video{n === 1 ? '' : 's'} judged{n > TOP ? ` · top ${TOP} shown` : ''}
+            {judged} video{judged === 1 ? '' : 's'} judged
+            {n > 0 ? ` · best ${n} shown` : ' — none worth your time'}
           </span>
           <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => void search(true)}>
             <HiOutlineArrowPath className="h-3.5 w-3.5" />

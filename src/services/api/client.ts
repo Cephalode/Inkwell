@@ -46,6 +46,8 @@ interface DocumentRow {
   videoSummary?: VideoSummary | null;
   summary?: string | null;
   summaryStatus?: string | null;
+  podcastStatus?: string | null;
+  podcastSections?: DocumentFile['podcastSections'];
   filePath?: string | null;
   startPage?: number | null;
   endPage?: number | null;
@@ -86,6 +88,7 @@ interface CourseRow {
   description?: string | null;
   color?: string | null;
   courseraSlug?: string | null;
+  isCurrent?: boolean | null;
   documentIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
@@ -131,6 +134,8 @@ function mapDocument(r: DocumentRow): DocumentFile {
     videoSummary: r.videoSummary ?? undefined,
     summary: r.summary ?? undefined,
     summaryStatus: r.summaryStatus ?? undefined,
+    podcastStatus: r.podcastStatus ?? undefined,
+    podcastSections: r.podcastSections ?? undefined,
     filePath: r.filePath ?? undefined,
     startPage: r.startPage ?? null,
     endPage: r.endPage ?? null,
@@ -201,13 +206,47 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
   if (!res.ok) throw new Error(`Failed to update tags: ${res.status}`);
 }
 
-export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string | null; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string }): Promise<void> {
+export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string | null; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string; folderId?: string | null }): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
   if (!res.ok) throw new Error(`Failed to update document: ${res.status}`);
+}
+
+/** Mark a document as opened right now (drives dashboard "Jump back in"). */
+export function markDocumentOpened(id: string): void {
+  fetch(`${API_BASE}/documents/${id}/opened`, { method: 'POST' }).catch(() => {});
+}
+
+// ── Folders (E1) ──────────────────────────────────────────────────────────────
+export interface Folder {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: number;
+}
+
+export async function listFolders(): Promise<Folder[]> {
+  const res = await fetch(`${API_BASE}/folders`);
+  if (!res.ok) throw new Error(`Failed to list folders: ${res.status}`);
+  return await res.json();
+}
+
+export async function createFolder(name: string, color?: string): Promise<Folder> {
+  const res = await fetch(`${API_BASE}/folders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color }),
+  });
+  if (!res.ok) throw new Error(`Failed to create folder: ${res.status}`);
+  return await res.json();
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to delete folder: ${res.status}`);
 }
 
 export async function deleteDocument(id: string): Promise<void> {
@@ -225,6 +264,13 @@ export async function classifyDocument(id: string): Promise<{ label: string; sub
 export async function generateSummary(id: string): Promise<{ summary: string; status: string }> {
   const res = await fetch(`${API_BASE}/documents/${id}/summary`, { method: 'POST' });
   if (!res.ok) throw new Error(`Failed to generate summary: ${res.status}`);
+  return await res.json();
+}
+
+/** (Re)generate the podcast audio overview. Normally fires automatically after the summary. */
+export async function generatePodcast(id: string): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/documents/${id}/podcast`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to generate podcast: ${res.status}`);
   return await res.json();
 }
 
@@ -439,6 +485,7 @@ function mapCourse(r: CourseRow): Course {
     description: r.description ?? '',
     color: r.color ?? '',
     courseraSlug: r.courseraSlug ?? undefined,
+    isCurrent: r.isCurrent ?? false,
     documentIds: r.documentIds ?? [],
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
@@ -476,13 +523,14 @@ export async function createCourse(course: { name: string; description?: string;
   return mapCourse(data);
 }
 
-export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds' | 'courseraSlug'>>): Promise<Course> {
+export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds' | 'courseraSlug' | 'isCurrent'>>): Promise<Course> {
   const body: Record<string, unknown> = {};
   if (updates.name !== undefined) body.name = updates.name;
   if (updates.description !== undefined) body.description = updates.description;
   if (updates.color !== undefined) body.color = updates.color;
   if (updates.documentIds !== undefined) body.documentIds = updates.documentIds;
   if (updates.courseraSlug !== undefined) body.courseraSlug = updates.courseraSlug;
+  if (updates.isCurrent !== undefined) body.isCurrent = updates.isCurrent;
   const res = await fetch(`${API_BASE}/courses/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -692,6 +740,7 @@ function mapFlashcardDeck(r: Nullable<FlashcardDeck, 'description' | 'course_id'
     description: r.description ?? '',
     course_id: r.course_id ?? undefined,
     source: r.source,
+    config: r.config,
     status: r.status ?? 'pending',
     error: r.error ?? undefined,
     created_at: r.created_at,
@@ -730,6 +779,7 @@ export async function createFlashcardDeck(params: {
   description?: string;
   course_id?: string;
   source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
+  config?: { count?: number; instructions?: string };
 }): Promise<FlashcardDeck> {
   const res = await fetch(`${API_BASE}/flashcard-decks`, {
     method: 'POST',
@@ -811,7 +861,7 @@ export async function createPracticeTest(params: {
   description?: string;
   course_id?: string;
   source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
-  config: { numQuestions?: number; types?: string[] };
+  config: { numQuestions?: number; types?: string[]; instructions?: string };
 }): Promise<PracticeTest> {
   const res = await fetch(`${API_BASE}/practice-tests`, {
     method: 'POST',

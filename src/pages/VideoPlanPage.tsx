@@ -15,6 +15,8 @@ const SEARCHING_LINE = 'Searching YouTube, reading captions, judging…';
 /** How many milestones one "Find videos for my next milestones" run searches. */
 const PLAN_LIMIT = 5;
 const REST_CAP = 8;
+/** Default number of "Best value" videos shown before "Show all". */
+const BEST_CAP = 3;
 
 type Navigate = (to: string) => void;
 
@@ -263,6 +265,7 @@ export default function VideoPlanPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [skillErrors, setSkillErrors] = useState<Record<string, string>>({});
   const [showAllRest, setShowAllRest] = useState(false);
+  const [showAllBest, setShowAllBest] = useState(false);
 
   useEffect(() => {
     void loadCourses().catch(() => {});
@@ -526,10 +529,21 @@ export default function VideoPlanPage() {
                 }
               />
               <div className="flex flex-col" style={{ gap: 10 }}>
-                {sections.bestValue.map((v, i) => (
+                {(showAllBest ? sections.bestValue : sections.bestValue.slice(0, BEST_CAP)).map((v, i) => (
                   <VideoCard key={v.id} video={v} rank={i + 1} />
                 ))}
               </div>
+              {sections.bestValue.length > BEST_CAP && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ marginTop: 8, fontSize: 13 }}
+                  onClick={() => setShowAllBest((o) => !o)}
+                >
+                  <HiOutlinePlay className="h-3.5 w-3.5" />
+                  {showAllBest ? 'Show fewer' : `Show all ${sections.bestValue.length}`}
+                </button>
+              )}
             </section>
           )}
 

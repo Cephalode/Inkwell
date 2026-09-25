@@ -50,7 +50,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     // Fetch questions
     const questions = await db.query(
-      `SELECT id, position, qtype, prompt, options, correct_answer, explanation
+      `SELECT id, position, qtype, prompt, options, correct_answer, explanation, hint, topic
        FROM test_questions
        WHERE test_id = $1
        ORDER BY position ASC`,
@@ -66,6 +66,8 @@ router.get('/:id', async (req: Request, res: Response) => {
           qtype: q.qtype,
           prompt: q.prompt,
           options: q.options,
+          hint: (q as { hint?: string }).hint,
+          topic: (q as { topic?: string }).topic,
         }));
 
     res.json({ ...testRow, questions: qList });
@@ -142,6 +144,7 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
   const { source, course_id, config } = test.rows[0];
   const numQuestions = config.numQuestions || 10;
   const types = config.types || ['mcq', 'true_false', 'short_answer'];
+  const instructions: string = config.instructions || '';
 
   // Running position across the whole test (shared between collect and
   // processMaterial) and the per-material question budget (set once the
@@ -187,6 +190,8 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
         const response = await callGLMJson<{
           questions: Array<{
             qtype: string;
+            topic?: string;
+            hint?: string;
             prompt: string;
             options?: string[];
             correct_answer: string | boolean;
@@ -197,6 +202,8 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
             {
               role: 'user',
               content: `Generate ${questionsToGenerate} test questions from this material. Mix question types from: ${types.join(', ')}.
+
+Give each question a short topic label (1-3 words, e.g. "Derivatives") and a one-sentence hint that nudges toward the answer without revealing it.${instructions ? `\n\nSpecial instructions: ${instructions}` : ''}
 
 Material:
 ${material.text}
@@ -209,6 +216,8 @@ Respond with valid JSON: {
   "questions": [
     {
       "qtype": "mcq|true_false|short_answer",
+      "topic": "short topic label",
+      "hint": "one-sentence hint",
       "prompt": "question text",
       "options": ["first option", "second option", "third option", "fourth option"],
       "correct_answer": "exact text of correct option" or true/false or "brief answer",
@@ -224,8 +233,8 @@ Respond with valid JSON: {
         if (response?.questions) {
           for (const q of response.questions) {
             await db.query(
-              `INSERT INTO test_questions (test_id, position, qtype, prompt, options, correct_answer, explanation)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              `INSERT INTO test_questions (test_id, position, qtype, prompt, options, correct_answer, explanation, hint, topic)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
               [
                 id,
                 position,
@@ -236,6 +245,8 @@ Respond with valid JSON: {
                 // valid JSON, so it must be stringified, not String()-cast
                 JSON.stringify(q.correct_answer),
                 q.explanation || '',
+                q.hint || null,
+                q.topic || null,
               ]
             );
             position++;

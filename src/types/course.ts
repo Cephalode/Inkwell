@@ -4,6 +4,8 @@ export interface Course {
   description?: string;
   color?: string;
   courseraSlug?: string;
+  /** The one course the learning roadmap is currently guiding the learner through. */
+  isCurrent?: boolean;
   documentIds: string[];
   createdAt: number;
   updatedAt: number;

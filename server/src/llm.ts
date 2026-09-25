@@ -13,6 +13,8 @@ export interface CallGLMOptions {
   temperature?: number;
   /** Max tokens to generate. Defaults to 4096. */
   maxTokens?: number;
+  /** Fall back to reasoning_content when content is empty — JSON callers only, never display text. */
+  withReasoning?: boolean;
   /** Model name. Defaults to 'glm-5.3-flash'. */
   model?: string;
 }
@@ -36,6 +38,7 @@ export async function callGLM(
   const {
     temperature = 0.4,
     maxTokens = 4096,
+    withReasoning = false,
     model = DEFAULT_MODEL,
   } = options;
 
@@ -62,11 +65,12 @@ export async function callGLM(
   const data = (await resp.json()) as {
     choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
   };
-  return (
-    data.choices?.[0]?.message?.content ||
-    data.choices?.[0]?.message?.reasoning_content ||
-    ''
-  );
+  // GLM reasoning models can spend the whole max_tokens budget on
+  // reasoning_content, leaving content empty (finish_reason "length").
+  // withReasoning lets JSON callers parse that chain (JSON sits at its end);
+  // display callers must never show it, so default stays off.
+  const msg = data.choices?.[0]?.message;
+  return msg?.content || (withReasoning ? msg?.reasoning_content : undefined) || '';
 }
 
 /**
@@ -82,11 +86,18 @@ export async function callGLMJson<T>(
   messages: GLMMessage[],
   options: CallGLMOptions = {},
 ): Promise<T | null> {
-  // First attempt.
-  const firstRaw = await callGLM(messages, options);
-  const firstParsed = parseJSON<T>(firstRaw);
-  if (firstParsed !== null) return firstParsed;
-
+  const run = async (msgs: GLMMessage[]): Promise<T | null> => {
+    const raw = await callGLM(msgs, { ...options, withReasoning: true });
+    return parseJSON<T>(raw);
+  };
+  // Retry once on a thrown transport failure too (timeouts, socket drops) —
+  // an activity-start 502 is worse than a slow start.
+  try {
+    const first = await run(messages);
+    if (first !== null) return first;
+  } catch (err) {
+    console.warn('callGLMJson first attempt threw, retrying once:', err instanceof Error ? err.message : err);
+  }
   // Retry: nudge the model to respond with clean JSON.
   const retryMessages: GLMMessage[] = messages.map((m, i) => {
     if (i === messages.length - 1 && m.role === 'user') {
@@ -94,7 +105,5 @@ export async function callGLMJson<T>(
     }
     return m;
   });
-
-  const retryRaw = await callGLM(retryMessages, options);
-  return parseJSON<T>(retryRaw);
+  return run(retryMessages);
 }

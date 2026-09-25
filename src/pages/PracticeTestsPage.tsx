@@ -39,6 +39,7 @@ export default function PracticeTestsPage() {
   const [selectedDocumentId, setSelectedDocumentId] = useState('');
   const [numQuestions, setNumQuestions] = useState(10);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['mcq', 'true_false', 'short_answer']);
+  const [instructions, setInstructions] = useState('');
   const [creating, setCreating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -59,6 +60,7 @@ export default function PracticeTestsPage() {
         config: {
           numQuestions,
           types: selectedTypes,
+          instructions: instructions.trim() || undefined,
         },
         course_id: sourceType === 'course' ? selectedCourseId : undefined,
       };
@@ -136,6 +138,15 @@ export default function PracticeTestsPage() {
               style={{ accentColor: 'var(--color-accent)' }}
             />
           </div>
+
+          {/* Special instructions */}
+          <textarea
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="Special instructions (optional) — e.g. 'exam style', 'focus on chapter 3'"
+            className="input resize-none"
+            rows={2}
+          />
 
           {/* Question types */}
           <div>

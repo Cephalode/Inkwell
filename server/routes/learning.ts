@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import pool from '../db.js';
+import { storageDownload } from '../src/storage.js';
 import { loadRoadmapView, type SourceRef } from './roadmaps.js';
 import {
   awardXp,
@@ -13,6 +14,7 @@ import {
 import {
   buildFlashcards,
   buildLesson,
+  buildPodcast,
   buildQuiz,
   buildRecall,
   continueDiscussion,
@@ -20,10 +22,12 @@ import {
   gradeRecall,
   groundingText,
   openDiscussion,
+  synthesizePodcastAudio,
   type DiscussionAssessment,
   type DiscussionContent,
   type FlashcardsContent,
   type LessonContent,
+  type PodcastContent,
   type QuizContent,
   type RecallContent,
   type StepContext,
@@ -31,8 +35,8 @@ import {
 
 const router = Router();
 
-type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall';
-const KINDS: ReadonlySet<string> = new Set(['lesson', 'quiz', 'flashcards', 'discussion', 'recall']);
+type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast';
+const KINDS: ReadonlySet<string> = new Set(['lesson', 'quiz', 'flashcards', 'discussion', 'recall', 'podcast']);
 
 /** XP bonus for a strong assessment result / for a skill becoming learned. */
 const XP_PASS_BONUS = 10;
@@ -252,7 +256,7 @@ router.post('/roadmap-steps/:stepId/activities', async (req: Request, res: Respo
     const ctx = stepContext(step);
     const grounding = await groundingText(ctx);
 
-    let content: LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent;
+    let content: LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent;
     switch (kind as ActivityKind) {
       case 'lesson':
         content = await buildLesson(ctx, grounding);
@@ -275,6 +279,11 @@ router.post('/roadmap-steps/:stepId/activities', async (req: Request, res: Respo
       case 'recall':
         content = await buildRecall(ctx, grounding);
         break;
+      case 'podcast': {
+        const podcast = await buildPodcast(ctx, grounding);
+        content = podcast;
+        break;
+      }
       default:
         return res.status(400).json({ error: 'Unsupported kind' });
     }
@@ -285,6 +294,24 @@ router.post('/roadmap-steps/:stepId/activities', async (req: Request, res: Respo
       [step.id, kind, JSON.stringify(content)],
     );
     res.status(201).json(toClientActivity(rows[0] as ActivityRow));
+
+    if (kind === 'podcast') {
+      // ponytail: TTS render runs fire-and-forget (1-4 min) — script returns
+      // now so the request clears Cloudflare's proxy cap; the runner polls
+      // the activity until audioPath (or renderError) lands in content.
+      const activityId = (rows[0] as ActivityRow).id;
+      const attach = (patch: object) =>
+        pool.query(
+          "UPDATE learning_activities SET content = content || $1::jsonb, updated_at = now() WHERE id = $2 AND status <> 'completed'",
+          [JSON.stringify(patch), activityId],
+        );
+      void synthesizePodcastAudio(activityId, content as PodcastContent)
+        .then((audioPath) => attach({ audioPath }))
+        .catch((err: unknown) => {
+          console.error('Podcast TTS render failed:', err);
+          return attach({ renderError: err instanceof Error ? err.message : String(err) });
+        });
+    }
   } catch (err) {
     console.error('Error creating activity:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create activity' });
@@ -313,6 +340,25 @@ router.delete('/learning-activities/:id', async (req: Request, res: Response) =>
   } catch (err) {
     console.error('Error deleting activity:', err);
     res.status(500).json({ error: 'Failed to delete activity' });
+  }
+});
+
+// ── GET /learning-activities/:id/audio — stream a podcast activity's MP3 ────
+
+router.get('/learning-activities/:id/audio', async (req: Request, res: Response) => {
+  try {
+    const a = await loadActivity(String(req.params.id));
+    if (!a || a.kind !== 'podcast') return res.status(404).json({ error: 'Activity not found' });
+    const path = (a.content as PodcastContent | null)?.audioPath;
+    if (!path) return res.status(404).json({ error: 'Podcast audio not ready yet' });
+    const buf = await storageDownload(path);
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Accept-Ranges', 'none'); // ponytail: no range support, same as document podcasts
+    res.end(buf);
+  } catch (err) {
+    console.error('Error streaming podcast audio:', err);
+    res.status(500).json({ error: 'Failed to stream podcast audio' });
   }
 });
 
@@ -373,6 +419,9 @@ router.post('/learning-activities/:id/submit', async (req: Request, res: Respons
         const recall = a.content as RecallContent;
         const answer = String(body.answer ?? '').trim();
         if (!answer) return res.status(400).json({ error: 'answer is required' });
+        if (!recall.rubric?.length) {
+          return res.status(409).json({ error: 'This teach-back has no rubric — restart the activity to regenerate one.' });
+        }
         const grade = await gradeRecall(stepContext(step), recall, answer);
         return res.json(
           await completeActivity(a, step, { ...grade, answer }, {
@@ -392,6 +441,16 @@ router.post('/learning-activities/:id/submit', async (req: Request, res: Respons
           gaps: [],
         };
         return res.json(await closeDiscussion(a, step, { ...content, closed: true }, assessment));
+      }
+      case 'podcast': {
+        // Listening is weak evidence, like reading: fixed score, XP only.
+        return res.json(
+          await completeActivity(a, step, { score: 0.5 }, {
+            kind: 'podcast',
+            weight: 0.4,
+            note: 'Podcast listened',
+          }),
+        );
       }
       default:
         return res.status(400).json({ error: 'Unsupported kind' });
@@ -519,14 +578,14 @@ router.get('/learning/overview', async (_req: Request, res: Response) => {
     const profile = await getProfile();
 
     const { rows: courseRows } = await pool.query(
-      `SELECT c.id, c.name, r.id AS roadmap_id, r.status
+      `SELECT c.id, c.name, c.is_current, r.id AS roadmap_id, r.status
        FROM courses c LEFT JOIN roadmaps r ON r.course_id = c.id
-       ORDER BY c.updated_at DESC`,
+       ORDER BY c.is_current DESC, c.updated_at DESC`,
     );
     const courses = [];
     for (const c of courseRows) {
       if (!c.roadmap_id) {
-        courses.push({ courseId: c.id, courseName: c.name, roadmapId: null, status: null, total: 0, learned: 0, learning: 0, nextStep: null });
+        courses.push({ courseId: c.id, courseName: c.name, isCurrent: !!c.is_current, roadmapId: null, status: null, total: 0, learned: 0, learning: 0, nextStep: null });
         continue;
       }
       const { rows: rm } = await pool.query('SELECT * FROM roadmaps WHERE id = $1', [c.roadmap_id]);
@@ -535,6 +594,7 @@ router.get('/learning/overview', async (_req: Request, res: Response) => {
       courses.push({
         courseId: c.id,
         courseName: c.name,
+        isCurrent: !!c.is_current,
         roadmapId: c.roadmap_id,
         status: c.status,
         total: view.counts.total,

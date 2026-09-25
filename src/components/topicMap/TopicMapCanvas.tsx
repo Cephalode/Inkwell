@@ -399,7 +399,7 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
     }
   }
   const glowCourses = new Set<string>();
-  if (focus && focus.courseId !== FOUNDATION_COURSE) glowCourses.add(focus.courseId);
+  if (focus && focus.courseId !== FOUNDATION_COURSE) focus.courseIds.forEach((c) => glowCourses.add(c));
   for (const c of hoverEdgeCourses ?? []) glowCourses.add(c);
   if (hoverCluster) glowCourses.add(hoverCluster);
 
@@ -412,11 +412,25 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
       : courseHue(map, focus.courseId)
     : null;
 
+  // A topic shared by N courses wears each course's hue as an equal slice of the dot.
+  const pieGradient = (t: TopicNode): string => {
+    const hues = t.courseIds.map((cid) => courseHue(map, cid));
+    if (hues.length < 2) return hues[0] ?? 'var(--color-neutral-500)';
+    const step = 100 / hues.length;
+    return `conic-gradient(${hues.map((h, i) => `${h} ${i * step}% ${(i + 1) * step}%`).join(', ')})`;
+  };
+
   const dotFill = (hue: string, t: TopicNode): CSSProperties => {
     if (isKnown(t)) {
       return t.courseId === FOUNDATION_COURSE
         ? { background: `color-mix(in srgb, ${FOUNDATION_HUE} 70%, #fff)`, border: `2px solid color-mix(in srgb, ${FOUNDATION_HUE} 45%, #14251a)` }
         : { background: `color-mix(in srgb, ${FOUNDATION_HUE} 70%, #fff)`, border: 'none' };
+    }
+    if (t.courseIds.length > 1) {
+      // Shared node: pie of its courses' hues (solid slices when in progress).
+      return t.mastery === 1
+        ? { background: pieGradient(t), border: '2px solid var(--color-neutral-500)' }
+        : { background: 'var(--color-surface)', border: '2px dashed var(--color-neutral-500)' };
     }
     if (t.mastery === 1) return { background: `color-mix(in srgb, ${hue} 25%, var(--color-surface))`, border: `2px solid ${hue}` };
     return { background: 'var(--color-surface)', border: `2px dashed color-mix(in srgb, ${hue} 70%, var(--color-neutral-500))` };
@@ -444,7 +458,10 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
           {visibleEdges.map((e) => {
             const A = byId.get(e.a)!;
             const B = byId.get(e.b)!;
-            const cross = A.courseId !== B.courseId && A.courseId !== FOUNDATION_COURSE && B.courseId !== FOUNDATION_COURSE;
+            const cross =
+              !A.courseIds.some((c) => B.courseIds.includes(c)) &&
+              A.courseId !== FOUNDATION_COURSE &&
+              B.courseId !== FOUNDATION_COURSE;
             const core = isKnown(A) && isKnown(B);
             const active = !!focus && (e.a === focus.id || e.b === focus.id);
             const key = edgeKey(e.a, e.b);
@@ -510,13 +527,19 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
           const hue = known ? FOUNDATION_HUE : courseHue(map, t.courseId);
           const isSel = selected?.id === t.id;
           const isFoc = focus?.id === t.id;
-          const faded = hoverCluster ? t.courseId !== hoverCluster : !!focus && !isFoc && !connected.has(t.id);
+          const faded =
+            hoverCluster && !t.courseIds.includes(hoverCluster)
+              ? true
+              : !!focus && !isFoc && !connected.has(t.id);
           const sz = Math.min(30, 11 + (degree.get(t.id) ?? 0) * 2.5);
-          const ring = known && t.courseId !== FOUNDATION_COURSE
-            ? `0 0 0 4px color-mix(in srgb, ${courseHue(map, t.courseId)} 35%, transparent)`
-            : null;
+          // Learned shared topics keep a halo per owning course (blended when >1).
+          const ring = known && t.courseId !== FOUNDATION_COURSE && t.courseIds.length > 1
+            ? `0 0 0 4px color-mix(in srgb, ${pieGradient(t)} 35%, transparent)`
+            : known && t.courseId !== FOUNDATION_COURSE
+              ? `0 0 0 4px color-mix(in srgb, ${courseHue(map, t.courseId)} 35%, transparent)`
+              : null;
           const shadows: string[] = [];
-          if (isSel || isFoc || (hoverCluster && t.courseId === hoverCluster)) {
+          if (isSel || isFoc || (hoverCluster && t.courseIds.includes(hoverCluster))) {
             shadows.push(`0 0 0 ${(isSel ? 4 : 3) + (ring ? 4 : 0)}px color-mix(in srgb, ${hue} 35%, transparent)`);
           }
           if (ring) shadows.push(ring);

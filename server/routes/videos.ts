@@ -1,7 +1,15 @@
 import { Router, type Request, type Response } from 'express';
 import pool from '../db.js';
 import { awardXp, getProfile, recordEvidence, XP_BY_KIND, type Mastery } from '../src/mastery.js';
-import { COVERAGE_FLOOR, rankVideos, searchVideosForSkill, SEARCH_TTL_MS, type RankedVideo } from '../src/videoSearch.js';
+import { gradeQuiz, getWatchQuiz, stripAnswers } from '../src/watchQuiz.js';
+import {
+  COVERAGE_FLOOR,
+  rankVideos,
+  searchVideosForSkill,
+  SEARCH_TTL_MS,
+  selectSubjectVideos,
+  type RankedVideo,
+} from '../src/videoSearch.js';
 
 const router = Router();
 
@@ -45,7 +53,7 @@ router.get('/skills/:id/videos', async (req: Request, res: Response) => {
     const skill = await loadSkillSearch(String(req.params.id));
     if (!skill) return res.status(404).json({ error: 'Skill not found' });
     const videos = await rankVideos({ skillIds: [skill.id], includeLearned: true });
-    res.json({ skill: skillSearchInfo(skill), videos: forSkill(videos, skill.id) });
+    res.json({ skill: skillSearchInfo(skill), videos: selectSubjectVideos(forSkill(videos, skill.id)) });
   } catch (err) {
     console.error('Error loading skill videos:', err);
     res.status(500).json({ error: 'Failed to load videos' });
@@ -73,12 +81,23 @@ router.post('/skills/:id/videos/search', async (req: Request, res: Response) => 
     const force = !!(req.body as { force?: boolean })?.force;
     if (!force && isFresh(skill)) {
       const videos = await rankVideos({ skillIds: [skill.id], includeLearned: true });
-      return res.json({ skill: skillSearchInfo(skill), videos: forSkill(videos, skill.id), cached: true });
+      return res.json({
+        skill: skillSearchInfo(skill),
+        videos: selectSubjectVideos(forSkill(videos, skill.id)),
+        videosJudged: videos.length,
+        cached: true,
+      });
     }
     const log: string[] = [];
     const videos = await searchVideosForSkill(skill.id, (m) => log.push(m));
     const fresh = (await loadSkillSearch(skill.id))!;
-    res.json({ skill: skillSearchInfo(fresh), videos: forSkill(videos, skill.id), cached: false, log });
+    res.json({
+      skill: skillSearchInfo(fresh),
+      videos: selectSubjectVideos(forSkill(videos, skill.id)),
+      videosJudged: videos.length,
+      cached: false,
+      log,
+    });
   } catch (err) {
     console.error('Error searching skill videos:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Video search failed' });
@@ -113,15 +132,48 @@ router.get('/videos/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ── Watch quiz ──────────────────────────────────────────────────────────────
+
+/** Two questions to answer before a video can be marked watched (no answers shipped). */
+router.get('/videos/:id/quiz', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const [video] = await rankVideos({ videoIds: [id], includeLearned: true });
+    if (!video) {
+      const { rows } = await pool.query('SELECT id FROM videos WHERE id = $1', [id]);
+      if (rows.length === 0) return res.status(404).json({ error: 'Video not found' });
+      return res.status(409).json({ error: 'This video has not been judged against any milestones yet' });
+    }
+    const quiz = await getWatchQuiz(video);
+    res.json({ questions: stripAnswers(quiz) });
+  } catch (err) {
+    console.error('Error loading watch quiz:', err);
+    res.status(500).json({ error: 'Failed to load the quiz' });
+  }
+});
+
 /**
  * Mark a video watched: weak evidence on every unlearned milestone it teaches
  * (a video is a lesson, not an assessment) and XP the first time.
+ * Gated on the two-question comprehension check — both must be correct.
  */
 router.post('/videos/:id/watched', async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     const [video] = await rankVideos({ videoIds: [id], includeLearned: true });
     if (!video) return res.status(404).json({ error: 'Video not found' });
+
+    const quiz = await getWatchQuiz(video);
+    const rawAnswers = (req.body as { quizAnswers?: unknown })?.quizAnswers;
+    const answers = Array.isArray(rawAnswers) ? rawAnswers.map((a) => String(a)) : [];
+    const results = gradeQuiz(quiz, answers);
+    if (!results.every(Boolean)) {
+      return res.status(400).json({
+        error: 'Answer both questions correctly to mark this video watched',
+        quizResults: results,
+      });
+    }
+
     const firstTime = !video.watchedAt;
     await pool.query('UPDATE videos SET watched_at = now(), updated_at = now() WHERE id = $1', [id]);
 
@@ -198,6 +250,13 @@ async function buildPlan(courseId?: string) {
       if (!bestBySkill.has(m.skillId)) bestBySkill.set(m.skillId, v);
     }
   }
+  // bestVideoId points at the curated watch list, so the milestone row shows
+  // the same leading video the step page does (not just the highest scorer).
+  const curatedBySkill = new Map<string, RankedVideo>();
+  for (const [skillId] of bestBySkill) {
+    const curated = selectSubjectVideos(forSkill(scoped, skillId));
+    if (curated.length > 0) curatedBySkill.set(skillId, curated[0]);
+  }
   return {
     milestones: milestones.map((m) => ({
       skillId: m.id,
@@ -207,7 +266,7 @@ async function buildPlan(courseId?: string) {
       searchStatus: m.video_search_status,
       searchedAt: m.video_searched_at,
       searchError: m.video_search_error,
-      bestVideoId: bestBySkill.get(m.id)?.id ?? null,
+      bestVideoId: curatedBySkill.get(m.id)?.id ?? null,
       videoCount: countBySkill.get(m.id) ?? 0,
     })),
     videos: scoped,

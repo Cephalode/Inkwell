@@ -2,16 +2,20 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../store/documentStore';
 import SummaryPanel from '../components/summary/SummaryPanel';
+import PodcastPanel from '../components/summary/PodcastPanel';
 import VideoSummaryPanel from '../components/upload/VideoSummaryPanel';
+import SourceViewer from '../components/documents/SourceViewer';
 import Card from '../components/shared/Card';
 import Button from '../components/shared/Button';
 import Spinner from '../components/shared/Spinner';
-import { listChapters, getDocument, generateSummary } from '../services/api/client';
+import { listChapters, getDocument, generateSummary, generatePodcast } from '../services/api/client';
 import Badge from '../components/shared/Badge';
+import ShareButton from '../components/documents/ShareButton';
+import { useAuthStore } from '../store/authStore';
 import { getYouTubeVideoId } from '../utils/fileHelpers';
 import type { ChapterDocument } from '../types/document';
 
-type Tab = 'summary' | 'chapters' | 'video';
+type Tab = 'summary' | 'chapters' | 'video' | 'source';
 
 export default function DocumentDetailPage() {
   const { id } = useParams();
@@ -38,6 +42,11 @@ export default function DocumentDetailPage() {
       .catch(console.error);
     return () => { cancelled = true; };
   }, [id, documents, setCurrentDocument]);
+
+  // E1 recency: mark this document as opened (fire-and-forget).
+  useEffect(() => {
+    if (id) fetch(`${window.location.origin}/api/documents/${id}/opened`, { method: 'POST' }).catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -78,6 +87,9 @@ export default function DocumentDetailPage() {
     useDocumentStore.getState().updateDocument(docId, {
       summary: updated.summary,
       summaryStatus: updated.summaryStatus,
+      summaryError: updated.summaryError,
+      podcastStatus: updated.podcastStatus,
+      podcastError: updated.podcastError,
     });
   };
 
@@ -91,12 +103,23 @@ export default function DocumentDetailPage() {
     });
   };
 
+  // (Re)generate the podcast audio overview — POSTs and polls until done.
+  const regeneratePodcast = async (docId: string = doc.id) => {
+    await generatePodcast(docId);
+    const updated = await getDocument(docId);
+    useDocumentStore.getState().updateDocument(docId, {
+      podcastStatus: updated.podcastStatus,
+    });
+    if (updated.podcastStatus !== 'done') throw new Error('Podcast generation failed');
+  };
+
   const isYoutube = doc.type === 'youtube';
   const videoId = isYoutube && doc.filePath ? getYouTubeVideoId(doc.filePath) : null;
 
   const tabs: { key: Tab; label: string }[] = [
     ...(isYoutube ? [{ key: 'video' as Tab, label: '▶️ Video Summary' }] : []),
     { key: 'summary', label: '📝 Summary' },
+    { key: 'source', label: '📄 Source' },
     ...(chapters.length > 0 ? [{ key: 'chapters' as Tab, label: `📑 Chapters (${chapters.length})` }] : []),
   ];
 
@@ -109,6 +132,14 @@ export default function DocumentDetailPage() {
           <div className="flex gap-2 mt-1 flex-wrap">
             <Badge color="gray">{doc.type.toUpperCase()}</Badge>
             <Badge color="cyan">{(doc.parsedText?.length || 0).toLocaleString()} chars</Badge>
+            <ShareButton docId={doc.id} docName={doc.name} />
+            <button
+              onClick={useAuthStore.getState().logout}
+              className="text-xs px-2.5 py-1.5 ml-auto"
+              style={{ opacity: 0.5 }}
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </div>
@@ -150,13 +181,26 @@ export default function DocumentDetailPage() {
             </Card>
           </div>
         )}
+        {tab === 'source' && <SourceViewer doc={doc} />}
         {tab === 'summary' && (
-          <SummaryPanel
-            summary={doc.summary}
-            summaryStatus={doc.summaryStatus}
-            onPoll={refreshSummary}
-            onRetry={regenerateSummary}
-          />
+          <div className="space-y-4">
+            <PodcastPanel
+              docId={doc.id}
+              podcastStatus={doc.podcastStatus}
+              podcastError={doc.podcastError}
+              podcastSections={doc.podcastSections}
+              hasSummary={!!doc.summary}
+              onPoll={refreshSummary}
+              onGenerate={regeneratePodcast}
+            />
+            <SummaryPanel
+              summary={doc.summary}
+              summaryStatus={doc.summaryStatus}
+              summaryError={doc.summaryError}
+              onPoll={refreshSummary}
+              onRetry={regenerateSummary}
+            />
+          </div>
         )}
         {tab === 'chapters' && (
           chaptersLoading ? (

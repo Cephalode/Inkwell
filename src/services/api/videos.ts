@@ -1,4 +1,11 @@
-import type { DocumentUsage, SkillVideos, VideoDetail, VideoPlan, WatchedResponse } from '../../types/videos';
+import type {
+  DocumentUsage,
+  SkillVideos,
+  VideoDetail,
+  VideoPlan,
+  WatchQuizQuestion,
+  WatchedResponse,
+} from '../../types/videos';
 
 const API_BASE: string = typeof window !== 'undefined' ? `${window.location.origin}/api` : '/api';
 
@@ -32,8 +39,32 @@ export async function getVideo(videoId: string): Promise<VideoDetail> {
   return json<VideoDetail>(await fetch(`${API_BASE}/videos/${videoId}`), 'Failed to load video');
 }
 
-export async function markVideoWatched(videoId: string): Promise<WatchedResponse> {
-  return json<WatchedResponse>(await post(`${API_BASE}/videos/${videoId}/watched`), 'Failed to mark watched');
+/** Two questions to answer before the video can be marked watched. */
+export async function getWatchQuiz(videoId: string): Promise<{ questions: WatchQuizQuestion[] }> {
+  return json<{ questions: WatchQuizQuestion[] }>(await fetch(`${API_BASE}/videos/${videoId}/quiz`), 'Failed to load the quiz');
+}
+
+/**
+ * Mark watched — gated server-side on the quiz: wrong/missing answers get a
+ * 400 with `quizResults` (per-question booleans) attached to the error.
+ */
+export async function markVideoWatched(videoId: string, quizAnswers: string[]): Promise<WatchedResponse> {
+  const res = await post(`${API_BASE}/videos/${videoId}/watched`, { quizAnswers });
+  if (!res.ok) {
+    let msg = `Failed to mark watched (${res.status})`;
+    let quizResults: boolean[] | undefined;
+    try {
+      const body = (await res.json()) as { error?: string; quizResults?: boolean[] };
+      if (body.error) msg = body.error;
+      quizResults = body.quizResults;
+    } catch {
+      /* keep fallback */
+    }
+    const err = new Error(msg) as Error & { quizResults?: boolean[] };
+    err.quizResults = quizResults;
+    throw err;
+  }
+  return (await res.json()) as WatchedResponse;
 }
 
 export async function getVideoPlan(courseId?: string): Promise<VideoPlan> {

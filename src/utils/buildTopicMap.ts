@@ -38,9 +38,10 @@ const LEARNED_RATE = 0.8;
  * (concept roadmaps + prerequisites), courses (hues, grouping) and flashcards
  * (fallback mastery, "Review N cards").
  *
- * - Every roadmap step becomes a topic in its course, keyed by the shared skill:
- *   the same skill in two courses is two nodes with one mastery, linked across
- *   courses. Consecutive steps of a course are linked so the map shows the path.
+ * - Every roadmap step becomes a topic, keyed by the shared skill: ONE node per
+ *   concept across all courses (courseIds lists every course teaching it — the
+ *   map draws such nodes as a pie of their courses' hues). Consecutive steps of
+ *   a course are linked so the map shows the path.
  * - Every study-guide roadmap concept becomes a topic in its guide's course (a
  *   document guide joins the course that holds the document; guides for unfiled
  *   documents are skipped). A concept that names a skill already on the map in
@@ -69,7 +70,6 @@ export function buildTopicMap(
 
   const topics: TopicNode[] = [];
   const normOf = new Map<string, string>(); // topic id → normalized name
-  const byCourseKey = new Map<string, TopicNode>(); // `${courseId}\0${norm}` → concept node
   const byNorm = new Map<string, TopicNode[]>(); // norm → concept nodes across courses
   const foundations = new Map<string, TopicNode>(); // norm → foundation node
   const foundationCourses = new Map<string, Set<string>>(); // norm → assuming course names
@@ -80,28 +80,34 @@ export function buildTopicMap(
   for (const skill of skills) {
     const n = norm(skill.label ?? '');
     if (!n) continue;
+    const node: TopicNode = {
+      id: `topic:skill:${skill.id}`,
+      label: skill.label.trim(),
+      courseId: '',
+      courseIds: [],
+      mastery: masteryLevel(skill.mastery),
+      masteryScore: skill.masteryScore,
+      description: skill.description ?? '',
+      source: 'Roadmap',
+      cards: 0,
+      skillId: skill.id,
+    };
+    const positions: Array<{ courseId: string; position: number }> = [];
     for (const entry of skill.courses) {
       if (!courseById.has(entry.courseId)) continue;
-      const key = `${entry.courseId}\0${n}`;
-      if (byCourseKey.has(key)) continue;
-      const node: TopicNode = {
-        id: `topic:${entry.courseId}:skill:${skill.id}`,
-        label: skill.label.trim(),
-        courseId: entry.courseId,
-        mastery: masteryLevel(skill.mastery),
-        masteryScore: skill.masteryScore,
-        description: skill.description ?? '',
-        source: 'Roadmap',
-        cards: 0,
-        skillId: skill.id,
-        stepId: entry.stepId,
-      };
-      topics.push(node);
-      normOf.set(node.id, n);
-      byCourseKey.set(key, node);
-      byNorm.set(n, [...(byNorm.get(n) ?? []), node]);
-      dependsOn.set(node.id, []);
-      stepsByCourse.set(entry.courseId, [...(stepsByCourse.get(entry.courseId) ?? []), { id: node.id, position: entry.position }]);
+      if (node.courseIds.includes(entry.courseId)) continue;
+      node.courseIds.push(entry.courseId);
+      positions.push({ courseId: entry.courseId, position: entry.position });
+    }
+    if (node.courseIds.length === 0) continue;
+    node.courseId = node.courseIds[0];
+    node.stepId ??= skill.courses.find((e) => e.courseId === node.courseId)?.stepId;
+    topics.push(node);
+    normOf.set(node.id, n);
+    byNorm.set(n, [node]);
+    dependsOn.set(node.id, []);
+    for (const p of positions) {
+      stepsByCourse.set(p.courseId, [...(stepsByCourse.get(p.courseId) ?? []), { id: node.id, position: p.position }]);
     }
   }
 
@@ -113,10 +119,10 @@ export function buildTopicMap(
     for (const item of g.content.conceptRoadmap ?? []) {
       const n = norm(item.concept ?? '');
       if (!n) continue;
-      const key = `${course.id}\0${n}`;
-      let node = byCourseKey.get(key);
-      if (node?.skillId) {
-        // Same concept as a roadmap skill: give the skill topic the guide's deep links.
+      let node = byNorm.get(n)?.[0];
+      if (node && node.courseId !== FOUNDATION_COURSE) {
+        // Same concept already on the map (any course): merge into that one node.
+        if (!node.courseIds.includes(course.id)) node.courseIds.push(course.id);
         node.guideId ??= g.id;
         node.documentId ??= g.documentId ?? undefined;
         if (!node.description) node.description = item.description ?? '';
@@ -128,6 +134,7 @@ export function buildTopicMap(
           id: `topic:${course.id}:${topics.length}`,
           label: item.concept.trim(),
           courseId: course.id,
+          courseIds: [course.id],
           mastery: 0,
           description: item.description ?? '',
           source: material?.title ?? g.title,
@@ -137,8 +144,7 @@ export function buildTopicMap(
         };
         topics.push(node);
         normOf.set(node.id, n);
-        byCourseKey.set(key, node);
-        byNorm.set(n, [...(byNorm.get(n) ?? []), node]);
+        byNorm.set(n, [node]);
         dependsOn.set(node.id, []);
       }
       dependsOn.get(node.id)!.push(...(item.dependsOn ?? []).map(norm).filter(Boolean));
@@ -152,6 +158,7 @@ export function buildTopicMap(
           id: `foundation:${foundations.size}`,
           label: p.trim(),
           courseId: FOUNDATION_COURSE,
+          courseIds: [],
           mastery: 3,
           description: '',
           source: '',
@@ -180,19 +187,14 @@ export function buildTopicMap(
     edges.push({ a, b });
   };
 
-  const conceptById = new Map(topics.map((t) => [t.id, t]));
   for (const [id, deps] of dependsOn) {
-    const courseId = conceptById.get(id)!.courseId;
     for (const d of deps) {
-      const same = byCourseKey.get(`${courseId}\0${d}`);
-      if (same) { addEdge(id, same.id); continue; }
+      // Concepts are global now — the first match (any course) is THE node.
+      const same = byNorm.get(d)?.[0];
+      if (same && same.id !== id) { addEdge(id, same.id); continue; }
       const found = foundations.get(d);
       if (found) { addEdge(id, found.id); continue; }
-      for (const other of byNorm.get(d) ?? []) addEdge(id, other.id);
     }
-  }
-  for (const group of byNorm.values()) {
-    for (let i = 1; i < group.length; i++) addEdge(group[0].id, group[i].id);
   }
   for (const [n, f] of foundations) {
     for (const t of byNorm.get(n) ?? []) addEdge(f.id, t.id);
@@ -216,7 +218,9 @@ export function buildTopicMap(
   for (const t of topics) {
     const n = normOf.get(t.id) ?? '';
     if (n.length < 3) continue;
-    const pool = t.courseId === FOUNDATION_COURSE ? allCards : cardsByCourse.get(t.courseId) ?? [];
+    const pool = t.courseId === FOUNDATION_COURSE
+      ? allCards
+      : t.courseIds.flatMap((cid) => cardsByCourse.get(cid) ?? []);
     const matched = pool.filter((c) => `${c.front} ${c.back}`.toLowerCase().includes(n));
     if (!matched.length) continue;
     t.cards = matched.length;
@@ -232,7 +236,7 @@ export function buildTopicMap(
   }
 
   // ── Courses on the map (only those with topics), hue by course order ──
-  const withTopics = new Set(topics.map((t) => t.courseId));
+  const withTopics = new Set(topics.flatMap((t) => t.courseIds));
   const mapCourses: TopicMapCourse[] = courses
     .map((c, i) => ({ id: c.id, name: c.name, hue: COURSE_HUES[i % COURSE_HUES.length] }))
     .filter((c) => withTopics.has(c.id));

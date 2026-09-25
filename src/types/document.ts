@@ -46,6 +46,23 @@ export interface DocumentFile {
   summary?: string | null;
   /** 'pending' | 'generating' | 'done' | 'failed' | 'skipped' */
   summaryStatus?: string;
+  /** Why summary generation failed (failures are data — shown inline with Retry). */
+  summaryError?: string | null;
+  /** 'pending' | 'generating' | 'done' | 'failed' | 'skipped' — audio overview status */
+  podcastStatus?: string;
+  podcastSections?: {
+    title: string;
+    durationS: number;
+    sections: { title: string; startS: number; durationS?: number; lines: { speaker: 'host' | 'guest'; text: string; startS: number }[] }[];
+  } | null;
+  /** Why podcast generation failed. */
+  podcastError?: string | null;
+  /** Entitlement failure flag — the UI shows an upsell state instead of an error. */
+  needsUpgrade?: boolean;
+  /** Folder this document lives in (E1). */
+  folderId?: string | null;
+  /** Last time the user opened this document — drives "Jump back in" (E1). */
+  lastOpenedAt?: string | null;
   /** Server-side path or, for YouTube docs, the source URL. */
   filePath?: string | null;
   /** If this document is a chapter inside a textbook, this is the textbook ID. */

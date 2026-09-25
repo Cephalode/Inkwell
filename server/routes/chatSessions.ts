@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import pool from '../db.js';
 import { API_KEY, UPSTREAM } from '../config.js';
+import { uid } from '../src/auth.js';
 
 const router = Router();
 
@@ -59,10 +60,11 @@ function truncateTitle(text: string, maxLen: number): string {
 }
 
 // GET / — list sessions without messages (lightweight)
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, document_id, title, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC'
+      'SELECT id, document_id, title, created_at, updated_at FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC',
+      [uid(req)]
     );
     res.json(rows.map((r: SessionRow) => rowToSession(r)));
   } catch (err) {
@@ -73,7 +75,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // GET /:id — session with messages
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows: sessionRows } = await pool.query('SELECT * FROM chat_sessions WHERE id = $1', [req.params.id]);
+    const { rows: sessionRows } = await pool.query('SELECT * FROM chat_sessions WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     if (sessionRows.length === 0) return res.status(404).json({ error: 'Session not found' });
     const { rows: msgRows } = await pool.query(
       'SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC',
@@ -90,8 +92,8 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const { id, title = '', document_id = null } = req.body;
     const { rows } = await pool.query(
-      'INSERT INTO chat_sessions (id, title, document_id) VALUES ($1, $2, $3) RETURNING *',
-      [id, title, document_id]
+      'INSERT INTO chat_sessions (id, title, document_id, user_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [id, title, document_id, uid(req)]
     );
     res.status(201).json(rowToSession(rows[0] as SessionRow));
   } catch (err) {
@@ -113,8 +115,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
     }
     fields.push('updated_at = now()');
     values.push(req.params.id);
+    values.push(uid(req));
     const { rows } = await pool.query(
-      `UPDATE chat_sessions SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+      `UPDATE chat_sessions SET ${fields.join(', ')} WHERE id = $${i} AND user_id = $${i + 1} RETURNING *`,
       values
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Session not found' });
@@ -127,7 +130,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // DELETE /:id
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await pool.query('DELETE FROM chat_sessions WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -138,6 +141,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/:id/messages', async (req: Request, res: Response) => {
   try {
     const { id, role, content, citations = null } = req.body;
+    const own = await pool.query('SELECT id FROM chat_sessions WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
+    if (own.rows.length === 0) return res.status(404).json({ error: 'Session not found' });
     const { rows } = await pool.query(
       'INSERT INTO chat_messages (id, session_id, role, content, citations) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [id, req.params.id, role, content, citations !== null ? JSON.stringify(citations) : null]

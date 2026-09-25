@@ -4,11 +4,11 @@ import type { TopicMap } from '../types/topicMap';
 const TOPIC_COLOR = '#e8b93b';
 
 /** Extends the document knowledge graph with the topic map's roadmap topics:
- *  one `topic` node per concept (carrying its mastery and roadmap step, so the
- *  viewer can colour it and deep-link into the learning suite), `next-topic`
- *  edges to its source document (or course when there is no document), and
- *  `builds-on` edges between concepts linked inside the map — a skill shared by
- *  two courses is linked across both. */
+ *  one `topic` node per concept (shared concepts are a single node carrying every
+ *  course's mastery and roadmap step, so the viewer can colour it and deep-link
+ *  into the learning suite), `next-topic` edges to its source document (or course
+ *  when there is no document), and `builds-on` edges between concepts linked
+ *  inside the map. */
 export function extendGraphWithTopics(
   nodes: KGNode[],
   edges: KGEdge[],

@@ -10,6 +10,8 @@
 
 import { callGLMJson } from './llm.js';
 import { collectMaterials } from './materials.js';
+import { synthesizeDialog } from './tts.js';
+import { storageUpload } from './storage.js';
 
 // ── Step context ────────────────────────────────────────────────────────────
 
@@ -251,7 +253,7 @@ Student answer: ${studentAnswer}
 Respond with ONLY JSON: {"points": 0.0-1.0, "feedback": "one or two sentences"}`,
         },
       ],
-      { temperature: 0.2, maxTokens: 400 },
+      { temperature: 0.2, maxTokens: 1500 },
     );
     const points = Math.max(0, Math.min(1, Number(g?.points ?? 0)));
     return { points: Number.isFinite(points) ? points : 0, feedback: g?.feedback || `Model answer: ${modelAnswer}` };
@@ -318,7 +320,7 @@ export interface DiscussionContent {
 
 const DISCUSSION_MAX_TURNS = 8;
 
-const tutorSystem = (step: StepContext, grounding: string) => `You are Inkwell's tutor running a short Socratic discussion to find out whether the learner has actually understood a topic, and to help them if they have not.
+const tutorSystem = (step: StepContext, grounding: string) => `You are the tutor inside Inkwell, an AI study-companion app. "Inkwell" is the app's name, never the learner's — you don't know the learner's name, so do not greet or address them by any name. You are running a short Socratic discussion to find out whether the learner has actually understood a topic, and to help them if they have not.
 
 ${stepHeader(step)}
 
@@ -344,7 +346,7 @@ export async function openDiscussion(step: StepContext, grounding: string): Prom
       {
         role: 'user',
         content:
-          'The session is starting. Greet the learner in one sentence and ask your first question about the core idea of the topic. Respond with ONLY the JSON object (assessment may be all-empty, done=false).',
+          'The session is starting. Greet the learner in one sentence without using any name (you do not know it), and ask your first question about the core idea of the topic. Respond with ONLY the JSON object (assessment may be all-empty, done=false).',
       },
     ],
     { temperature: 0.6, maxTokens: 800 },
@@ -428,13 +430,15 @@ Design a "teach it back" exercise: one prompt asking the learner to explain this
 Respond with ONLY JSON: {"prompt": "...", "rubric": ["..."], "hints": ["..."]}`,
       },
     ],
-    { temperature: 0.5, maxTokens: 1200 },
+    { temperature: 0.5, maxTokens: 4096 }, // reasoning models can burn 1200+ tokens thinking before any JSON — keep headroom
   );
+  const rubric = asStringArray(out?.rubric);
+  if (rubric.length === 0) throw new Error('The tutor could not build a rubric for this topic — try again');
   return {
     prompt:
       (typeof out?.prompt === 'string' && out.prompt.trim()) ||
       `Explain **${step.title}** from memory, as if you were teaching it to a classmate. Cover what it is, why it matters, and one concrete example.`,
-    rubric: asStringArray(out?.rubric),
+    rubric,
     hints: asStringArray(out?.hints),
   };
 }
@@ -462,7 +466,7 @@ ${answer}
 Respond with ONLY JSON: {"score": 0.0-1.0, "covered": ["rubric points met"], "missing": ["rubric points missed or wrong"], "feedback": "3-4 sentences of specific feedback"}`,
       },
     ],
-    { temperature: 0.2, maxTokens: 800 },
+    { temperature: 0.2, maxTokens: 2000 },
   );
   const score = Math.max(0, Math.min(1, Number(out?.score ?? 0)));
   return {
@@ -471,4 +475,52 @@ Respond with ONLY JSON: {"score": 0.0-1.0, "covered": ["rubric points met"], "mi
     missing: asStringArray(out?.missing),
     feedback: out?.feedback || 'Compare your explanation with the rubric above.',
   };
+}
+
+// ── Podcast ─────────────────────────────────────────────────────────────────
+
+export interface PodcastLine {
+  speaker: 'host' | 'guest';
+  text: string;
+}
+
+export interface PodcastContent {
+  title: string;
+  lines: PodcastLine[];
+  /** Set once the fire-and-forget TTS render finishes (Storage key). */
+  audioPath?: string;
+  /** Set when the TTS render fails — the transcript still reads fine. */
+  renderError?: string;
+}
+
+const PODCAST_PROMPT = `You write short study podcasts. Turn the study material into an engaging two-speaker dialogue: a friendly HOST and an expert GUEST. Keep the GUEST's explanations grounded in the material — no invented facts. Cover every learning objective in order.
+
+Respond with ONLY JSON (no markdown fences, no commentary):
+{"title": "short episode title", "lines": [{"speaker": "host", "text": "..."}, {"speaker": "guest", "text": "..."}]}
+
+Rules: 10-16 line exchanges; each text is 1-3 sentences of plain spoken prose — no speaker names inside text, no stage directions, no markdown, no lists.`;
+
+export async function buildPodcast(step: StepContext, grounding: string): Promise<PodcastContent> {
+  const out = await callGLMJson<{ title?: string; lines?: PodcastLine[] }>(
+    [
+      { role: 'system', content: PODCAST_PROMPT },
+      { role: 'user', content: `${stepHeader(step)}\n\nStudy material:\n${grounding}` },
+    ],
+    { temperature: 0.7, maxTokens: 4096 },
+  );
+  const lines = (out?.lines ?? [])
+    .filter((l) => l && typeof l.text === 'string' && l.text.trim() && (l.speaker === 'host' || l.speaker === 'guest'))
+    .map((l) => ({ speaker: l.speaker, text: l.text.trim() }));
+  if (lines.length < 2) throw new Error(`Podcast script too short (${lines.length} lines)`);
+  return { title: (out?.title || step.title).trim().slice(0, 80), lines };
+}
+
+/** Render the dialogue to a two-voice MP3 and upload it to Storage. Runs
+ * fire-and-forget after the start route responds (1-4 min of TTS — too slow
+ * to hold the HTTP request open behind Cloudflare's ~100s proxy cap). */
+export async function synthesizePodcastAudio(activityId: string, content: PodcastContent): Promise<string> {
+  const audio = await synthesizeDialog(content.lines);
+  const path = `podcasts/activity-${activityId}.mp3`;
+  await storageUpload(path, audio, 'audio/mpeg');
+  return path;
 }

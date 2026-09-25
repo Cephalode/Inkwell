@@ -16,7 +16,8 @@ import { useCourses } from '../hooks/useCourses';
 import { useDocumentStore } from '../store/documentStore';
 import { useChatStore } from '../store/chatStore';
 import { useKnowledgeGraphStore } from '../store/knowledgeGraphStore';
-import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook, listStudyGuides, getStudyGuide } from '../services/api/client';
+import { updateDocumentTags, listChapters, listTextbooks, deleteTextbook, listStudyGuides, getStudyGuide, listFolders, createFolder, deleteFolder, updateDocument as updateDocumentApi } from '../services/api/client';
+import type { Folder } from '../services/api/client';
 import { buildKnowledgeGraph } from '../utils/buildKnowledgeGraph';
 import { extendGraphWithTopics } from '../utils/graphTopics';
 import { buildTopicMap } from '../utils/buildTopicMap';
@@ -27,6 +28,7 @@ import type { StudyGuide } from '../types/studyGuide';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { HiOutlineShare, HiChevronDown, HiChevronRight, HiBookOpen, HiTrash, HiExclamationCircle } from 'react-icons/hi';
 import { HiOutlineListBullet } from 'react-icons/hi2';
+import { HiFolder, HiX } from 'react-icons/hi';
 import type { KGNode } from '../types/knowledgeGraph';
 import type { ChapterDocument, Textbook, DocumentFile } from '../types/document';
 
@@ -134,12 +136,38 @@ export default function DocumentsPage() {
 
   const handleSelectDoc = useCallback((doc: DocumentFile) => {
     setCurrentDocument(doc);
+    fetch(`${window.location.origin}/api/documents/${doc.id}/opened`, { method: 'POST' }).catch(() => {});
     navigate(`/documents/${doc.id}`);
   }, [setCurrentDocument, navigate]);
 
   const handleMoveToCourse = useCallback(async (docId: string, courseId: string) => {
     await addDocumentToCourse(courseId, docId);
   }, [addDocumentToCourse]);
+
+  // ── Folders (E1) ──────────────────────────────────────────────────────────
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  useEffect(() => {
+    listFolders().then(setFolders).catch(() => {});
+  }, []);
+  const handleCreateFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    const palette = ['#38a6cf', '#ff7fa9', '#2f9e57', '#f59e0b', '#918d8c'];
+    const f = await createFolder(name, palette[Math.floor(Math.random() * palette.length)]);
+    setFolders((prev) => [...prev, f]);
+    setNewFolderName('');
+  }, [newFolderName]);
+  const handleDeleteFolder = useCallback(async (id: string) => {
+    await deleteFolder(id);
+    setFolders((prev) => prev.filter((f) => f.id !== id));
+    setFolderFilter((cur) => (cur === id ? null : cur));
+  }, []);
+  const handleMoveToFolder = useCallback(async (docId: string, folderId: string | null) => {
+    await updateDocumentApi(docId, { folderId });
+    updateDocument(docId, { folderId }); // local store so the card updates instantly
+  }, [updateDocument]);
 
   const handleUpdateTags = useCallback(async (docId: string, tags: string[]) => {
     await updateDocumentTags(docId, tags);
@@ -250,6 +278,47 @@ export default function DocumentsPage() {
 
       {viewMode === 'list' && (
         <UploadZone onFilesSelected={handleFilesSelected} onUrlSubmit={uploadVideoUrl} isLoading={isLoading} />
+      )}
+
+      {/* Folders (E1) — create, filter, delete */}
+      {viewMode === 'list' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {folders.map((f) => (
+            <span
+              key={f.id}
+              className="flex items-center gap-1.5 pl-1 rounded-full text-sm"
+              style={{
+                border: `1px solid ${folderFilter === f.id ? f.color : 'var(--color-divider)'}`,
+                background: folderFilter === f.id ? `color-mix(in srgb, ${f.color} 14%, transparent)` : 'transparent',
+              }}
+            >
+              <button
+                className="flex items-center gap-1.5 py-1 pl-2 pr-1"
+                onClick={() => setFolderFilter(folderFilter === f.id ? null : f.id)}
+                title="Filter by folder"
+              >
+                <HiFolder className="w-3.5 h-3.5" style={{ color: f.color ?? 'var(--color-accent)' }} />
+                {f.name}
+              </button>
+              <button className="p-1 mr-1" style={{ opacity: 0.4 }} onClick={() => handleDeleteFolder(f.id)} title="Delete folder (documents are kept)">
+                <HiX className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <span className="flex items-center gap-1">
+            <input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+              placeholder="New folder…"
+              className="text-sm px-3 py-1 w-32 rounded-full"
+              style={{ border: '1px solid var(--color-divider)', background: 'transparent', color: 'var(--color-text)' }}
+            />
+            {newFolderName.trim() && (
+              <button onClick={handleCreateFolder} className="text-sm px-2 py-1" style={{ color: 'var(--color-accent)' }}>+ Add</button>
+            )}
+          </span>
+        </div>
       )}
 
       {isLoading && documents.length === 0 ? (
@@ -377,12 +446,14 @@ export default function DocumentsPage() {
 
           {/* Regular documents */}
           <FileList
-            documents={filteredDocuments}
+            documents={folderFilter ? filteredDocuments.filter((d) => d.folderId === folderFilter) : filteredDocuments}
             onDelete={deleteDocumentById}
             onSelect={handleSelectDoc}
             courses={courses.map(c => ({ id: c.id, name: c.name, documentIds: c.documentIds }))}
             onMoveToCourse={handleMoveToCourse}
             onUpdateTags={handleUpdateTags}
+            folders={folders}
+            onMoveToFolder={handleMoveToFolder}
             chapterCounts={chapterCounts}
           />
         </div>

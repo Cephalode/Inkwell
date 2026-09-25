@@ -110,6 +110,14 @@ export interface GenerationOptions {
    * The pipeline emits `synthesizing` immediately before calling this.
    */
   finalize?: (items: Material[], emit: EmitFn) => Promise<void>;
+
+  /**
+   * How many materials to process in parallel (default 1 = sequential,
+   * matching the original behaviour). Each slot is still one LLM call —
+   * don't set this above what the provider rate-limits. Roadmaps pass 4
+   * (15 serial GLM calls ≈ 2-4 min → ~4 parallel batches).
+   */
+  concurrency?: number;
 }
 
 // ── Status helper ───────────────────────────────────────────────────────────
@@ -184,6 +192,7 @@ export function checkStale(row: { updated_at: Date | string }): boolean {
  */
 export async function runGeneration(options: GenerationOptions): Promise<void> {
   const { table, id, res, req, collectMaterials, processMaterial, finalize } = options;
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 1, 8));
 
   // 1. SSE headers — flush immediately so the client starts receiving.
   setSSEHeaders(res);
@@ -217,31 +226,37 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
 
     emit('materials_collected', { count: materials.length });
 
-    // 4. MAP phase — process each material unit.
+    // 4. MAP phase — process materials `concurrency` at a time (worker pool).
+    //    Events fire per material as it starts/finishes; the frontend reducer
+    //    only cares that counts go up, so out-of-order results are fine.
     let totalProduced = 0;
+    let nextIndex = 0;
 
-    for (let i = 0; i < materials.length; i++) {
-      if (closed) break;
+    const worker = async () => {
+      while (!closed) {
+        const i = nextIndex++;
+        if (i >= materials.length) return;
+        const material = materials[i];
 
-      const material = materials[i];
+        emit('material_start', {
+          index: i,
+          total: materials.length,
+          material: { id: material.documentId, title: material.title },
+        });
 
-      emit('material_start', {
-        index: i,
-        total: materials.length,
-        material: { id: material.documentId, title: material.title },
-      });
+        const count = await processMaterial(material, emit);
+        totalProduced += count;
 
-      const count = await processMaterial(material, emit);
-      totalProduced += count;
+        emit('material_result', {
+          index: i,
+          count,
+          total: materials.length,
+          material: { id: material.documentId },
+        });
+      }
+    };
 
-      emit('material_result', {
-        index: i,
-        count,
-        material: { id: material.documentId },
-      });
-
-      if (closed) break;
-    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, materials.length) }, worker));
 
     // 5. REDUCE phase — synthesise (optional).
     emit('synthesizing');

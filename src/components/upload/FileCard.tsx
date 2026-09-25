@@ -7,6 +7,7 @@ import {
   HiDotsVertical,
   HiPencil,
   HiCollection,
+  HiFolder,
   HiArrowLeft,
   HiX,
 } from 'react-icons/hi';
@@ -41,6 +42,8 @@ interface FileCardProps {
   courses: Array<{ id: string; name: string; documentIds: string[] }>;
   onMoveToCourse?: (docId: string, courseId: string) => void;
   onUpdateTags: (docId: string, tags: string[]) => void;
+  folders?: Array<{ id: string; name: string }>;
+  onMoveToFolder?: (docId: string, folderId: string | null) => void;
   docCourses?: string[];
   subdocCount?: number;
 }
@@ -55,6 +58,8 @@ export default function FileCard({
   courses,
   onMoveToCourse,
   onUpdateTags,
+  folders = [],
+  onMoveToFolder,
   docCourses = [],
   subdocCount = 0,
 }: FileCardProps) {
@@ -352,6 +357,41 @@ export default function FileCard({
                     <HiPencil className="w-4 h-4 flex-shrink-0" />
                     <span>Edit Tags</span>
                   </button>
+
+                  {/* Move to Folder */}
+                  {folders.length > 0 && (
+                    <>
+                      {folders
+                        .filter((f) => f.id !== doc.folderId)
+                        .map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => {
+                              onMoveToFolder?.(doc.id, f.id);
+                              closeDropdown();
+                            }}
+                            className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full text-left"
+                            style={{ borderRadius: 'var(--radius-md)' }}
+                          >
+                            <HiFolder className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">Move to {f.name}</span>
+                          </button>
+                        ))}
+                      {doc.folderId && (
+                        <button
+                          onClick={() => {
+                            onMoveToFolder?.(doc.id, null);
+                            closeDropdown();
+                          }}
+                          className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full text-left"
+                          style={{ borderRadius: 'var(--radius-md)', opacity: 0.7 }}
+                        >
+                          <HiFolder className="w-4 h-4 flex-shrink-0" />
+                          <span>Remove from folder</span>
+                        </button>
+                      )}
+                    </>
+                  )}
 
                   {/* Divider */}
                   <div className="my-1" style={{ borderTop: '1px solid var(--color-divider)' }} />

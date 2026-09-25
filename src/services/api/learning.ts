@@ -67,11 +67,6 @@ export async function generateRoadmap(id: string, signal?: AbortSignal): Promise
   return res;
 }
 
-export async function deleteRoadmap(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/roadmaps/${id}`, { method: 'DELETE' });
-  if (!res.ok && res.status !== 204) throw new Error(`Failed to delete roadmap: ${res.status}`);
-}
-
 // ── Steps & activities ──────────────────────────────────────────────────────
 
 export async function getStep(stepId: string): Promise<StepDetail> {
@@ -104,7 +99,7 @@ export type SubmitPayload =
   | { grades: Record<string, boolean> } // flashcards
   | { checkpointsCorrect?: number } // lesson
   | { answer: string } // recall
-  | Record<string, never>; // discussion (close early)
+  | Record<string, never>; // discussion (close early) · podcast (done listening)
 
 export async function submitActivity(id: string, payload: SubmitPayload): Promise<SubmitResponse> {
   return json<SubmitResponse>(await post(`${API_BASE}/learning-activities/${id}/submit`, payload), 'Failed to submit');

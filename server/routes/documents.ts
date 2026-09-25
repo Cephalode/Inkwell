@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
+import { randomBytes } from 'crypto';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -7,7 +8,9 @@ import pool from '../db.js';
 import { API_KEY, UPSTREAM } from '../config.js';
 import { type TextbookRow, rowToTextbook } from './textbooks.js';
 import { storageUpload, storageDownload, storageDelete, isStorageKey } from '../src/storage.js';
-import { callGLM } from '../src/llm.js';
+import { callGLM, callGLMJson } from '../src/llm.js';
+import { synthesizeDialogWithOffsets, type DialogLine } from '../src/tts.js';
+import { uid } from '../src/auth.js';
 
 const router = Router();
 
@@ -30,6 +33,14 @@ export interface DocRow {
   video_summary: unknown;
   summary: string | null;
   summary_status: string;
+  summary_error: string | null;
+  podcast_path: string | null;
+  podcast_status: string;
+  podcast_error: string | null;
+  podcast_sections: unknown;
+  needs_upgrade: boolean;
+  folder_id: string | null;
+  last_opened_at: string | null;
   textbook_id: string | null;
   start_page: number | null;
   end_page: number | null;
@@ -55,6 +66,13 @@ export function rowToDoc(row: DocRow) {
     videoSummary: row.video_summary,
     summary: row.summary,
     summaryStatus: row.summary_status,
+    summaryError: row.summary_error,
+    podcastStatus: row.podcast_status,
+    podcastError: row.podcast_error,
+    podcastSections: row.podcast_sections ?? null,
+    needsUpgrade: row.needs_upgrade,
+    folderId: row.folder_id,
+    lastOpenedAt: row.last_opened_at,
     textbookId: row.textbook_id,
     startPage: row.start_page,
     endPage: row.end_page,
@@ -99,9 +117,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   try {
     await storageUpload(storagePath, file.buffer, mimeType || 'application/octet-stream');
     await pool.query(
-      `INSERT INTO documents (id, name, type, mime_type, size, file_path)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, name, ext, mimeType, size, storagePath],
+      `INSERT INTO documents (id, name, type, mime_type, size, file_path, user_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, name, ext, mimeType, size, storagePath, uid(req)],
     );
 
     const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
@@ -113,10 +131,10 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 });
 
 // ── GET / — List all documents ─────────────────────────────────────────────
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     // Exclude documents that belong to a textbook (they're fetched via /api/textbooks/:id)
-    const { rows } = await pool.query('SELECT * FROM documents WHERE textbook_id IS NULL ORDER BY created_at DESC');
+    const { rows } = await pool.query('SELECT * FROM documents WHERE textbook_id IS NULL AND user_id = $1 ORDER BY created_at DESC', [uid(req)]);
     res.json((rows as DocRow[]).map(rowToDoc));
   } catch (err: unknown) {
     console.error('Error fetching documents:', err);
@@ -127,7 +145,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // ── GET /:id/download — Download raw PDF file ──────────────────────────────
 router.get('/:id/download', async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -150,7 +168,7 @@ router.get('/:id/download', async (req: Request, res: Response) => {
 // ── GET /:id — Get single document ──────────────────────────────────────────
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -189,6 +207,10 @@ router.patch('/:id', async (req: Request, res: Response) => {
     sets.push(`name = $${i++}`);
     values.push(req.body.name as string);
   }
+  if (typeof req.body.folderId === 'string' || req.body.folderId === null) {
+    sets.push(`folder_id = $${i++}`);
+    values.push(req.body.folderId); // validated by the FK
+  }
 
   if (sets.length === 0) {
     return res.status(400).json({ error: 'No fields to update' });
@@ -196,10 +218,11 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
   sets.push(`updated_at = now()`);
   values.push(req.params.id);
+  values.push(uid(req));
 
   try {
     const { rows } = await pool.query(
-      `UPDATE documents SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+      `UPDATE documents SET ${sets.join(', ')} WHERE id = $${i} AND user_id = $${i + 1} RETURNING *`,
       values,
     );
     if (rows.length === 0) {
@@ -215,7 +238,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 // ── DELETE /:id — Delete document ──────────────────────────────────────────
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query('SELECT file_path FROM documents WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query('SELECT file_path, podcast_path FROM documents WHERE id = $1 AND user_id = $2', [req.params.id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -242,6 +265,12 @@ router.delete('/:id', async (req: Request, res: Response) => {
       } catch {
         // File may already be deleted
       }
+    }
+
+    // Remove podcast audio from Storage
+    const podcastPath = (rows[0] as { podcast_path: string | null }).podcast_path;
+    if (podcastPath) {
+      try { await storageDelete(podcastPath); } catch { /* already deleted */ }
     }
 
     res.status(204).end();
@@ -282,7 +311,7 @@ router.post('/:id/classify', async (req: Request, res: Response) => {
 
   try {
     // 1. Fetch document from DB
-    const { rows } = await pool.query('SELECT parsed_text FROM documents WHERE id = $1', [id]);
+    const { rows } = await pool.query('SELECT parsed_text FROM documents WHERE id = $1 AND user_id = $2', [id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -443,18 +472,18 @@ async function generateDocumentSummary(id: string, parsedText: string): Promise<
   if (!text) throw new Error('Summary generation returned empty content');
 
   await pool.query(
-    'UPDATE documents SET summary = $1, summary_status = $2, updated_at = now() WHERE id = $3',
+    'UPDATE documents SET summary = $1, summary_status = $2, summary_error = NULL, updated_at = now() WHERE id = $3',
     [text, 'done', id],
   );
   return text;
 }
 
-/** Set summary_status = 'failed' (best effort — never throws). */
-async function markSummaryFailed(id: string): Promise<void> {
+/** Set summary_status = 'failed' + persist the reason (failures are data). */
+async function markSummaryFailed(id: string, errMsg?: string): Promise<void> {
   try {
     await pool.query(
-      "UPDATE documents SET summary_status = 'failed', updated_at = now() WHERE id = $1",
-      [id],
+      "UPDATE documents SET summary_status = 'failed', summary_error = $2, updated_at = now() WHERE id = $1",
+      [id, errMsg ? errMsg.slice(0, 500) : null],
     );
   } catch {
     // ignore — status update is best effort
@@ -487,9 +516,10 @@ export function triggerAutoSummary(id: string): void {
         [id],
       );
       await generateDocumentSummary(id, parsedText);
+      triggerAutoPodcast(id); // chain: summary done → podcast
     } catch (err: unknown) {
       console.error('Auto-summary failed:', err);
-      await markSummaryFailed(id);
+      await markSummaryFailed(id, err instanceof Error ? err.message : String(err));
     }
   })();
 }
@@ -500,7 +530,7 @@ export function triggerAutoSummary(id: string): void {
 router.post('/:id/summary', async (req: Request, res: Response) => {
   const id = String(req.params.id);
   try {
-    const { rows } = await pool.query('SELECT parsed_text FROM documents WHERE id = $1', [id]);
+    const { rows } = await pool.query('SELECT parsed_text FROM documents WHERE id = $1 AND user_id = $2', [id, uid(req)]);
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Document not found' });
     }
@@ -518,12 +548,230 @@ router.post('/:id/summary', async (req: Request, res: Response) => {
       [id],
     );
     const summary = await generateDocumentSummary(id, parsedText);
+    triggerAutoPodcast(id); // chain: summary done → podcast
     res.json({ summary, status: 'done' });
   } catch (err: unknown) {
     console.error('Error generating summary:', err);
-    await markSummaryFailed(id);
+    await markSummaryFailed(id, err instanceof Error ? err.message : String(err));
     res.status(500).json({ error: 'Failed to generate summary' });
   }
+});
+
+// ── Auto-podcast (Turbo-style audio overview) ────────────────────────────────
+// After the summary is done: GLM writes a two-speaker dialogue script, edge-tts
+// renders it two-voice, the MP3 lands in Storage. No user-facing types — one
+// ~5-minute podcast per document.
+
+const PODCAST_SYSTEM_PROMPT = `You write podcast scripts. Turn the study material below into an engaging two-speaker dialogue: a friendly HOST and an expert GUEST. Keep the GUEST's explanations grounded in the material — no invented facts.
+
+Respond with ONLY JSON (no markdown fences, no commentary):
+{"title": "short episode title", "sections": [{"title": "section name", "lines": [{"speaker": "host", "text": "..."}, {"speaker": "guest", "text": "..."}]}]}
+
+Rules: 3-6 sections covering the material in order; 2-4 line exchanges per section (8-16 lines total); each text is 1-4 sentences of plain spoken prose — no speaker names inside text, no stage directions, no markdown, no lists.`;
+
+interface PodcastSection {
+  title: string;
+  lines: DialogLine[];
+  startS?: number;
+}
+
+/** GLM writes a sectioned dialogue script; falls back to one flat section. */
+async function generatePodcastScriptV2(id: string): Promise<{ title: string; sections: PodcastSection[] }> {
+  const { rows } = await pool.query('SELECT summary, parsed_text FROM documents WHERE id = $1', [id]);
+  const doc = rows[0] as { summary: string | null; parsed_text: string | null };
+  const excerpt = (doc.parsed_text || '').slice(0, 12000);
+
+  let parsed: { title?: string; sections?: Array<{ title?: string; lines?: DialogLine[] }> } | null = null;
+  try {
+    parsed = await callGLMJson<{ title?: string; sections?: Array<{ title?: string; lines?: DialogLine[] }> }>(
+      [
+        { role: 'system', content: PODCAST_SYSTEM_PROMPT },
+        { role: 'user', content: `Summary:\n${doc.summary || ''}\n\nSource material:\n${excerpt}` },
+      ],
+      { temperature: 0.7, maxTokens: 4096 },
+    );
+  } catch (err) {
+    console.error('Podcast v2 script generation failed, falling back to v1:', err);
+  }
+
+  const sections: PodcastSection[] = (parsed?.sections || [])
+    .filter((s) => s && Array.isArray(s.lines))
+    .map((s) => ({
+      title: (s.title || 'Discussion').trim().slice(0, 80),
+      lines: s.lines!.filter((l) => l && typeof l.text === 'string' && l.text.trim() && (l.speaker === 'host' || l.speaker === 'guest')),
+    }))
+    .filter((s) => s.lines.length >= 2);
+
+  if (sections.length === 0) {
+    // Legacy flat-array response (or malformed) — one section keeps v2 usable.
+    const flat = await generatePodcastScript(id);
+    return { title: 'Audio overview', sections: [{ title: 'Discussion', lines: flat, startS: 0 }] };
+  }
+  return { title: (parsed?.title || 'Audio overview').trim().slice(0, 80), sections };
+}
+
+/** GLM writes the dialogue script from the summary + source excerpt. */
+async function generatePodcastScript(id: string): Promise<DialogLine[]> {
+  const { rows } = await pool.query('SELECT summary, parsed_text FROM documents WHERE id = $1', [id]);
+  const doc = rows[0] as { summary: string | null; parsed_text: string | null };
+  const excerpt = (doc.parsed_text || '').slice(0, 12000);
+  const lines = await callGLMJson<DialogLine[]>(
+    [
+      { role: 'system', content: PODCAST_SYSTEM_PROMPT },
+      { role: 'user', content: `Summary:\n${doc.summary || ''}\n\nSource material:\n${excerpt}` },
+    ],
+    { temperature: 0.7, maxTokens: 4096 },
+  );
+  if (!lines || !Array.isArray(lines)) throw new Error('Podcast script generation returned no JSON');
+  const clean = lines
+    .filter((l) => l && typeof l.text === 'string' && l.text.trim() && (l.speaker === 'host' || l.speaker === 'guest'))
+    .map((l) => ({ speaker: l.speaker, text: l.text.trim() }));
+  if (clean.length < 2) throw new Error(`Podcast script too short (${clean.length} lines)`);
+  return clean;
+}
+
+/** Set podcast_status = 'failed' + persist the reason (failures are data). */
+async function markPodcastFailed(id: string, errMsg?: string): Promise<void> {
+  try {
+    await pool.query(
+      "UPDATE documents SET podcast_status = 'failed', podcast_error = $2, updated_at = now() WHERE id = $1",
+      [id, errMsg ? errMsg.slice(0, 500) : null],
+    );
+  } catch {
+    // ignore — status update is best effort
+  }
+}
+
+/** Synthesize the script and persist audio + section JSONB. Shared by auto + manual paths. */
+async function synthesizeAndStorePodcast(id: string, script: { title: string; sections: PodcastSection[] }): Promise<void> {
+  const flat = script.sections.flatMap((s) => s.lines);
+  const { audio: mp3, segments } = await synthesizeDialogWithOffsets(flat);
+  // Map per-line offsets back onto sections; round to whole seconds.
+  let li = 0;
+  const withStarts = script.sections.map((s) => {
+    const startS = Math.round(segments[li].startS);
+    const lines = s.lines.map((l, i) => ({ ...l, startS: Math.round(segments[li + i].startS) }));
+    li += s.lines.length;
+    return { title: s.title, startS, lines };
+  });
+  const last = segments[segments.length - 1];
+  const podcastJson = {
+    title: script.title,
+    durationS: Math.round(last.startS + last.durationS),
+    sections: withStarts.map((s, i) => ({
+      title: s.title,
+      startS: s.startS,
+      durationS: i + 1 < withStarts.length ? withStarts[i + 1].startS - s.startS : undefined,
+      lines: s.lines,
+    })),
+  };
+  const storagePath = `podcasts/${id}.mp3`;
+  await storageUpload(storagePath, mp3, 'audio/mpeg');
+  await pool.query(
+    "UPDATE documents SET podcast_path = $1, podcast_sections = $2, podcast_status = 'done', updated_at = now() WHERE id = $3",
+    [storagePath, JSON.stringify(podcastJson), id],
+  );
+}
+
+/**
+ * Fire-and-forget auto-podcast, chained after summary completes so the
+ * GLM call doesn't run concurrently with summary/classify (rate limits).
+ */
+export function triggerAutoPodcast(id: string): void {
+  void (async () => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT summary FROM documents WHERE id = $1 AND podcast_status IN ('pending', 'failed', 'generating')",
+        [id],
+      );
+      if (rows.length === 0) return; // already done/generating, or doc gone
+      const summary = (rows[0] as { summary: string | null }).summary;
+      if (!summary || summary.trim().length === 0) {
+        // No summary to talk about — the chained flow never reaches here
+        // (we're called after summary is done), but a manual retry might.
+        await pool.query(
+          "UPDATE documents SET podcast_status = 'skipped', updated_at = now() WHERE id = $1",
+          [id],
+        );
+        return;
+      }
+      await pool.query(
+        "UPDATE documents SET podcast_status = 'generating', updated_at = now() WHERE id = $1",
+        [id],
+      );
+      const script = await generatePodcastScriptV2(id);
+      await synthesizeAndStorePodcast(id, script);
+    } catch (err: unknown) {
+      console.error('Auto-podcast failed:', err);
+      await markPodcastFailed(id, err instanceof Error ? err.message : String(err));
+    }
+  })();
+}
+
+// ── POST /:id/podcast — (Re)generate the podcast ─────────────────────────────
+// Normally triggered automatically after the summary; exposed so failures can
+// be retried. Resolves when the audio is in Storage.
+router.post('/:id/podcast', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  try {
+    const { rows } = await pool.query('SELECT summary FROM documents WHERE id = $1 AND user_id = $2', [id, uid(req)]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+    if (!(rows[0] as { summary: string | null }).summary) {
+      return res.status(400).json({ error: 'Document has no summary yet — generate the summary first' });
+    }
+    await pool.query(
+      "UPDATE documents SET podcast_status = 'generating', updated_at = now() WHERE id = $1",
+      [id],
+    );
+    const script = await generatePodcastScriptV2(id);
+    await synthesizeAndStorePodcast(id, script);
+    res.json({ status: 'done' });
+  } catch (err: unknown) {
+    console.error('Error generating podcast:', err);
+    await markPodcastFailed(id, err instanceof Error ? err.message : String(err));
+    res.status(500).json({ error: 'Failed to generate podcast' });
+  }
+});
+
+// ── GET /:id/podcast — Stream the podcast MP3 ────────────────────────────────
+router.get('/:id/podcast', async (req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query('SELECT podcast_path FROM documents WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+    const path = (rows[0] as { podcast_path: string | null }).podcast_path;
+    if (!path) return res.status(404).json({ error: 'No podcast generated yet' });
+    const buf = await storageDownload(path);
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', String(buf.length));
+    res.setHeader('Accept-Ranges', 'none'); // ponytail: no range requests, add if seeking matters
+    res.end(buf);
+  } catch (err: unknown) {
+    console.error('Error streaming podcast:', err);
+    res.status(500).json({ error: 'Failed to stream podcast' });
+  }
+});
+
+// ── POST /:id/opened — mark last-opened (E1 "Jump back in" recency) ─────────
+router.post('/:id/opened', async (req: Request, res: Response) => {
+  await pool.query(
+    'UPDATE documents SET last_opened_at = now() WHERE id = $1 AND user_id = $2',
+    [String(req.params.id), uid(req)],
+  );
+  res.json({ ok: true });
+});
+
+// ── POST /:id/share — create (or return existing) public share link ─────────
+router.post('/:id/share', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const { rows } = await pool.query('SELECT id FROM documents WHERE id = $1 AND user_id = $2', [id, uid(req)]);
+  if (rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+
+  const existing = await pool.query('SELECT token FROM document_shares WHERE document_id = $1', [id]);
+  if (existing.rows.length > 0) return res.json({ token: (existing.rows[0] as { token: string }).token });
+
+  const token = randomBytes(16).toString('base64url');
+  await pool.query('INSERT INTO document_shares (token, document_id) VALUES ($1, $2)', [token, id]);
+  res.status(201).json({ token });
 });
 
 // ── POST /:id/convert-to-textbook ──────────────────────────────────────────

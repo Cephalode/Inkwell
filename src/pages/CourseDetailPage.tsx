@@ -5,6 +5,7 @@ import { useDocumentStore } from '../store/documentStore';
 import { getCourse } from '../services/api/client';
 import CourseDetail from '../components/course/CourseDetail';
 import Spinner from '../components/shared/Spinner';
+import { HOME } from '../config/home';
 import type { Course } from '../types/course';
 
 export default function CourseDetailPage() {
@@ -50,7 +51,7 @@ export default function CourseDetailPage() {
     <CourseDetail
       course={course}
       allDocuments={documents}
-      onBack={() => navigate('/')}
+      onBack={() => navigate(HOME)}
       onRemoveDoc={removeDocumentFromCourse}
       onAddDoc={addDocumentToCourse}
     />

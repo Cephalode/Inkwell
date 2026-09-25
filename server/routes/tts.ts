@@ -1,6 +1,6 @@
 // Selection read-aloud endpoint — single-phrase TTS, reuses the podcast's edge-tts `speak()`.
 import { Router, type Request, type Response } from 'express';
-import { speak } from '../src/tts.js';
+import { speak, speakWords } from '../src/tts.js';
 
 const router = Router();
 
@@ -18,11 +18,17 @@ router.post('/tts', async (req: Request, res: Response) => {
   }
   const voice = 'en-US-AndrewNeural'; // podcast host voice; matches the app's audio identity
   try {
-    const mp3 = await speak(text, voice);
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Length', String(mp3.length));
-    res.setHeader('Cache-Control', 'private, max-age=86400');
-    res.send(mp3);
+    if (req.get('Accept') === 'application/json') {
+      // Words mode (lesson read-aloud): JSON {audio base64, marks [{t, w}]}
+      const { audio, marks } = await speakWords(text, voice);
+      res.json({ audio: audio.toString('base64'), marks });
+    } else {
+      const mp3 = await speak(text, voice);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Length', String(mp3.length));
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.send(mp3);
+    }
   } catch (err) {
     console.error('TTS synthesis failed:', err);
     if (!res.headersSent) res.status(502).json({ error: 'TTS synthesis failed' });

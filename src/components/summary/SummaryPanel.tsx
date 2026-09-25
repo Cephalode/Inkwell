@@ -10,6 +10,8 @@ interface SummaryPanelProps {
   summary?: string | null;
   /** 'pending' | 'generating' | 'done' | 'failed' | 'skipped' */
   summaryStatus?: string;
+  /** Server-persisted failure reason (failures are data). */
+  summaryError?: string | null;
   /** Read the doc's current summary state from the server (used to poll). */
   onPoll: () => Promise<void>;
   /** Regenerate after a failure. */
@@ -24,7 +26,7 @@ interface SummaryPanelProps {
  * generation is in flight the panel polls the doc state; if generation
  * failed, a Retry button re-triggers it.
  */
-export default function SummaryPanel({ summary, summaryStatus, onPoll, onRetry }: SummaryPanelProps) {
+export default function SummaryPanel({ summary, summaryStatus, summaryError, onPoll, onRetry }: SummaryPanelProps) {
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,9 +37,11 @@ export default function SummaryPanel({ summary, summaryStatus, onPoll, onRetry }
   // never resolves (stuck server), fall through to the retry UI.
   const [pollCount, setPollCount] = useState(0);
   const [lastStatus, setLastStatus] = useState('');
+  const [startedAt, setStartedAt] = useState(0);
   if (summaryStatus !== lastStatus) {
-    setLastStatus(summaryStatus);
+    setLastStatus(summaryStatus ?? '');
     setPollCount(0); // adjust-state-on-render: reset the bounded poll per status change
+    setStartedAt(Date.now()); // drives the elapsed label while generating
   }
   useEffect(() => {
     if (!generating || pollCount >= 24) return; // ~2 min at 5s intervals
@@ -75,10 +79,13 @@ export default function SummaryPanel({ summary, summaryStatus, onPoll, onRetry }
   }
 
   if ((generating && !stalled) || retrying) {
+    const elapsed = startedAt ? Math.round((Date.now() - startedAt) / 15000) * 15 : 0;
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10">
         <Spinner size="md" />
-        <span className="text-sm" style={{ opacity: 0.75 }}>Generating summary…</span>
+        <span className="text-sm" style={{ opacity: 0.75 }}>
+          Generating summary…{elapsed > 0 ? ` (${elapsed}s)` : ''}
+        </span>
       </div>
     );
   }
@@ -87,7 +94,7 @@ export default function SummaryPanel({ summary, summaryStatus, onPoll, onRetry }
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
         <p className="text-sm max-w-sm" style={{ color: 'var(--color-danger)' }}>
-          {error || (stalled ? 'Summary generation is taking unusually long.' : 'Summary generation failed.')}
+          {error || summaryError || (stalled ? 'Summary generation is taking unusually long.' : 'Summary generation failed.')}
         </p>
         <Button size="sm" variant="secondary" onClick={handleRetry}>
           <HiRefresh className="w-4 h-4" />

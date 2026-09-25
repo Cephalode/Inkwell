@@ -31,7 +31,6 @@ interface LearningState {
 
   loadRoadmap: (courseId: string, force?: boolean) => Promise<Roadmap | null>;
   generateRoadmap: (courseId: string, signal?: AbortSignal) => Promise<void>;
-  deleteRoadmap: (courseId: string) => Promise<void>;
   loadStep: (stepId: string, force?: boolean) => Promise<StepDetail>;
   startActivity: (stepId: string, kind: ActivityKind, signal?: AbortSignal) => Promise<LearningActivity>;
   submitActivity: (activityId: string, payload: api.SubmitPayload) => Promise<SubmitResponse>;
@@ -118,12 +117,6 @@ export const useLearningStore = create<LearningState>()((set, get) => ({
       await get().loadRoadmap(courseId, true).catch(() => null);
       throw err;
     }
-  },
-
-  deleteRoadmap: async (courseId) => {
-    const rm = get().roadmapsByCourseId[courseId];
-    if (rm) await api.deleteRoadmap(rm.id);
-    set((s) => ({ roadmapsByCourseId: { ...s.roadmapsByCourseId, [courseId]: null } }));
   },
 
   loadStep: async (stepId, force = false) => {

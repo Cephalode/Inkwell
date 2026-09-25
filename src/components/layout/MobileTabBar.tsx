@@ -1,11 +1,11 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { HiHome, HiRocketLaunch, HiDocumentText, HiBars3, HiChatBubbleLeftRight } from 'react-icons/hi2';
+import { HiRocketLaunch, HiDocumentText, HiBars3, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import { useUIStore } from '../../store/uiStore';
 import { useChatStore } from '../../store/chatStore';
+import { HOME } from '../../config/home';
 
 const tabs = [
-  { key: 'dashboard', label: 'Home', icon: HiHome, path: '/' },
-  { key: 'learn', label: 'Learn', icon: HiRocketLaunch, path: '/learn' },
+  { key: 'learn', label: 'Home', icon: HiRocketLaunch, path: HOME },
   { key: 'documents', label: 'Docs', icon: HiDocumentText, path: '/documents' },
 ] as const;
 
@@ -19,8 +19,7 @@ export default function MobileTabBar() {
 
   const activeKey = (() => {
     const path = location.pathname;
-    if (path === '/') return 'dashboard';
-    if (path.startsWith('/learn')) return 'learn';
+    if (path === HOME || path.startsWith('/learn')) return 'learn';
     if (path.startsWith('/documents')) return 'documents';
     return '';
   })();

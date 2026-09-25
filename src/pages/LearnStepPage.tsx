@@ -18,8 +18,9 @@ import ActivityOutcome, { MasteryBar, MasteryPill } from '../components/learn/Ac
 import LessonRunner from '../components/learn/LessonRunner';
 import QuizRunner from '../components/learn/QuizRunner';
 import FlashcardRunner from '../components/learn/FlashcardRunner';
-import DiscussionRunner from '../components/learn/DiscussionRunner';
+import DiscussionWorkspace from '../components/learn/DiscussionWorkspace';
 import RecallRunner from '../components/learn/RecallRunner';
+import PodcastRunner from '../components/learn/PodcastRunner';
 import StepVideos from '../components/learn/StepVideos';
 import { useLearningStore } from '../store/learningStore';
 import {
@@ -42,7 +43,7 @@ const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 const evidenceLabel = (kind: SkillEvidence['kind']) =>
-  kind === 'manual' ? 'Marked as known' : kind === 'video' ? 'Watched a video' : ACTIVITY_META[kind].label;
+  kind === 'manual' ? 'Marked as known' : kind === 'video' ? 'Watched a video' : kind === 'podcast' ? 'Podcast listened' : ACTIVITY_META[kind].label;
 
 /** Where the topic is worked on: `/learn/steps/:stepId` (optional `?start=<kind>`). */
 export default function LearnStepPage() {
@@ -218,6 +219,19 @@ function StepPage({ stepId }: { stepId: string }) {
     if (nextTarget) navigate(`/learn/steps/${nextTarget}`);
     else navigate(`/courses/${step.courseId}`);
   };
+
+  // "Talk it through" takes over the whole page as the two-pane workspace
+  // (sketch 005): context rail left, tutor chat right, nothing else on screen.
+  if (active?.kind === 'discussion') {
+    return (
+      <DiscussionWorkspace
+        activity={active}
+        step={step}
+        onComplete={onComplete}
+        onAbandon={() => void abandon()}
+      />
+    );
+  }
 
   const evidence = [...step.evidence].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
@@ -506,10 +520,10 @@ function Runner({
       return <QuizRunner key={activity.id} {...props} />;
     case 'flashcards':
       return <FlashcardRunner key={activity.id} {...props} />;
-    case 'discussion':
-      return <DiscussionRunner key={activity.id} {...props} />;
     case 'recall':
       return <RecallRunner key={activity.id} {...props} />;
+    case 'podcast':
+      return <PodcastRunner key={activity.id} {...props} />;
     default:
       return null;
   }

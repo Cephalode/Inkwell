@@ -120,7 +120,8 @@ Guidelines:
 - If the answer is not in the materials, say so honestly.
 - Reference specific sections or page numbers when citing information.
 - When using tools, call them one at a time if they are independent, or batch independent calls together.
-- After executing a tool, interpret the result and present it clearly to the student.`;
+- After executing a tool, interpret the result and present it clearly to the student.
+- When a generator tool returns a url, give the student a markdown link to open it (e.g. [Open the quiz](/tests/<id>)).`;
 }
 
 // ---------------------------------------------------------------------------

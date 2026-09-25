@@ -4,6 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { API_KEY, UPSTREAM } from './config.js';
 import pool from './db.js';
+import cookieParser from 'cookie-parser';
+import authRouter, { attachUser, requireUser } from './src/auth.js';
+import sharesRouter from './routes/shares.js';
 import { GENERATION_TIMEOUT_MS } from './src/generationPipeline.js';
 import { runMigrations } from './migrations/run.js';
 import documentsRouter from './routes/documents.js';
@@ -23,6 +26,9 @@ import roadmapsRouter from './routes/roadmaps.js';
 import learningRouter from './routes/learning.js';
 import videosRouter from './routes/videos.js';
 import ttsRouter from './routes/tts.js';
+import flagsRouter from './routes/flags.js';
+import foldersRouter from './routes/folders.js';
+import lessonsRouter from './routes/lessons.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -77,11 +83,18 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cookieParser());
 
-// ── Health check ────────────────────────────────────────────────────────────
+// ── Auth: session attach + OAuth routes, then the global sign-in gate ───────
+app.use(attachUser);
+app.use('/api/auth', authRouter);
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', model: MODEL });
 });
+// Public share endpoints mount BEFORE the auth gate — the token is the capability.
+app.use('/api/public', sharesRouter);
+// Everything under /api requires a signed-in user (when OAuth is configured).
+app.use('/api', requireUser);
 
 // ── Document & Chapter CRUD ────────────────────────────────────────────────
 app.use('/api/documents', documentsRouter);
@@ -101,6 +114,9 @@ app.use('/api', roadmapsRouter);
 app.use('/api', learningRouter);
 app.use('/api', videosRouter);
 app.use('/api', ttsRouter);
+app.use('/api', flagsRouter);
+app.use('/api/folders', foldersRouter);
+app.use('/api/lessons', lessonsRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {

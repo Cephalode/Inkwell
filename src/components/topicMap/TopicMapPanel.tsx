@@ -2,17 +2,9 @@ import type { CSSProperties } from 'react';
 import { PiArrowCounterClockwiseDuotone, PiCardsDuotone, PiSealCheckDuotone, PiSignpostDuotone } from 'react-icons/pi';
 import { FOUNDATION_COURSE, type TopicMap, type TopicNode } from '../../types/topicMap';
 import { FOUNDATION_HUE, courseHue, courseName } from '../../utils/buildTopicMap';
+import { courseIdsDot, dot } from './topicMapShared';
 
 const MASTERY_LABEL = ['Not started', 'In progress', 'Learned', 'Foundation · assumed known'];
-
-const dot = (hue: string, size: number): CSSProperties => ({
-  width: size,
-  height: size,
-  borderRadius: '50%',
-  background: hue,
-  display: 'inline-block',
-  flex: 'none',
-});
 
 interface TopicHandlers {
   onPick: (id: string) => void;
@@ -34,9 +26,11 @@ const fullWidth: CSSProperties = { width: '100%', boxSizing: 'border-box', justi
 /** The topic map's right-hand card: overall progress, or the selected topic. */
 export default function TopicMapPanel({ map, selected, ...handlers }: TopicMapPanelProps) {
   const courseTopics = map.topics.filter((t) => t.courseId !== FOUNDATION_COURSE);
-  const learned = courseTopics.filter((t) => t.mastery === 2).length;
-  const inProgress = courseTopics.filter((t) => t.mastery === 1).length;
-  const foundations = map.topics.length - courseTopics.length;
+  // Shared topics belong to several courses — count each once toward the total.
+  const courseTopicsIds = new Set(courseTopics.map((t) => t.id));
+  const learned = new Set(courseTopics.filter((t) => t.mastery === 2).map((t) => t.id)).size;
+  const inProgress = new Set(courseTopics.filter((t) => t.mastery === 1).map((t) => t.id)).size;
+  const foundations = map.topics.length - courseTopicsIds.size;
 
   return (
     <aside
@@ -64,15 +58,29 @@ export default function TopicMapPanel({ map, selected, ...handlers }: TopicMapPa
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
             {map.courses.map((c) => {
-              const list = map.topics.filter((t) => t.courseId === c.id);
+              const list = map.topics.filter((t) => t.courseIds.includes(c.id));
               const done = list.filter((t) => t.mastery === 2).length;
               return (
                 <div key={c.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <span style={dot(c.hue, 9)} />
-                    {c.name}
-                    <span style={{ marginLeft: 'auto', opacity: 0.55, fontSize: 12.5 }}>
-                      {done} / {list.length}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
+                    <span style={{ ...dot(c.hue, 9), alignSelf: 'center' }} />
+                    <span
+                      title={c.name}
+                      style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {c.name}
+                    </span>
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        flex: 'none',
+                        opacity: 0.55,
+                        fontSize: 12.5,
+                        fontVariantNumeric: 'tabular-nums',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {done}&#8239;/&#8239;{list.length}
                     </span>
                   </div>
                   <div style={{ height: 4, borderRadius: 2, background: 'var(--color-neutral-200)', marginTop: 6 }}>
@@ -136,8 +144,8 @@ function SelectedTopic({
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', opacity: 0.6 }}>
-        <span style={dot(hue, 9)} />
-        {courseName(map, topic.courseId)}
+        <span style={{ ...dot(courseIdsDot(map, topic), 9) }} />
+        {topic.courseIds.map((cid) => courseName(map, cid)).join(' · ')}
       </div>
       <div>
         <div style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>{topic.label}</div>
@@ -181,10 +189,12 @@ function SelectedTopic({
               textAlign: 'left',
             }}
           >
-            <span style={dot(courseHue(map, o.courseId), 9)} />
+            <span style={dot(courseIdsDot(map, o), 9)} />
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-            <span style={{ marginLeft: 'auto', fontSize: 11.5, opacity: 0.5, whiteSpace: 'nowrap' }}>
-              {o.courseId !== topic.courseId ? courseName(map, o.courseId) : MASTERY_LABEL[o.mastery]}
+            <span style={{ marginLeft: 'auto', flex: 'none', fontSize: 11.5, opacity: 0.5, whiteSpace: 'nowrap' }}>
+              {o.courseIds.some((c) => topic.courseIds.includes(c))
+                ? MASTERY_LABEL[o.mastery]
+                : o.courseIds.map((cid) => courseName(map, cid)).join(' · ')}
             </span>
           </button>
         ))}
@@ -210,7 +220,7 @@ function SelectedTopic({
             &nbsp;{reviewLabel}
           </button>
         )}
-        {!isFoundation && (
+        {!isFoundation && topic.courseIds.length === 1 && (
           <button type="button" className="btn btn-ghost" onClick={() => onOpenCourse(topic)} style={fullWidth}>
             Open course
           </button>

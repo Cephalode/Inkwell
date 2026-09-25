@@ -38,6 +38,8 @@ export default function FlashcardsPage() {
   const [sourceType, setSourceType] = useState<'course' | 'document'>('course');
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedDocumentId, setSelectedDocumentId] = useState('');
+  const [cardCount, setCardCount] = useState(30);
+  const [instructions, setInstructions] = useState('');
   const [creating, setCreating] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -56,6 +58,7 @@ export default function FlashcardsPage() {
             ? { type: 'course' as const, ids: [selectedCourseId] }
             : { type: 'document' as const, ids: [selectedDocumentId] },
         course_id: sourceType === 'course' ? selectedCourseId : undefined,
+        config: { count: cardCount, instructions: instructions.trim() || undefined },
       };
       const deck = await createDeck(params);
       // Fire-and-forget: generation runs in the store and survives navigation
@@ -161,6 +164,31 @@ export default function FlashcardsPage() {
             </select>
           )}
 
+          {/* Count presets */}
+          <div>
+            <label className="block text-sm mb-2" style={{ opacity: 0.75 }}>Number of cards:</label>
+            <div className="flex gap-2">
+              {[10, 20, 30, 50].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setCardCount(n)}
+                  className={`btn ${cardCount === n ? 'btn-primary' : 'btn-secondary'}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Special instructions */}
+          <textarea
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="Special instructions (optional) — e.g. 'focus on definitions', 'beginner level'"
+            className="input resize-none"
+            rows={2}
+          />
+
           <button onClick={handleCreate} disabled={!canCreate} className="btn btn-primary">
             {creating ? 'Creating…' : 'Create & Generate'}
           </button>
@@ -244,7 +272,7 @@ export default function FlashcardsPage() {
                           className="h-full transition-all duration-500"
                           style={{
                             background: 'var(--color-accent)',
-                            width: `${Math.min(100, (prog.itemsGenerated / FLASHCARD_TARGET) * 100)}%`,
+                            width: `${Math.min(100, (prog.itemsGenerated / (deck.config?.count || FLASHCARD_TARGET)) * 100)}%`,
                           }}
                         />
                       </div>

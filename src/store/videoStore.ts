@@ -15,7 +15,7 @@ interface VideoState {
   loadSkillVideos: (skillId: string, force?: boolean) => Promise<SkillVideos>;
   searchSkillVideos: (skillId: string, force?: boolean) => Promise<SkillVideos>;
   loadVideo: (videoId: string, force?: boolean) => Promise<VideoDetail>;
-  markWatched: (videoId: string) => Promise<WatchedResponse>;
+  markWatched: (videoId: string, quizAnswers: string[]) => Promise<WatchedResponse>;
   loadPlan: (courseId?: string) => Promise<VideoPlan>;
   /** Queue searches, then poll the plan until nothing is searching. */
   runPlan: (opts?: { courseId?: string; limit?: number }) => Promise<void>;
@@ -60,8 +60,8 @@ export const useVideoStore = create<VideoState>()((set, get) => ({
     return video;
   },
 
-  markWatched: async (videoId) => {
-    const result = await api.markVideoWatched(videoId);
+  markWatched: async (videoId, quizAnswers) => {
+    const result = await api.markVideoWatched(videoId, quizAnswers);
     set((s) => {
       const prev = s.videosById[videoId];
       return {

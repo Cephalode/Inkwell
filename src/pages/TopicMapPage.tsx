@@ -99,7 +99,7 @@ export default function TopicMapPage() {
       });
       setSelectedId((sel) => {
         const t = sel ? map.topics.find((x) => x.id === sel) : null;
-        return t && t.courseId === courseId && !hidden.has(courseId) ? null : sel;
+        return t && !hidden.has(courseId) && t.courseIds.includes(courseId) ? null : sel;
       });
     },
     [map.topics, hidden],
@@ -155,6 +155,17 @@ export default function TopicMapPage() {
     { label: 'Filled = in progress · dashed = up next', swatch: { display: 'none' } },
     ...map.courses.map((c) => ({ label: c.name, swatch: swatch(c.hue, 11) })),
     {
+      label: 'Pie dot = shared by those courses',
+      swatch: {
+        width: 13,
+        height: 13,
+        borderRadius: '50%',
+        background: `conic-gradient(${map.courses[0]?.hue ?? '#2380a2'} 0 50%, ${map.courses[1]?.hue ?? '#b8547c'} 50% 100%)`,
+        display: 'inline-block',
+        flex: 'none',
+      },
+    },
+    {
       label: 'Dashed link = crosses courses',
       swatch: {
         width: 22,
@@ -180,7 +191,7 @@ export default function TopicMapPage() {
           </p>
         </div>
         {map.courses.length > 0 && (
-          <div style={{ display: 'inline-flex', flex: 'none', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'inline-flex', flex: '0 1 auto', minWidth: 0, maxWidth: '100%', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 11.5, letterSpacing: '.08em', textTransform: 'uppercase', opacity: 0.5, fontWeight: 600, marginRight: 2 }}>
               Show
             </span>
@@ -190,12 +201,15 @@ export default function TopicMapPage() {
                 <button
                   key={c.id}
                   type="button"
+                  title={c.name}
                   aria-pressed={on}
                   onClick={() => toggleCourse(c.id)}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 7,
+                    minWidth: 0,
+                    maxWidth: '100%',
                     font: '600 12px var(--font-body)',
                     padding: '5px 12px',
                     borderRadius: 999,
@@ -208,7 +222,7 @@ export default function TopicMapPage() {
                   }}
                 >
                   <span style={swatch(on ? c.hue : 'var(--color-neutral-400)', 9)} />
-                  {c.name}
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
                 </button>
               );
             })}

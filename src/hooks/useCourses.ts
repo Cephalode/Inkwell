@@ -26,6 +26,14 @@ export function useCourses() {
     removeCourse(id);
   }, [removeCourse]);
 
+  /** Make this the one current course; the server unsets the previous one. */
+  const setCurrentCourse = useCallback(async (id: string) => {
+    const result = await updateCourse(id, { isCurrent: true });
+    const state = useCourseStore.getState();
+    state.setCourses(state.courses.map((c) => ({ ...c, isCurrent: c.id === id })));
+    return result;
+  }, []);
+
   const addDocToCourse = useCallback(async (courseId: string, documentId: string) => {
     try {
       const current = courses.find((c) => c.id === courseId);
@@ -53,5 +61,5 @@ export function useCourses() {
     }
   }, [courses]);
 
-  return { courses, isLoading, loadCourses, createCourse, deleteCourse: deleteCourseById, addDocumentToCourse: addDocToCourse, removeDocumentFromCourse: removeDocFromCourse };
+  return { courses, isLoading, loadCourses, createCourse, deleteCourse: deleteCourseById, setCurrentCourse, addDocumentToCourse: addDocToCourse, removeDocumentFromCourse: removeDocFromCourse };
 }

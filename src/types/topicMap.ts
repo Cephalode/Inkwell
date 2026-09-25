@@ -14,8 +14,10 @@ export const FOUNDATION_COURSE = 'me';
 export interface TopicNode {
   id: string;
   label: string;
-  /** Course id, or FOUNDATION_COURSE for a prerequisite shared by the core. */
+  /** Primary course id, or FOUNDATION_COURSE for a prerequisite shared by the core. */
   courseId: string;
+  /** Every course sharing this concept (courseId is courseIds[0]; courses only, never FOUNDATION_COURSE). */
+  courseIds: string[];
   mastery: TopicMastery;
   description: string;
   /** Where the topic came from — a study-guide material title, the guide itself, or the assuming courses. */

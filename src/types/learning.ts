@@ -6,7 +6,7 @@
 
 export type Mastery = 'not_started' | 'learning' | 'learned';
 
-export type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall';
+export type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast';
 
 export type ActivityStatus = 'ready' | 'in_progress' | 'completed' | 'error';
 
@@ -135,7 +135,16 @@ export interface RecallContent {
   hints: string[];
 }
 
-export type ActivityContent = LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent;
+export interface PodcastContent {
+  title: string;
+  lines: Array<{ speaker: 'host' | 'guest'; text: string }>;
+  /** Storage key; set once the fire-and-forget TTS render finishes. */
+  audioPath?: string;
+  /** Set when the TTS render failed — the transcript still reads fine. */
+  renderError?: string;
+}
+
+export type ActivityContent = LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent;
 
 // ── Activity results ────────────────────────────────────────────────────────
 
@@ -178,7 +187,12 @@ export interface DiscussionResult extends DiscussionAssessment {
   turns: number;
 }
 
-export type ActivityResult = QuizResult | FlashcardsResult | LessonResult | RecallResult | DiscussionResult;
+/** Podcasts aren't graded — completing one is the whole result. */
+export interface PodcastResult {
+  score: number;
+}
+
+export type ActivityResult = QuizResult | FlashcardsResult | LessonResult | RecallResult | DiscussionResult | PodcastResult;
 
 export interface LearningActivity {
   id: string;
@@ -250,6 +264,7 @@ export interface StepDetail extends Omit<RoadmapStep, 'activities'> {
 export interface CourseProgress {
   courseId: string;
   courseName: string;
+  isCurrent: boolean;
   roadmapId: string | null;
   status: RoadmapStatus | null;
   total: number;
@@ -278,6 +293,7 @@ export const ACTIVITY_META: Record<
 > = {
   lesson: { label: 'Lesson', blurb: 'A short focused explainer with worked examples', xp: 10, emoji: '📖', assessed: false },
   flashcards: { label: 'Flashcards', blurb: 'Quick recall drill, grade yourself', xp: 15, emoji: '🃏', assessed: false },
+  podcast: { label: 'Podcast', blurb: 'A two-host audio overview of this topic', xp: 15, emoji: '🎙️', assessed: false },
   quiz: { label: 'Quiz', blurb: 'Six questions, graded by the tutor', xp: 20, emoji: '✅', assessed: true },
   recall: { label: 'Teach it back', blurb: 'Explain it from memory, get a rubric review', xp: 25, emoji: '🗣️', assessed: true },
   discussion: { label: 'Talk it through', blurb: 'A Socratic chat until the tutor is convinced', xp: 30, emoji: '💬', assessed: true },

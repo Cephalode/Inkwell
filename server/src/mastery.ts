@@ -26,7 +26,7 @@ import pool from '../db.js';
 
 export type Mastery = 'not_started' | 'learning' | 'learned';
 
-export type EvidenceKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'video' | 'manual';
+export type EvidenceKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'video' | 'manual' | 'podcast';
 
 export interface EvidenceInput {
   kind: EvidenceKind;
@@ -61,6 +61,7 @@ export const XP_BY_KIND: Record<EvidenceKind, number> = {
   quiz: 20,
   recall: 25,
   discussion: 30,
+  podcast: 15,
   manual: 0,
 };
 

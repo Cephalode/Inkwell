@@ -59,7 +59,10 @@ export interface SkillSearchInfo {
 
 export interface SkillVideos {
   skill: SkillSearchInfo;
+  /** Curated complementary watch list (≤ 3 videos that together cover the subject). */
   videos: RankedVideo[];
+  /** How many videos passed the coverage floor before curation (server may omit). */
+  videosJudged?: number;
   cached?: boolean;
   log?: string[];
 }
@@ -82,6 +85,12 @@ export interface VideoPlan {
   /** Judged videos that still teach something unlearned, best value first. */
   videos: RankedVideo[];
   stats: { unlearned: number; shared: number; searched: number; searching: number; videos: number };
+}
+
+/** Public shape of the pre-watch comprehension check (no answers shipped). */
+export interface WatchQuizQuestion {
+  question: string;
+  options: string[];
 }
 
 export interface WatchedResponse {

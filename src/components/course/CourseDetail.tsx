@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { HiArrowLeft, HiDocumentText, HiX, HiPlus, HiChevronUp, HiLockClosed, HiExternalLink, HiRefresh } from 'react-icons/hi';
+import Badge from '../shared/Badge';
 import EmptyState from '../shared/EmptyState';
 import Spinner from '../shared/Spinner';
 import { Course } from '../../types/course';
@@ -7,6 +8,7 @@ import { DocumentFile } from '../../types/document';
 import { getCourseOutline, type CourseraModule } from '../../services/api/coursera';
 import { TYPE_ICON, TYPE_LABEL, TYPE_TAB } from '../coursera/typeMeta';
 import CourseRoadmap from './CourseRoadmap';
+import { useCourses } from '../../hooks/useCourses';
 
 interface CourseDetailProps {
   course: Course;
@@ -83,6 +85,7 @@ export default function CourseDetail({ course, allDocuments, onBack, onRemoveDoc
   const [outline, setOutline] = useState<CourseraModule[] | null>(null);
   const [outlineLoading, setOutlineLoading] = useState(false);
   const [outlineError, setOutlineError] = useState('');
+  const { setCurrentCourse } = useCourses();
 
   const hasCoursera = !!course.courseraSlug;
   const items = outline ? flatten(outline) : [];
@@ -128,9 +131,25 @@ export default function CourseDetail({ course, allDocuments, onBack, onRemoveDoc
       {/* Course info */}
       <div className="min-w-0">
         <div className="card-kicker" style={{ fontSize: 12 }}>Course</div>
-        <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-1)', color: 'var(--color-text)' }}>
-          {course.name}
-        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 style={{ fontSize: 32, margin: 'var(--space-1) 0 var(--space-1)', color: 'var(--color-text)' }}>
+            {course.name}
+          </h1>
+          {course.isCurrent ? (
+            <Badge color="cyan">Current course</Badge>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              title="The roadmap will guide you through this course — topics you've already mastered are skipped"
+              onClick={() => void setCurrentCourse(course.id).catch((err: unknown) =>
+                window.alert(`Couldn't set ${course.name} as your current course: ${err instanceof Error ? err.message : String(err)}`),
+              )}
+            >
+              Set as current course
+            </button>
+          )}
+        </div>
         {course.description && (
           <p style={{ fontSize: 15, opacity: 0.6, margin: 0 }}>{course.description}</p>
         )}

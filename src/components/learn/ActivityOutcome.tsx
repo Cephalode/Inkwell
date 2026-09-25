@@ -311,6 +311,8 @@ function KindDetail({ activity }: { activity: LearningActivity }) {
       const lr = r as LessonResult;
       return <TallyDetail title="Checkpoints" done={lr.checkpointsCorrect} total={lr.total} noun="checkpoints" />;
     }
+    case 'podcast':
+      return <TallyDetail title="Podcast" done={1} total={1} noun="episode listened" />;
     default:
       return null;
   }

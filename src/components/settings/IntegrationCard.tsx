@@ -75,7 +75,7 @@ export default function IntegrationCard({ integration: s, onChanged, onConnect, 
       <Card className="h-full">
         <div className="flex flex-col gap-3 h-full">
           <div className="flex items-start gap-3">
-            {Icon({ className: "w-6 h-6 shrink-0 mt-0.5 text-[var(--color-accent)]" })}
+            <Icon className="w-6 h-6 shrink-0 mt-0.5 text-[var(--color-accent)]" />
             <div className="min-w-0 flex-1">
               <h4 className="leading-tight">{s.label}</h4>
               <p className="text-xs line-clamp-2 mt-0.5" style={{ opacity: 0.6 }}>{s.description}</p>

@@ -412,7 +412,7 @@ For EVERY milestone above report:
 - coverage: 0-1, the fraction of its objectives this video genuinely teaches (0 = not covered, 1 = fully taught with examples).
 - confidence: 0-1 in your judgement.
 - objectivesCovered: the objective strings it covers (verbatim).
-- startMinute / endMinute: where in the video that milestone is taught (null if unknown or not covered).
+- startMinute / endMinute: where in the video that milestone is taught — read the [m:ss] markers in the transcript sample and pick the cue where teaching of that milestone starts/ends (null if unknown or not covered).
 - reason: ≤ 20 words.
 Also give: summary (2 sentences on what the video teaches), level ("intro" | "intermediate" | "advanced"), focus (0-1 share of the video spent on these milestones rather than other material), quality (0-1 clarity and correctness of the teaching).
 
@@ -686,4 +686,37 @@ export async function rankVideos(
   }
   ranked.sort((a, b) => b.score - a.score);
   return opts.limit ? ranked.slice(0, opts.limit) : ranked;
+}
+
+/**
+ * Curate a subject's watch list to at most `cap` videos (default 3) that
+ * TOGETHER cover the material. The judge pool reliably contains near-duplicates
+ * — five "intro to X" videos that each teach the same objectives — and listing
+ * all of them wastes the learner's time. So a video only earns a slot if it
+ * still teaches something the earlier picks do not: each unlearned milestone
+ * contributes its objectivesCovered (or, when the judge listed none, the
+ * milestone id itself) to a seen-set, and a candidate whose fresh contribution
+ * is empty is dropped as a repeat. Score order breaks ties, so the strongest
+ * video always leads. Degenerate case — everything already learned, so nothing
+ * is "fresh" — falls back to the plain top `cap` (old behaviour).
+ */
+export function selectSubjectVideos(videos: RankedVideo[], cap = 3): RankedVideo[] {
+  const scored = [...videos].sort((a, b) => b.score - a.score);
+  if (scored.length <= cap) return scored;
+  const seen = new Set<string>();
+  const picked: RankedVideo[] = [];
+  for (const v of scored) {
+    if (picked.length >= cap) break;
+    // Objectives are qualified by skillId: some roadmaps carry placeholder
+    // objective text ("objective 1") shared across milestones, and a raw
+    // string set would wrongly mark different milestones as duplicates.
+    const fresh = v.milestones
+      .filter((m) => m.mastery !== 'learned' && m.coverage >= COVERAGE_FLOOR)
+      .flatMap((m) => (m.objectivesCovered.length > 0 ? m.objectivesCovered : [m.skillId]).map((o) => `${m.skillId}::${o}`))
+      .filter((o) => !seen.has(o));
+    if (v.milestones.length > 0 && fresh.length === 0) continue; // pure repeat of an earlier pick
+    for (const o of fresh) seen.add(o);
+    picked.push(v);
+  }
+  return picked.length > 0 ? picked : scored.slice(0, cap);
 }

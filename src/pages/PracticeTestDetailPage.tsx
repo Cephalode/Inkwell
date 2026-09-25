@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { HiArrowLeft } from 'react-icons/hi';
+import { HiArrowLeft, HiLightBulb } from 'react-icons/hi';
 import Spinner from '../components/shared/Spinner';
 import { usePracticeTest, usePracticeTestGeneration, useTestAttempt } from '../hooks/usePracticeTests';
 import { usePracticeTestStore } from '../store/practiceTestStore';
@@ -30,6 +30,7 @@ export default function PracticeTestDetailPage() {
   const [showResults, setShowResults] = useState(false);
   const [results, setResults] = useState<TestAttemptResult | null>(null);
   const [submittingTest, setSubmittingTest] = useState(false);
+  const [hintShownFor, setHintShownFor] = useState<Record<string, boolean>>({});
 
   // Early return if no testId
   if (!testId) {
@@ -279,7 +280,35 @@ export default function PracticeTestDetailPage() {
               Short Answer
             </span>
           )}
+          {currentQuestion.topic && (
+            <span
+              className="text-xs px-2 py-1 whitespace-nowrap"
+              style={{
+                background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                color: 'var(--color-accent)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
+              {currentQuestion.topic}
+            </span>
+          )}
+          {'hint' in currentQuestion && currentQuestion.hint && (
+            <button
+              onClick={() => setHintShownFor((s) => ({ ...s, [currentQuestion.id]: true }))}
+              className="btn btn-ghost whitespace-nowrap"
+              style={{ padding: '2px 8px', fontSize: 12 }}
+              title="Show hint"
+            >
+              <HiLightBulb className="w-4 h-4" />
+              Hint
+            </button>
+          )}
         </div>
+        {'hint' in currentQuestion && currentQuestion.hint && hintShownFor[currentQuestion.id] && (
+          <p className="text-sm" style={{ opacity: 0.7, margin: 0 }}>
+            💡 {currentQuestion.hint}
+          </p>
+        )}
 
         {/* Answer input */}
         <div className="space-y-3">
