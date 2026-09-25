@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B — Two-pane study · Inkwell</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #191817; --surface: #22201f; --surface-2: #2a2726;
+    --text: #ebe7e5; --divider: rgba(235,231,229,0.14);
+    --accent: #38a6cf; --accent-dim: rgba(56,166,207,0.14); --accent-bd: rgba(56,166,207,0.32);
+    --success: #4ade80; --warning: #fbbf24;
+    --radius: 12px;
+  }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  .app { display: grid; grid-template-columns: 60px 1fr; height: 100vh; }
+
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 14px 0; border-right: 1px solid var(--divider);
+  }
+  .rail a { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: rgba(235,231,229,0.55); text-decoration: none; transition: all .15s; }
+  .rail a:hover { background: var(--surface-2); color: var(--text); }
+  .rail a.active { background: var(--accent-dim); color: var(--accent); }
+  .rail .dot { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--divider); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: rgba(235,231,229,0.65); cursor: pointer; }
+  .rail .spacer { flex: 1; }
+  .rail svg { width: 20px; height: 20px; }
+
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
+    gap: 16px; padding: 14px 18px 16px; min-height: 0;
+  }
+  /* Context rail on the LEFT, chat on the RIGHT */
+  .side { order: 1; }
+  .chatcol { order: 2; }
+
+  /* ── left: chat column ── */
+  .chatcol { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+  .pagehead { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 0 2px; min-width: 0; }
+  .crumb { font-size: 12px; color: rgba(235,231,229,0.5); white-space: nowrap; }
+  h1 { font-size: 19px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kicker { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(235,231,229,0.45); white-space: nowrap; }
+  .dim { color: rgba(235,231,229,0.5); }
+  .ghostbtn { font-size: 12.5px; color: rgba(235,231,229,0.6); background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
+  .ghostbtn:hover { background: var(--surface-2); color: var(--text); }
+
+  .transcript {
+    flex: 1; min-height: 0; overflow-y: auto;
+    border: 1px solid var(--divider); border-radius: var(--radius);
+    background: var(--surface); padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 12px;
+    scrollbar-width: thin; scrollbar-color: rgba(235,231,229,0.18) transparent;
+  }
+  .msg { display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .msg .col { max-width: 85%; display: flex; flex-direction: column; gap: 3px; }
+  .msg .who { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(235,231,229,0.42); }
+  .msg.user .who { text-align: right; }
+  .bubble { padding: 9px 12px; font-size: 13.5px; line-height: 1.55; border-radius: var(--radius); background: rgba(235,231,229,0.05); border: 1px solid var(--divider); white-space: pre-wrap; }
+  .msg.user .bubble { background: var(--accent-dim); border-color: var(--accent-bd); }
+  .assess { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--divider); font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; }
+  .assess .row { display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px; background: rgba(56,166,207,0.16); color: var(--accent); }
+  .cov b { color: var(--success); font-weight: 600; }
+  .gap b { color: var(--warning); font-weight: 600; }
+  .thinking { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: rgba(235,231,229,0.5); }
+  .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(235,231,229,0.2); border-top-color: var(--accent); animation: sp 0.8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  .composer { flex: none; display: flex; align-items: flex-end; gap: 8px; }
+  .composer textarea {
+    flex: 1; resize: none; background: var(--surface); border: 1px solid var(--divider);
+    border-radius: var(--radius); color: var(--text); font: inherit; font-size: 13.5px;
+    padding: 11px 13px; min-height: 44px; max-height: 130px; outline: none;
+  }
+  .composer textarea:focus { border-color: var(--accent-bd); }
+  .composer textarea::placeholder { color: rgba(235,231,229,0.35); }
+  .send { height: 44px; padding: 0 18px; border-radius: var(--radius); border: none; cursor: pointer; background: var(--accent); color: #08222e; font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+  .send:hover { filter: brightness(1.1); }
+
+  /* ── right: rail of stacked cards, each its own scroll ── */
+  .side { display: grid; grid-template-rows: auto auto 1fr auto; gap: 12px; min-height: 0; min-width: 0; }
+  .card { border: 1px solid var(--divider); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; }
+  .card h4 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(235,231,229,0.45); margin-bottom: 8px; }
+  .mrow { display: flex; align-items: center; gap: 10px; }
+  .pill { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-bd); white-space: nowrap; }
+  .bar { flex: 1; height: 5px; border-radius: 999px; background: rgba(235,231,229,0.12); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 71%; border-radius: 999px; background: var(--accent); }
+  .pct { font-size: 12px; font-weight: 600; min-width: 32px; text-align: right; }
+  .card .meta { margin-top: 8px; font-size: 11.5px; color: rgba(235,231,229,0.55); }
+  .card .meta .lk { color: rgba(235,231,229,0.75); border-bottom: 1px dotted rgba(235,231,229,0.3); cursor: pointer; }
+
+  .objcard ul { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .objcard li { display: flex; gap: 8px; font-size: 12.5px; color: rgba(235,231,229,0.85); }
+  .objcard li svg { flex: none; width: 14px; height: 14px; margin-top: 2.5px; color: var(--accent); }
+
+  .session { overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: rgba(235,231,229,0.18) transparent; }
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .stat { border: 1px solid var(--divider); border-radius: 10px; padding: 8px 10px; }
+  .stat .n { font-size: 17px; font-weight: 650; }
+  .stat .l { font-size: 10.5px; color: rgba(235,231,229,0.5); letter-spacing: 0.04em; text-transform: uppercase; }
+  .h-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid var(--divider); font-size: 12.5px; }
+  .h-row .d { font-size: 11px; color: rgba(235,231,229,0.45); }
+  .h-row .s { font-weight: 600; color: var(--accent); }
+
+  .videocard { display: flex; gap: 10px; align-items: center; }
+  .thumb { width: 92px; height: 54px; border-radius: 8px; background: linear-gradient(135deg, #0f3c4e, #0f6787); flex: none; display: grid; place-items: center; }
+  .thumb svg { width: 26px; height: 26px; color: rgba(255,255,255,0.9); }
+  .vt { font-size: 12.5px; font-weight: 550; }
+  .vc { font-size: 11px; color: rgba(235,231,229,0.5); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <a href="#" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg></a>
+    <a href="#" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></a>
+    <a href="#" title="Topic map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8 11 15.5M16.5 8 13 15.5M8.5 6h7"/></svg></a>
+    <a href="#" class="active" title="Learn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3c3 2.5 4.5 6 4.5 9.5L14 15h-4l-2.5-2.5C7.5 9 9 5.5 12 3Z"/><circle cx="12" cy="9.5" r="1.4"/><path d="M9.5 16.5c.5 2-.5 3.5-2 4.5-.3-2 .3-3.6 2-4.5Zm5 0c1.7.9 2.3 2.5 2-4.5Z" transform="translate(0,0)"/></svg></a>
+    <a href="#" title="Chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 10h8M8 14h5"/><path d="M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12Z"/></svg></a>
+    <div style="height:8px"></div>
+    <div class="dot">MS</div><div class="dot">DL</div><div class="dot">MU</div><div class="dot">+</div>
+    <div class="spacer"></div>
+    <a href="#" title="Documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg></a>
+    <a href="#" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg></a>
+    <a href="#" title="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/></svg></a>
+  </nav>
+
+  <main>
+    <!-- LEFT: the session -->
+    <section class="chatcol">
+      <div class="pagehead">
+        <span class="crumb">ISLP · Step 5</span>
+        <h1>Linear regression</h1>
+        <div style="flex:1"></div>
+        <button class="ghostbtn" style="padding:2px 8px">End session</button>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:10px; padding:0 2px;">
+        <span class="kicker">Talk it through</span>
+        <span class="dim" style="font-size:12.5px">Turn 7 of 8 · +30 XP</span>
+      </div>
+
+      <div class="transcript">
+        <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">1) sales = 7 + 0.05*100 = 7 + 5 = 12
+2) the 0.05 is for every 20 dollars we put in, we get one more sale (at least that's our prediction)</div></div></div>
+
+        <div class="msg"><div class="col"><div class="who">Tutor</div><div class="bubble">Both correct! 12 is right, and your "20 dollars → one extra sale" is a perfectly equivalent way to read the 0.05 slope.
+
+One nuance before the last objective: this is an <i>association</i>, not proof of causation — the model just predicts, it doesn't promise. With that in mind: what are two red flags that would make you distrust predictions from this line?
+<div class="assess">
+  <div class="row"><span class="badge">Progressing</span><span class="dim">65% confident</span></div>
+  <div class="cov dim"><b>Covered:</b> Explain in plain words · Apply to a small example</div>
+  <div class="gap dim"><b>Still to show:</b> When it's appropriate · Common pitfalls</div>
+</div></div></div></div>
+
+        <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">First this is assuming this model is linear, if it's quadratic for example, then maybe the first of predicted results would be correct but the further we go, the more the data and predictions diverge.</div></div></div>
+
+        <div class="msg"><div class="col"><div class="who">Tutor</div><div class="bubble">Could you say a bit more about that?
+<div class="assess"><div class="row"><span class="badge">Progressing</span><span class="dim">40% confident</span></div></div></div></div></div>
+
+        <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">I guess the next thing is that whether our model is too simple? We only used one parameter, TV budget</div></div></div>
+
+        <div class="thinking"><div class="spin"></div> Tutor is thinking…</div>
+      </div>
+
+      <div class="composer">
+        <textarea placeholder="Answer the tutor in your own words… (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button class="send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-8-8 18-2.5-7.5L3 11Z"/></svg>Send</button>
+      </div>
+    </section>
+
+    <!-- RIGHT: ambient context, each card its own scroll -->
+    <aside class="side">
+      <div class="card">
+        <div class="mrow">
+          <span class="pill">In progress</span>
+          <div class="bar"><i></i></div>
+          <span class="pct">71%</span>
+          <button class="ghostbtn" style="font-size:11.5px; padding:2px 6px;">Known</button>
+        </div>
+        <div class="meta">Also taught in <span class="lk">Intro to ML: Supervised Learning →</span></div>
+      </div>
+
+      <div class="card objcard">
+        <h4>What you'll be able to do</h4>
+        <ul>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>Explain linear regression in plain words</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>Apply linear regression to a small example</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>Recognise when linear regression is appropriate</li>
+        </ul>
+        <details style="margin-top:9px">
+          <summary style="font-size:12px; cursor:pointer; color:rgba(235,231,229,0.6);">Key points (4)</summary>
+          <ul style="list-style:disc; padding-left:18px; margin-top:6px; font-size:12px; color:rgba(235,231,229,0.75); display:flex; flex-direction:column; gap:4px;">
+            <li>Least squares minimises squared residuals</li>
+            <li>Slope β̂₁ = Δy per unit Δx</li>
+            <li>Intercept β̂₀ = predicted y at x = 0</li>
+            <li>Check linearity before extrapolating</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="card session">
+        <h4>This session</h4>
+        <div class="statgrid">
+          <div class="stat"><div class="n">7/8</div><div class="l">Turns</div></div>
+          <div class="stat"><div class="n">2 of 3</div><div class="l">Objectives</div></div>
+          <div class="stat"><div class="n">65%</div><div class="l">Confidence</div></div>
+          <div class="stat"><div class="n">+30</div><div class="l">XP on close</div></div>
+        </div>
+        <h4 style="margin-top:6px">History</h4>
+        <div class="h-row"><span>Lesson read</span><span class="d">Sep 12</span><span class="s">—</span></div>
+        <div class="h-row"><span>Flashcards</span><span class="d">Sep 13</span><span class="s">82%</span></div>
+        <div class="h-row"><span>Talk it through</span><span class="d">Sep 15</span><span class="s">64%</span></div>
+        <div class="h-row"><span>Quiz</span><span class="d">Sep 16</span><span class="s">75%</span></div>
+      </div>
+
+      <div class="card videocard">
+        <div class="thumb"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></svg></div>
+        <div><div class="vt">StatQuest: Linear regression</div><div class="vc">YouTube · 8 min · suggested</div></div>
+      </div>
+    </aside>
+  </main>
+</div>
+<script>
+  // Auto-scroll transcript to latest message, like the real app
+  const t = document.querySelector('.transcript');
+  if (t) t.scrollTop = t.scrollHeight;
+</script>
+</body>
+</html>
