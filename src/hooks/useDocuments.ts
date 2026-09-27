@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 import { parseFile } from '../services/parsers/index';
 import { classifyDocument, createDocumentFromUrl, getDocument, listDocuments, updateDocument as updateDoc, deleteDocument as deleteDoc, uploadDocument } from '../services/api/client';
-import type { DocumentFile, ClassifyStatus } from '../types/document';
+import type { DocumentFile, ClassifyStatus, ParsedDocument } from '../types/document';
 
 export function useDocuments() {
   const { documents, setDocuments, addDocument, removeDocument, updateDocument, setLoading, isLoading } = useDocumentStore();
@@ -43,16 +43,30 @@ export function useDocuments() {
     }
   }, [documents, triggerClassify]);
 
-  const uploadFile = useCallback(async (file: File) => {
+  const uploadFile = useCallback(async (file: File, folderId: string | null = null) => {
     setLoading(true);
     try {
-      const doc = await uploadDocument(file);
+      const doc = await uploadDocument(file, folderId);
 
-      const parsed = await parseFile(file);
+      // Parse client-side for display/RAG — but never let a parse failure
+      // abort the upload: the server already stored the file, so the card
+      // must still appear (with empty parsed text) instead of ghosting.
+      let parsed: ParsedDocument = { text: '' };
+      try {
+        parsed = await parseFile(file);
+      } catch (parseErr) {
+        console.error('parseFile failed (upload continues):', parseErr);
+      }
+
+      // Media placeholders ("[Video file: …]", "[Audio transcription …]") are
+      // not content — persist empty parsed_text so the server-side classify →
+      // summary → podcast chain skips instead of generating junk from a stub.
+      const isMedia = file.type.startsWith('audio/') || file.type.startsWith('video/');
+      const persistText = isMedia && parsed.text.startsWith('[') ? '' : parsed.text;
 
       const enrichedDoc: DocumentFile = {
         ...doc,
-        parsedText: parsed.text,
+        parsedText: persistText,
         parsedPages: parsed.pages,
         chapterMarkers: parsed.chapters,
         thumbnail: parsed.thumbnail,
@@ -63,7 +77,7 @@ export function useDocuments() {
 
       // Persist parsed text to DB first — classify endpoint reads parsed_text from DB
       await updateDoc(doc.id, {
-        parsedText: parsed.text,
+        parsedText: persistText,
         thumbnail: parsed.thumbnail ?? null,
         chapterMarkers: parsed.chapters ?? [],
       }).catch((err) => console.error('Failed to persist parsed data:', err));
@@ -88,10 +102,10 @@ export function useDocuments() {
     }
   }, [addDocument, setLoading, updateDocument]);
 
-  const uploadVideoUrl = useCallback(async (url: string) => {
+  const uploadVideoUrl = useCallback(async (url: string, folderId?: string | null) => {
     setLoading(true);
     try {
-      const doc = await createDocumentFromUrl(url);
+      const doc = await createDocumentFromUrl(url, folderId);
       addDocument(doc);
       // Classification happens server-side automatically — poll for completion
       setTimeout(async () => {

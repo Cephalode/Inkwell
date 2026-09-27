@@ -70,6 +70,9 @@ export default function DocumentDetailPage() {
     setPrevTabDocId(currentDocument?.id);
     if (currentDocument?.type === 'youtube') {
       setTab('video');
+    } else if (currentDocument?.type === 'audio' || currentDocument?.type === 'video') {
+      // Media uploads land on the player (Source tab) instead of Summary
+      setTab('source');
     }
   }
 
@@ -119,7 +122,7 @@ export default function DocumentDetailPage() {
   const tabs: { key: Tab; label: string }[] = [
     ...(isYoutube ? [{ key: 'video' as Tab, label: '▶️ Video Summary' }] : []),
     { key: 'summary', label: '📝 Summary' },
-    { key: 'source', label: '📄 Source' },
+    { key: 'source', label: doc.type === 'audio' ? '🎵 Audio' : doc.type === 'video' ? '🎬 Video' : '📄 Source' },
     ...(chapters.length > 0 ? [{ key: 'chapters' as Tab, label: `📑 Chapters (${chapters.length})` }] : []),
   ];
 

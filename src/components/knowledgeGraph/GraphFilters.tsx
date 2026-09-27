@@ -4,14 +4,16 @@ import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
 import type { KGNodeType } from '../../types/knowledgeGraph';
 
 const nodeTypeConfig: { key: KGNodeType; label: string; color: string; filterKey: keyof import('../../types/knowledgeGraph').KGFilters }[] = [
-  { key: 'document', label: 'Documents', color: '#14b8a6', filterKey: 'showDocuments' },
-  { key: 'chapter', label: 'Chapters', color: '#06b6d4', filterKey: 'showChapters' },
-  { key: 'doctype', label: 'Types', color: '#3b82f6', filterKey: 'showDoctypes' },
-  { key: 'tag', label: 'Tags', color: '#a855f7', filterKey: 'showTags' },
-  { key: 'course', label: 'Courses', color: '#f59e0b', filterKey: 'showCourses' },
-  { key: 'subject', label: 'Subjects', color: '#22c55e', filterKey: 'showSubjects' },
-  { key: 'chat', label: 'Chats', color: '#6b7280', filterKey: 'showChats' },
+  { key: 'document', label: 'Documents', color: '#2380a2', filterKey: 'showDocuments' },
+  { key: 'chapter', label: 'Chapters', color: '#38a6cf', filterKey: 'showChapters' },
+  { key: 'doctype', label: 'Types', color: '#9c6a24', filterKey: 'showDoctypes' },
+  { key: 'tag', label: 'Tags', color: '#6f5fa8', filterKey: 'showTags' },
+  { key: 'course', label: 'Courses', color: '#b8547c', filterKey: 'showCourses' },
+  { key: 'subject', label: 'Subjects', color: '#5d8a50', filterKey: 'showSubjects' },
+  { key: 'chat', label: 'Chats', color: '#8a8a8a', filterKey: 'showChats' },
   { key: 'topic', label: 'Roadmap topics', color: '#e8b93b', filterKey: 'showTopics' },
+  { key: 'guide', label: 'Study guides', color: '#b8547c', filterKey: 'showGuides' },
+  { key: 'deck', label: 'Card decks', color: '#5d8a50', filterKey: 'showDecks' },
 ];
 
 export function GraphFilters() {

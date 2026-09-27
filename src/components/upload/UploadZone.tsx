@@ -11,7 +11,7 @@ interface UploadZoneProps {
 
 const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/)|youtu\.be\/).+/i;
 
-export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: UploadZoneProps) {
+export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading, destinationLabel }: UploadZoneProps & { destinationLabel?: string }) {
   const [isDragging, setIsDragging] = useState(false);
   const [mode, setMode] = useState<'file' | 'url'>('file');
   const [url, setUrl] = useState('');
@@ -129,7 +129,8 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
             {isDragging ? 'Drop your files here!' : 'Upload Study Materials'}
           </h3>
           <p className="text-sm mb-4 sm:mb-6" style={{ opacity: 0.6 }}>
-            Drag & drop files here, or click to browse. Supports PDF, DOCX, PPTX, images, audio, EPUB, XLSX, CSV, and more.
+            Drag & drop files here, or click to browse. Supports PDF, DOCX, PPTX, images, audio, video, EPUB, XLSX, CSV, and more.
+            {destinationLabel ? ` Uploads go to: ${destinationLabel}.` : ''}
           </p>
           <input
             type="file"

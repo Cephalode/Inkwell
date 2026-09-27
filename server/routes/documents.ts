@@ -101,6 +101,14 @@ export async function extractTextFromStorage(filePath: string): Promise<string> 
 }
 
 // ── POST / — Upload a document ─────────────────────────────────────────────
+// Media extensions normalize to the canonical DocumentType values ('audio' /
+// 'video' / 'image') so the frontend's type-keyed icon/preview logic works;
+// everything else keeps its extension as the type (matches the youtube doc
+// pattern). .webm is in both maps — resolved by the browser-reported mimetype.
+const AUDIO_EXTS = new Set(['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'opus', 'flac', 'webm']);
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi']);
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic']);
+
 router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   const file = req.file;
   if (!file) {
@@ -110,16 +118,31 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
   const id = uuidv4();
   const name = file.originalname;
   const ext = path.extname(name).slice(1).toLowerCase() || 'bin';
+  // .webm is ambiguous — the reported mimetype decides; audio wins ties.
+  const type = AUDIO_EXTS.has(ext) && ((file.mimetype || '').startsWith('audio/') || !VIDEO_EXTS.has(ext))
+    ? 'audio'
+    : VIDEO_EXTS.has(ext)
+      ? 'video'
+      : IMAGE_EXTS.has(ext) || (file.mimetype || '').startsWith('image/')
+        ? 'image'
+        : ext;
   const mimeType = file.mimetype;
   const size = file.size;
   const storagePath = `${id}_${name}`;
+  // Optional destination folder (Drive-style upload-into-current-folder).
+  const folderRaw = (req.body as Record<string, unknown> | undefined)?.folderId;
+  const folderId = typeof folderRaw === 'string' && folderRaw.length > 0 ? folderRaw : null;
 
   try {
+    if (folderId) {
+      const { rowCount } = await pool.query('SELECT 1 FROM folders WHERE id = $1 AND user_id = $2', [folderId, uid(req)]);
+      if (!rowCount) return res.status(400).json({ error: 'Destination folder not found' });
+    }
     await storageUpload(storagePath, file.buffer, mimeType || 'application/octet-stream');
     await pool.query(
-      `INSERT INTO documents (id, name, type, mime_type, size, file_path, user_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, name, ext, mimeType, size, storagePath, uid(req)],
+      `INSERT INTO documents (id, name, type, mime_type, size, file_path, user_id, folder_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, name, type, mimeType, size, storagePath, uid(req), folderId],
     );
 
     const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
@@ -317,10 +340,16 @@ router.post('/:id/classify', async (req: Request, res: Response) => {
     }
     const parsedText = (rows[0] as { parsed_text: string | null }).parsed_text;
 
-    // 2. If parsed_text is empty/missing, skip
+    // 2. If parsed_text is empty/missing, skip. Media uploads (audio/video
+    //    without transcripts) land here — settle the downstream statuses too
+    //    so the UI doesn't poll a chain that will never run.
     if (!parsedText || parsedText.trim().length === 0) {
       await pool.query(
-        "UPDATE documents SET classify_status = 'skipped' WHERE id = $1",
+        `UPDATE documents SET
+           classify_status = 'skipped',
+           summary_status = CASE WHEN summary_status = 'pending' THEN 'skipped' ELSE summary_status END,
+           podcast_status = CASE WHEN podcast_status = 'pending' THEN 'skipped' ELSE podcast_status END
+         WHERE id = $1`,
         [id],
       );
       return res.json({ label: 'Unknown', subject: 'General', confidence: 0, status: 'skipped' });

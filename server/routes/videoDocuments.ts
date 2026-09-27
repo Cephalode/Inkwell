@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pool from '../db.js';
 import { canFetchTranscript, fetchYouTubeTranscript } from '../src/transcriptFetcher.js';
 import { rowToDoc, type DocRow } from './documents.js';
+import { uid } from '../src/auth.js';
 import { parseJSON } from '../src/subsectionDetector.js';
 import { callGLM } from '../src/llm.js';
 import { send, setSSEHeaders } from '../src/sse.js';
@@ -22,47 +23,90 @@ export interface VideoSummary {
 }
 
 // ── POST /documents/from-url ────────────────────────────────────────────────
-// Accepts { url } in JSON, fetches the transcript, creates a document, and
-// triggers background classification.
+// Accepts { url, folderId? } in JSON. YouTube URLs get the full treatment:
+// transcript fetch → document → background classification. Any other link is
+// saved as a lightweight 'link' document (URL + page title, no transcript).
 router.post('/documents/from-url', async (req: Request, res: Response) => {
-  const { url } = req.body as { url?: string };
+  const { url, folderId } = req.body as { url?: string; folderId?: string };
 
   if (!url || typeof url !== 'string' || url.trim().length === 0) {
     return res.status(400).json({ error: 'url is required' });
   }
-  if (!canFetchTranscript(url)) {
-    return res.status(400).json({ error: 'Only YouTube URLs are currently supported' });
+
+  // Optional destination folder (Drive-style upload-into-current-folder).
+  let destFolderId: string | null = null;
+  if (folderId && typeof folderId === 'string') {
+    const { rowCount } = await pool.query('SELECT 1 FROM folders WHERE id = $1 AND user_id = $2', [folderId, uid(req)]);
+    if (!rowCount) return res.status(400).json({ error: 'Destination folder not found' });
+    destFolderId = folderId;
   }
 
+  if (canFetchTranscript(url)) {
+    try {
+      // 1. Fetch transcript.
+      const { transcript, title } = await fetchYouTubeTranscript(url);
+
+      // 2. Create document in DB.
+      const id = uuidv4();
+      await pool.query(
+        `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, file_path, folder_id, classify_status)
+         VALUES ($1, $2, 'youtube', 'text/plain', 0, $3, $4, $5, 'classifying')`,
+        [id, title, transcript, url, destFolderId],
+      );
+
+      const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
+      const doc = rowToDoc(rows[0] as DocRow);
+
+      // 3. Trigger classification in the background (reuses existing flow).
+      void fetch(`http://localhost:${PORT}/api/documents/${id}/classify`, {
+        method: 'POST',
+      }).catch((err: unknown) => {
+        console.error('Background classify failed:', err);
+      });
+
+      return res.status(201).json(doc);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Error creating document from URL:', message);
+      return res.status(500).json({ error: 'Failed to create document from URL', message });
+    }
+  }
+
+  // ── General link: no transcript, just a bookmark-style document ────────────
+  let hostname = url;
   try {
-    // 1. Fetch transcript.
-    const { transcript, title } = await fetchYouTubeTranscript(url);
-
-    // 2. Create document in DB.
-    const id = uuidv4();
-    await pool.query(
-      `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, file_path, classify_status)
-       VALUES ($1, $2, 'youtube', 'text/plain', 0, $3, $4, 'classifying')`,
-      [id, title, transcript, url],
-    );
-
-    const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
-    const doc = rowToDoc(rows[0] as DocRow);
-
-    // 3. Trigger classification in the background (reuses existing flow).
-    void fetch(`http://localhost:${PORT}/api/documents/${id}/classify`, {
-      method: 'POST',
-    }).catch((err: unknown) => {
-      console.error('Background classify failed:', err);
-    });
-
-    res.status(201).json(doc);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('Error creating document from URL:', message);
-    res.status(500).json({ error: 'Failed to create document from URL', message });
+    const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol');
+    hostname = parsed.hostname.replace(/^www\./, '');
+  } catch {
+    return res.status(400).json({ error: 'Please enter a valid URL' });
   }
+  // Best-effort page <title> fetch (3s cap — a slow link must not block the save).
+  let title = hostname;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const page = await fetch(parsed_href(url), { signal: controller.signal, redirect: 'follow' });
+    clearTimeout(timer);
+    const html = (await page.text()).slice(0, 50000);
+    title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || hostname;
+  } catch {
+    /* offline link or slow site — hostname is the name */
+  }
+  const id = uuidv4();
+  await pool.query(
+    `INSERT INTO documents (id, name, type, mime_type, size, parsed_text, file_path, folder_id, classify_status)
+     VALUES ($1, $2, 'link', 'text/plain', 0, $3, $4, $5, 'skipped')`,
+    [id, title.slice(0, 200), `Link: ${url}`, url, destFolderId],
+  );
+  const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
+  res.status(201).json(rowToDoc(rows[0] as DocRow));
 });
+
+// Accept bare hostnames ("example.com") as well as full URLs.
+function parsed_href(url: string): string {
+  return url.startsWith('http') ? url : `https://${url}`;
+}
 
 // ── GET /documents/:id/video-summary ────────────────────────────────────────
 // SSE endpoint: streams an AI analysis of the stored transcript and persists it.

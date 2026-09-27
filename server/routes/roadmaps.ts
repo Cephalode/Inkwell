@@ -306,6 +306,8 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'This roadmap is already generating' });
   }
   const roadmap = rows[0] as RoadmapRow;
+  // Optional regeneration instruction from the client's prompt textbox.
+  const guidance = typeof req.body?.guidance === 'string' ? req.body.guidance.trim().slice(0, 500) : '';
 
   const { rows: courseRows } = await pool.query('SELECT name, coursera_slug FROM courses WHERE id = $1', [roadmap.course_id]);
   const courseName: string = courseRows[0]?.name ?? 'Course';
@@ -411,7 +413,7 @@ Respond with ONLY JSON: {"topics": [{"name": "...", "description": "...", "objec
 
 Topics extracted from every material in the course (index = material number):
 ${JSON.stringify(extracted.map((t, i) => ({ i, ...t })))}
-${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library but are NOT yet mastered. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}${knownLine}
+${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library but are NOT yet mastered. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}${knownLine}${guidance ? `\nThe learner's request for THIS path: ${guidance}\nShape the path around this request wherever the course materials support it.\n` : ''}
 Build the roadmap:
 - Merge duplicate/overlapping extracted topics into one step each. Aim for 6-16 steps; never more than 20.
 - Order from foundations to advanced. Each step lists the titles of earlier steps it depends on (empty for foundations). No cycles.

@@ -5,6 +5,7 @@ import { parsePPTXFile } from './pptxParser';
 import { parseSpreadsheet } from './spreadsheetParser';
 import { parseImage } from './imageParser';
 import { parseAudio } from './audioParser';
+import { parseVideo } from './videoParser';
 import { parseEPUB } from './epubParser';
 
 export { extractPageRange, getPDFPageCount, renderPDFPage, renderPDFPageToCanvas } from './pdfParser';
@@ -20,7 +21,8 @@ export async function parseFile(file: File): Promise<ParsedDocument> {
   if (mime.includes('spreadsheetml') || mime === 'text/csv' || ext === '.xlsx' || ext === '.csv') return parseSpreadsheet(file);
   if (mime === 'application/epub+zip' || ext === '.epub') return parseEPUB(file);
   if (mime.startsWith('image/')) return parseImage(file);
-  if (mime.startsWith('audio/') || ext === '.m4a') return parseAudio(file);
+  if (mime.startsWith('audio/') || ext === '.m4a' || ext === '.aac') return parseAudio(file);
+  if (mime.startsWith('video/') || ext === '.mp4' || ext === '.mov' || ext === '.m4v' || ext === '.webm') return parseVideo(file);
   if (mime.startsWith('text/') || ext === '.txt' || ext === '.md') return { text: await file.text() };
   try { return { text: await file.text() }; } catch { return { text: '[Unsupported file type]' }; }
 }

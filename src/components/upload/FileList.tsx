@@ -10,10 +10,11 @@ interface FileListProps {
   onUpdateTags: (docId: string, tags: string[]) => void;
   folders?: Array<{ id: string; name: string }>;
   onMoveToFolder?: (docId: string, folderId: string | null) => void;
+  onRename?: (docId: string, name: string) => Promise<void>;
   chapterCounts: Record<string, number>;
 }
 
-export default function FileList({ documents, onDelete, onSelect, courses, onMoveToCourse, onUpdateTags, folders, onMoveToFolder, chapterCounts }: FileListProps) {
+export default function FileList({ documents, onDelete, onSelect, courses, onMoveToCourse, onUpdateTags, folders, onMoveToFolder, onRename, chapterCounts }: FileListProps) {
   if (documents.length === 0) return null;
 
   return (
@@ -33,6 +34,7 @@ export default function FileList({ documents, onDelete, onSelect, courses, onMov
             onUpdateTags={onUpdateTags}
             folders={folders}
             onMoveToFolder={onMoveToFolder}
+            onRename={onRename}
             docCourses={docCourses}
             subdocCount={subdocCount}
           />

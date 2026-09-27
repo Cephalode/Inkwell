@@ -44,6 +44,7 @@ interface FileCardProps {
   onUpdateTags: (docId: string, tags: string[]) => void;
   folders?: Array<{ id: string; name: string }>;
   onMoveToFolder?: (docId: string, folderId: string | null) => void;
+  onRename?: (docId: string, name: string) => Promise<void>;
   docCourses?: string[];
   subdocCount?: number;
 }
@@ -60,6 +61,7 @@ export default function FileCard({
   onUpdateTags,
   folders = [],
   onMoveToFolder,
+  onRename,
   docCourses = [],
   subdocCount = 0,
 }: FileCardProps) {
@@ -154,6 +156,33 @@ export default function FileCard({
     closeDropdown();
   }
 
+  // Inline preview players (audio/video docs): pause every other media element
+  // when one starts, so cards don't play over each other.
+  function handleMediaPlay(e: React.SyntheticEvent<HTMLMediaElement>) {
+    document.querySelectorAll<HTMLMediaElement>('audio, video').forEach((el) => {
+      if (el !== e.currentTarget) el.pause();
+    });
+  }
+
+  const hasInlinePlayer = doc.type === 'audio' || doc.type === 'video';
+  const mediaSrc = `/api/documents/${doc.id}/download`;
+
+  // Inline rename (Drive-style) — PATCHes name, falls back silently on error.
+  const [renamingDoc, setRenamingDoc] = useState(false);
+  const [renameDocValue, setRenameDocValue] = useState('');
+  function startRenameDoc() {
+    setRenameDocValue(doc.name);
+    setRenamingDoc(true);
+    closeDropdown();
+  }
+  async function commitRenameDoc() {
+    setRenamingDoc(false);
+    const name = renameDocValue.trim();
+    if (name && name !== doc.name && onRename) {
+      try { await onRename(doc.id, name); } catch (err) { console.error('Rename failed:', err); }
+    }
+  }
+
   return (
     <Card onClick={() => onSelect(doc)}>
       <div className="flex items-start gap-2 sm:gap-4">
@@ -207,6 +236,38 @@ export default function FileCard({
               </span>
             )}
           </div>
+          {hasInlinePlayer && (
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+              {doc.type === 'audio' ? (
+                <audio controls preload="none" src={mediaSrc} onPlay={handleMediaPlay} className="w-full h-8" />
+              ) : (
+                <video
+                  controls
+                  preload="none"
+                  src={mediaSrc}
+                  onPlay={handleMediaPlay}
+                  title={doc.name}
+                  className="w-full bg-black"
+                  style={{ aspectRatio: '16 / 9', borderRadius: 'var(--radius-md)' }}
+                />
+              )}
+            </div>
+          )}
+          {renamingDoc ? (
+            <input
+              value={renameDocValue}
+              onChange={(e) => setRenameDocValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commitRenameDoc();
+                if (e.key === 'Escape') setRenamingDoc(false);
+              }}
+              onBlur={commitRenameDoc}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full text-sm px-1.5 py-1 mt-1"
+              style={{ border: '1px solid var(--color-accent)', borderRadius: 4, background: 'var(--color-bg)', color: 'var(--color-text)' }}
+              autoFocus
+            />
+          ) : null}
         </div>
         {/* Ellipsis menu */}
         <div className="flex-shrink-0">
@@ -357,6 +418,18 @@ export default function FileCard({
                     <HiPencil className="w-4 h-4 flex-shrink-0" />
                     <span>Edit Tags</span>
                   </button>
+
+                  {/* Rename */}
+                  {onRename && (
+                    <button
+                      onClick={startRenameDoc}
+                      className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] cursor-pointer transition-colors w-full text-left"
+                      style={{ borderRadius: 'var(--radius-md)' }}
+                    >
+                      <HiPencil className="w-4 h-4 flex-shrink-0" />
+                      <span>Rename</span>
+                    </button>
+                  )}
 
                   {/* Move to Folder */}
                   {folders.length > 0 && (

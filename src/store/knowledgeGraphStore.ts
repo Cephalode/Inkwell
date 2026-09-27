@@ -21,6 +21,8 @@ const defaultFilters: KGFilters = {
   showChats: false,
   showChapters: true,
   showTopics: true,
+  showGuides: true,
+  showDecks: true,
   searchQuery: '',
 };
 

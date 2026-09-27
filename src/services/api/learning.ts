@@ -57,10 +57,11 @@ export async function getRoadmap(id: string): Promise<Roadmap> {
  * `material_start`, `material_result`, `synthesizing`, `done`, `error`) plus
  * a `roadmap` event carrying the finished roadmap view.
  */
-export async function generateRoadmap(id: string, signal?: AbortSignal): Promise<Response> {
+export async function generateRoadmap(id: string, signal?: AbortSignal, guidance?: string): Promise<Response> {
   const res = await fetch(`${API_BASE}/roadmaps/${id}/generate`, {
     method: 'POST',
-    headers: { Accept: 'text/event-stream' },
+    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+    body: JSON.stringify(guidance?.trim() ? { guidance } : {}),
     signal,
   });
   if (!res.ok) throw new Error(await readError(res, `Failed to start roadmap generation (${res.status})`));

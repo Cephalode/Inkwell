@@ -487,20 +487,21 @@ export default function CourseRoadmap({
     loadRoadmap(course.id, true).catch((err: unknown) => setLoadError({ courseId: course.id, message: errorMessage(err) }));
   };
 
-  const generate = async () => {
+  const generate = async (guidance?: string) => {
     setActionError(null);
     try {
-      await generateRoadmap(course.id);
+      await generateRoadmap(course.id, undefined, guidance);
     } catch (err) {
       setActionError({ courseId: course.id, message: errorMessage(err) });
     }
   };
 
   const regenerate = () => {
-    const ok = window.confirm(
-      `Rebuild the learning path for ${course.name}?\n\nInkwell will re-read the materials and lay the topics out again. Your progress is safe — mastery lives on skills, not on the path, and topics you've already mastered won't be taught again.`,
+    // ponytail: native prompt() — a modal with textarea + Cancel needs react-modal for one string
+    const guidance = window.prompt(
+      `Rebuild the learning path for ${course.name}?\n\nOptional: tell Inkwell how to reshape it — e.g. "focus on exam topics" or "skip the theory". Progress is safe: mastery lives on skills, and topics you've already mastered won't be taught again.`,
     );
-    if (ok) void generate();
+    if (guidance !== null) void generate(guidance);
   };
 
   const openStep = (id: string) => navigate(`/learn/steps/${id}`);
@@ -575,7 +576,7 @@ export default function CourseRoadmap({
           </div>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button className="btn btn-primary" onClick={generate} disabled={noMaterials}>
+          <button className="btn btn-primary" onClick={() => generate()} disabled={noMaterials}>
             <HiOutlineSparkles className="h-4 w-4" />
             {error ? 'Try again' : 'Build my roadmap'}
           </button>
@@ -680,7 +681,7 @@ export default function CourseRoadmap({
 
     body = (
       <>
-        {genError && <ErrorBanner message={genError} actionLabel="Retry" onAction={generate} />}
+        {genError && <ErrorBanner message={genError} actionLabel="Retry" onAction={() => generate()} />}
 
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <div className="flex items-center gap-3">

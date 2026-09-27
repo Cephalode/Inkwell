@@ -25,14 +25,16 @@ const MASTERY_LABELS: Record<NonNullable<KGNode['mastery']>, string> = {
 };
 
 const typeColors: Record<KGNodeType, string> = {
-  document: '#14b8a6',
-  doctype: '#3b82f6',
-  tag: '#a855f7',
-  course: '#f59e0b',
-  subject: '#22c55e',
-  chat: '#6b7280',
-  chapter: '#06b6d4',
+  document: '#2380a2',
+  doctype: '#9c6a24',
+  tag: '#6f5fa8',
+  course: '#b8547c',
+  subject: '#5d8a50',
+  chat: '#8a8a8a',
+  chapter: '#38a6cf',
   topic: '#e8b93b',
+  guide: '#b8547c',
+  deck: '#5d8a50',
 };
 
 const typeLabels: Record<KGNodeType, string> = {
@@ -44,6 +46,8 @@ const typeLabels: Record<KGNodeType, string> = {
   chat: 'Chat',
   chapter: 'Chapter',
   topic: 'Topic',
+  guide: 'Study Guide',
+  deck: 'Card Deck',
 };
 
 const typeIcons: Record<KGNodeType, React.ReactNode> = {
@@ -55,6 +59,8 @@ const typeIcons: Record<KGNodeType, React.ReactNode> = {
   chat: <HiOutlineChatBubbleLeftRight className="w-3.5 h-3.5" />,
   chapter: <HiOutlineDocumentDuplicate className="w-3.5 h-3.5" />,
   topic: <HiOutlineAcademicCap className="w-3.5 h-3.5" />,
+  guide: <HiOutlineBookOpen className="w-3.5 h-3.5" />,
+  deck: <HiOutlineDocumentDuplicate className="w-3.5 h-3.5" />,
 };
 
 function getConnectedNodes(node: KGNode, graph: KGGraph): KGNode[] {

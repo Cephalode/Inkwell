@@ -30,7 +30,7 @@ interface LearningState {
   skills: SkillWithCourses[] | null;
 
   loadRoadmap: (courseId: string, force?: boolean) => Promise<Roadmap | null>;
-  generateRoadmap: (courseId: string, signal?: AbortSignal) => Promise<void>;
+  generateRoadmap: (courseId: string, signal?: AbortSignal, guidance?: string) => Promise<void>;
   loadStep: (stepId: string, force?: boolean) => Promise<StepDetail>;
   startActivity: (stepId: string, kind: ActivityKind, signal?: AbortSignal) => Promise<LearningActivity>;
   submitActivity: (activityId: string, payload: api.SubmitPayload) => Promise<SubmitResponse>;
@@ -74,12 +74,12 @@ export const useLearningStore = create<LearningState>()((set, get) => ({
     }
   },
 
-  generateRoadmap: async (courseId, signal) => {
+  generateRoadmap: async (courseId, signal, guidance) => {
     set((s) => ({ generation: { ...s.generation, [courseId]: { ...initialProgress, stage: 'collecting' } } }));
     try {
       const created = await api.createCourseRoadmap(courseId);
       set((s) => ({ roadmapsByCourseId: { ...s.roadmapsByCourseId, [courseId]: created } }));
-      const response = await api.generateRoadmap(created.id, signal);
+      const response = await api.generateRoadmap(created.id, signal, guidance);
       await consumeSSE<GenerationEvent & { roadmap?: Roadmap }>(
         response,
         (event) => {

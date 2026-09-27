@@ -49,6 +49,7 @@ interface DocumentRow {
   podcastStatus?: string | null;
   podcastSections?: DocumentFile['podcastSections'];
   filePath?: string | null;
+  folderId?: string | null;
   startPage?: number | null;
   endPage?: number | null;
   chapterIndex?: number | null;
@@ -90,6 +91,7 @@ interface CourseRow {
   courseraSlug?: string | null;
   isCurrent?: boolean | null;
   documentIds?: string[] | null;
+  folderId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,6 +139,7 @@ function mapDocument(r: DocumentRow): DocumentFile {
     podcastStatus: r.podcastStatus ?? undefined,
     podcastSections: r.podcastSections ?? undefined,
     filePath: r.filePath ?? undefined,
+    folderId: r.folderId ?? null,
     startPage: r.startPage ?? null,
     endPage: r.endPage ?? null,
     chapterIndex: r.chapterIndex ?? null,
@@ -167,9 +170,10 @@ function mapChapter(r: ChapterRow): ChapterDocument {
 // Document API
 // ---------------------------------------------------------------------------
 
-export async function uploadDocument(file: File): Promise<DocumentFile> {
+export async function uploadDocument(file: File, folderId?: string | null): Promise<DocumentFile> {
   const form = new FormData();
   form.append('file', file);
+  if (folderId) form.append('folderId', folderId);
 
   const res = await fetch(`${API_BASE}/documents`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -220,12 +224,23 @@ export function markDocumentOpened(id: string): void {
   fetch(`${API_BASE}/documents/${id}/opened`, { method: 'POST' }).catch(() => {});
 }
 
-// ── Folders (E1) ──────────────────────────────────────────────────────────────
+// ── Folders (E1 → Drive-style tree) ──────────────────────────────────────────
 export interface Folder {
   id: string;
   name: string;
   color: string | null;
+  parentId: string | null;
   createdAt: number;
+  /** Set when this folder is a course's auto-created folder (id of the course). */
+  courseId?: string;
+}
+
+/** Folder augmented with computed tree data from GET /folders/tree. */
+export interface FolderTreeNode extends Folder {
+  docCount: number;
+  hasChildren: boolean;
+  /** ancestorId -> true; used to grey out illegal move targets. */
+  isDescendantOf: Record<string, boolean>;
 }
 
 export async function listFolders(): Promise<Folder[]> {
@@ -234,14 +249,58 @@ export async function listFolders(): Promise<Folder[]> {
   return await res.json();
 }
 
-export async function createFolder(name: string, color?: string): Promise<Folder> {
+export async function listFolderTree(): Promise<FolderTreeNode[]> {
+  const res = await fetch(`${API_BASE}/folders/tree`);
+  if (!res.ok) throw new Error(`Failed to list folder tree: ${res.status}`);
+  return await res.json();
+}
+
+export async function createFolder(name: string, color?: string, parentId?: string | null): Promise<Folder> {
   const res = await fetch(`${API_BASE}/folders`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, color }),
+    body: JSON.stringify({ name, color, parentId: parentId ?? null }),
   });
   if (!res.ok) throw new Error(`Failed to create folder: ${res.status}`);
   return await res.json();
+}
+
+export async function updateFolder(id: string, updates: { name?: string; color?: string; parentId?: string | null }): Promise<Folder> {
+  const res = await fetch(`${API_BASE}/folders/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update folder: ${res.status}`);
+  return await res.json();
+}
+
+/** Documents visible inside a folder: physical residents + soft-copy links. */
+export interface FolderDocumentRef {
+  id: string;
+  isLink: boolean;
+}
+
+export async function listFolderDocuments(folderId: string): Promise<FolderDocumentRef[]> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/documents`);
+  if (!res.ok) throw new Error(`Failed to list folder documents: ${res.status}`);
+  return await res.json();
+}
+
+/** Soft-link a document into a folder it doesn't physically live in. */
+export async function linkDocumentToFolder(folderId: string, documentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentId }),
+  });
+  if (!res.ok) throw new Error(`Failed to link document to folder: ${res.status}`);
+}
+
+/** Remove a soft-copy link (the document itself is untouched). */
+export async function unlinkDocumentFromFolder(folderId: string, documentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/links/${documentId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to unlink document from folder: ${res.status}`);
 }
 
 export async function deleteFolder(id: string): Promise<void> {
@@ -275,14 +334,15 @@ export async function generatePodcast(id: string): Promise<{ status: string }> {
 }
 
 /**
- * Create a document from a video URL (YouTube etc.). The backend fetches the
- * transcript, creates the document, and triggers background classification.
+ * Create a document from a URL (YouTube etc.). The backend fetches the
+ * transcript for YouTube videos; any other link is saved as a 'link'
+ * document. Optionally lands the new document in `folderId`.
  */
-export async function createDocumentFromUrl(url: string): Promise<DocumentFile> {
+export async function createDocumentFromUrl(url: string, folderId?: string | null): Promise<DocumentFile> {
   const res = await fetch(`${API_BASE}/documents/from-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, folderId: folderId ?? undefined }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -487,6 +547,7 @@ function mapCourse(r: CourseRow): Course {
     courseraSlug: r.courseraSlug ?? undefined,
     isCurrent: r.isCurrent ?? false,
     documentIds: r.documentIds ?? [],
+    folderId: r.folderId ?? undefined,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };

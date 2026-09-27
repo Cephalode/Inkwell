@@ -1,5 +1,6 @@
 // Source viewer — renders the original material inline (PRD 11).
 // ponytail: single-source viewer; multi-file merge only when multi-file uploads land.
+import { HiArrowTopRightOnSquare } from 'react-icons/hi2';
 import { getYouTubeVideoId } from '../../utils/fileHelpers';
 import type { DocumentFile } from '../../types/document';
 
@@ -24,6 +25,25 @@ export default function SourceViewer({ doc }: { doc: DocumentFile }) {
     );
   }
 
+  // Generic web link — open in a new tab (bookmark-style document).
+  if (doc.type === 'link') {
+    return (
+      <div className="card p-5 flex flex-col items-center gap-3 text-center">
+        <span className="text-4xl">🔗</span>
+        <p className="text-sm" style={{ opacity: 0.7 }}>{doc.filePath}</p>
+        <a
+        href={doc.filePath ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        className="btn btn-primary flex items-center gap-2 text-sm"
+        >
+          <HiArrowTopRightOnSquare className="w-4 h-4" />
+          Open link
+        </a>
+      </div>
+    );
+  }
+
   const src = `/api/documents/${doc.id}/download`;
   if (doc.mimeType === 'application/pdf') {
     return (
@@ -35,8 +55,19 @@ export default function SourceViewer({ doc }: { doc: DocumentFile }) {
       />
     );
   }
-  if (doc.mimeType?.startsWith('audio/')) {
+  if (doc.mimeType?.startsWith('audio/') || doc.type === 'audio') {
     return <audio controls src={src} className="w-full" />;
+  }
+  if (doc.mimeType?.startsWith('video/') || doc.type === 'video') {
+    return (
+      <video
+        controls
+        src={src}
+        title={doc.name}
+        className="w-full bg-black"
+        style={{ aspectRatio: '16 / 9', border: '1px solid var(--color-divider)', borderRadius: 'var(--radius-lg)' }}
+      />
+    );
   }
   // Images and anything else with a raw file: show it inline; text-only docs: parsed text preview.
   if (doc.mimeType?.startsWith('image/')) {

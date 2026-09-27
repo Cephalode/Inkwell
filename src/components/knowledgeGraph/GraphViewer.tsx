@@ -2,28 +2,58 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import ForceGraph2D, { type ForceGraphInstance } from '../../lib/ForceGraph2D';
 import type { KGNode, KGGraph, KGNodeType } from '../../types/knowledgeGraph';
 import { useKnowledgeGraphStore } from '../../store/knowledgeGraphStore';
+import { FOUNDATION_HUE, COURSE_HUES } from '../../utils/buildTopicMap';
+
+// ── Topic Map visual language ───────────────────────────────────────────────
+// The graph adopts the roadmap Topic Map's style: learned topics + foundations
+// form the green core, everything else wears its course's muted hue, cross-course
+// links are dashed, and focus dims everything not connected.
+
+/** Course hue by course id, mirroring the Topic Map (order in COURSE_HUES). */
+let courseHueCounter = 0;
+const courseHueById = new Map<string, string>();
+function courseHueFor(courseId?: string): string {
+  if (!courseId) return '#8a8a8a';
+  let hue = courseHueById.get(courseId);
+  if (!hue) {
+    hue = COURSE_HUES[courseHueCounter % COURSE_HUES.length];
+    courseHueCounter += 1;
+  }
+  return hue;
+}
+/** Reset per-render assignment so hue order stays stable across data refreshes. */
+function resetCourseHues(): void {
+  courseHueCounter = 0;
+  courseHueById.clear();
+}
 
 const NODE_COLORS: Record<KGNodeType, string> = {
-  document: '#14b8a6',
-  doctype: '#3b82f6',
-  tag: '#a855f7',
-  course: '#f59e0b',
-  subject: '#22c55e',
-  chat: '#6b7280',
-  chapter: '#06b6d4',
+  document: '#2380a2',
+  doctype: '#9c6a24',
+  tag: '#6f5fa8',
+  course: '#b8547c',
+  subject: '#5d8a50',
+  chat: '#8a8a8a',
+  chapter: '#38a6cf',
   topic: '#e8b93b',
+  guide: '#b8547c',
+  deck: '#5d8a50',
 };
 
 /** Topic nodes are coloured by learning-suite mastery, not by type. */
 const TOPIC_MASTERY_COLORS: Record<NonNullable<KGNode['mastery']>, string> = {
   0: '#e8b93b', // not started
   1: '#38a6cf', // in progress
-  2: '#2f9e57', // learned
-  3: '#2f9e57', // foundation — assumed known
+  2: FOUNDATION_HUE, // learned — the green core
+  3: FOUNDATION_HUE, // foundation — assumed known
 };
 
 function nodeColor(node: KGNode): string {
-  if (node.type === 'topic') return TOPIC_MASTERY_COLORS[node.mastery ?? 0];
+  if (node.type === 'topic') {
+    if ((node.mastery ?? 0) >= 2) return TOPIC_MASTERY_COLORS[node.mastery ?? 0];
+    // Unlearned topics wear their course's hue (Topic Map branch coloring).
+    return courseHueFor(node.courseIds?.[0] ?? node.courseId);
+  }
   return NODE_COLORS[node.type] || '#6b7280';
 }
 
@@ -36,18 +66,32 @@ const NODE_RADIUS: Record<KGNodeType, number> = {
   chat: 4,
   chapter: 4,
   topic: 5,
+  guide: 6,
+  deck: 5,
 };
 
 const EDGE_COLORS: Record<string, string> = {
-  'is-type': 'rgba(59,130,246,0.3)',
-  'has-tag': 'rgba(168,85,247,0.3)',
-  'in-course': 'rgba(245,158,11,0.3)',
-  'has-subject': 'rgba(34,197,94,0.3)',
-  'related-chat': 'rgba(107,114,128,0.3)',
-  'is-chapter-of': 'rgba(6,182,212,0.3)',
+  'is-type': 'rgba(156,106,36,0.3)',
+  'has-tag': 'rgba(111,95,168,0.3)',
+  'in-course': 'rgba(184,84,124,0.3)',
+  'has-subject': 'rgba(93,138,80,0.3)',
+  'related-chat': 'rgba(138,138,138,0.25)',
+  'is-chapter-of': 'rgba(56,166,207,0.3)',
   'next-topic': 'rgba(232,185,59,0.45)',
-  'builds-on': 'rgba(232,185,59,0.3)',
+  'builds-on': 'rgba(47,158,87,0.4)',
+  'has-guide': 'rgba(184,84,124,0.4)',
+  'has-deck': 'rgba(93,138,80,0.4)',
 };
+
+/** Links between nodes of different courses render dashed (Topic Map cross-course style). */
+function isCrossCourse(link: SimLink): boolean {
+  const a = typeof link.source === 'object' ? (link.source as SimNode) : null;
+  const b = typeof link.target === 'object' ? (link.target as SimNode) : null;
+  const ac = a?.courseIds;
+  const bc = b?.courseIds;
+  if (!ac?.length || !bc?.length) return false;
+  return !ac.some((c) => bc.includes(c));
+}
 
 /** Map from filter toggle key → node type it controls */
 const FILTER_TYPE_MAP: Record<string, KGNodeType> = {
@@ -163,6 +207,14 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
 
     return { nodes: filteredNodes, edges: filteredEdges };
   }, [graph, filters]);
+
+  // ── Stable course-hue assignment per data refresh (Topic Map order) ──
+  useMemo(() => {
+    resetCourseHues();
+    for (const n of filteredGraph.nodes) {
+      if (n.type === 'topic') courseHueFor(n.courseIds?.[0] ?? n.courseId);
+    }
+  }, [filteredGraph.nodes]);
 
   // Track connected nodes for hover highlighting (using filtered graph)
   const connectedNodes = useMemo(() => {
@@ -367,10 +419,19 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
       ctx.stroke();
 
       // Learned topics wear a thin outer ring — the map's "joined the core" mark.
-      if (kgNode.type === 'topic' && kgNode.mastery === 2) {
+      if (kgNode.type === 'topic' && (kgNode.mastery ?? 0) >= 2) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 2.5, 0, 2 * Math.PI);
         ctx.strokeStyle = isDimmed ? color + '26' : color + 'b3';
+        ctx.lineWidth = Math.max(0.4, 1 / globalScale);
+        ctx.stroke();
+      }
+
+      // Multi-course shared topics get a course-hue halo (the map's pie hint).
+      if (kgNode.type === 'topic' && (kgNode.mastery ?? 0) < 2 && (kgNode.courseIds?.length ?? 0) > 1) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 2, 0, 2 * Math.PI);
+        ctx.strokeStyle = isDimmed ? color + '1a' : color + '59';
         ctx.lineWidth = Math.max(0.4, 1 / globalScale);
         ctx.stroke();
       }
@@ -421,6 +482,12 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
     [hoveredNodeId],
   );
 
+  /** Cross-course links render dashed (the Topic Map's cross-course style). */
+  const getLinkLineDash = useCallback(
+    (link: SimLink) => (isCrossCourse(link) ? [4, 3] : null),
+    [],
+  );
+
   return (
     <div ref={containerRef} className="w-full h-full min-h-[400px]">
       <ForceGraph2D
@@ -438,6 +505,7 @@ export default function GraphViewer({ graph, onNodeClick }: GraphViewerProps) {
         nodeCanvasObject={nodeCanvasObject}
         nodePointerAreaPaint={nodePointerAreaPaint}
         linkColor={getLinkColor}
+        linkLineDash={getLinkLineDash}
         linkDirectionalArrowLength={3}
         linkDirectionalArrowColor="rgba(148,163,184,0.15)"
         linkWidth={0.5}
