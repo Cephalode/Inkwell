@@ -246,7 +246,7 @@ export default function ExplorerItem({
       <div
         {...commonHandlers}
         data-explorer-item
-        className="card group relative flex flex-col items-center gap-2 p-4 text-center cursor-pointer transition-colors select-none"
+        className="card group relative flex flex-col items-center gap-2 p-4 text-center cursor-pointer transition-colors select-none min-w-0 max-w-full overflow-hidden"
         style={{
           background: tileBg,
           outline: dropActive ? '2px dashed var(--color-accent)' : isSelected ? '1.5px solid var(--color-accent)' : undefined,

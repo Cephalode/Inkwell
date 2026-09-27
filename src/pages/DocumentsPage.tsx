@@ -607,11 +607,11 @@ export default function DocumentsPage() {
                 onClick={() => navigateToFolder(null, [])}
               >
                 <HiHome className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
-                <span className="truncate">Home</span>
+                <span className="flex-1 min-w-0 truncate">Home</span>
               </button>
 
               {/* Courses section — collapsible, one row per course */}
-              <div>
+              <div className="min-w-0">
                 <button
                   className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
                   style={{ opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}
@@ -625,7 +625,7 @@ export default function DocumentsPage() {
                   return (
                     <button
                       key={c.id}
-                      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+                      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] min-w-0"
                       style={{
                         background: active ? 'color-mix(in srgb, var(--color-accent) 13%, transparent)' : 'transparent',
                         color: active ? 'var(--color-accent-700)' : 'var(--color-text)',
@@ -639,7 +639,7 @@ export default function DocumentsPage() {
                         className="w-4 h-4 shrink-0"
                         style={{ color: c.color || 'var(--color-neutral-500)' }}
                       />
-                      <span className="truncate">{c.name}</span>
+                      <span className="flex-1 min-w-0 truncate">{c.name}</span>
                     </button>
                   );
                 })}
@@ -759,8 +759,9 @@ export default function DocumentsPage() {
                     <>
                       <HiChevronRight className="w-3 h-3 shrink-0" style={{ opacity: 0.4 }} />
                       <button
-                        className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] shrink-0"
+                        className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] shrink-0 max-w-[240px] truncate"
                         style={{ fontWeight: 600, color: 'var(--color-accent-700)' }}
+                        title={currentCourse.name}
                         onClick={() => navigateToFolder(currentCourse.folderId ?? null, [`course:${currentCourse.id}`])}
                       >
                         {currentCourse.name}
@@ -768,10 +769,11 @@ export default function DocumentsPage() {
                     </>
                   )}
                   {breadcrumb.map((f, i) => (
-                    <span key={f.id} className="flex items-center gap-1 shrink-0">
-                      <HiChevronRight className="w-3 h-3" style={{ opacity: 0.4 }} />
+                    <span key={f.id} className="flex items-center gap-1 shrink-0 min-w-0">
+                      <HiChevronRight className="w-3 h-3 shrink-0" style={{ opacity: 0.4 }} />
                       <button
-                        className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
+                        className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] max-w-[220px] truncate"
+                        title={f.name}
                         style={{
                           fontWeight: i === breadcrumb.length - 1 ? 600 : 400,
                           color: i === breadcrumb.length - 1 ? 'var(--color-accent-700)' : 'var(--color-text)',
