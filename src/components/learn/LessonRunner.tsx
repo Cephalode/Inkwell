@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { HiCheck, HiOutlineClock, HiSpeakerWave } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
 import { speakAll, stopSpeak } from '../shared/SelectionTTS';

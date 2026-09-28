@@ -89,7 +89,7 @@ export default function PodcastRunner({ activity, onComplete, onAbandon }: Activ
       ) : (
         <div className="flex items-center gap-2 text-xs" style={{ opacity: 0.6 }}>
           <HiSpeakerWave className="h-4 w-4 shrink-0" aria-hidden />
-          {renderError ? `Audio render failed (${renderError}) — the transcript is still useful.` : 'Audio is taking longer than expected — the transcript is below.'}
+          {renderError ? `Audio render failed (${renderError}) — the transcript is still useful.` : gaveUp ? 'Audio is taking longer than expected — the transcript is below.' : 'Rendering audio… the transcript is ready meanwhile.'}
         </div>
       )}
 

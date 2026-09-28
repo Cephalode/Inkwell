@@ -41,7 +41,7 @@ import type { StudyGuide } from '../types/studyGuide';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineShare, HiChevronDown, HiChevronRight, HiChevronUp, HiBookOpen, HiTrash,
-  HiExclamationCircle, HiFolder, HiAcademicCap,
+  HiExclamationCircle, HiFolder,
 } from 'react-icons/hi';
 import {
   HiSquares2X2, HiOutlineListBullet, HiArrowsUpDown,
@@ -100,9 +100,6 @@ export default function DocumentsPage() {
   const [history, setHistory] = useState<{ stack: (string | null)[]; index: number }>({ stack: [null], index: 0 });
   const currentFolderId = history.stack[history.index] ?? null;
   // ['course:<id>', folderId, ...] — a virtual root-level "Courses" node per course.
-  const [virtualPath, setVirtualPath] = useState<string[]>([]);
-  const atVirtualRoot = virtualPath.length > 0;
-  const currentVirtualCourseId = atVirtualRoot ? virtualPath[0].slice('course:'.length) : null;
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -127,7 +124,6 @@ export default function DocumentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
-  const [coursesExpanded, setCoursesExpanded] = useState(true);
   useEffect(() => {
     if (!uploadMenuOpen) return;
     const close = (e: MouseEvent) => {
@@ -192,20 +188,15 @@ export default function DocumentsPage() {
       const stack = [...h.stack.slice(0, h.index + 1), null];
       return { stack, index: stack.length - 1 };
     });
-    if (atVirtualRoot && currentVirtualCourseId) {
-      const still = courses.some((c) => c.id === currentVirtualCourseId);
-      if (!still) setVirtualPath([]); // course gone → exit its node
-    }
     await Promise.all([refreshTree(), loadDocuments()]);
-  }, [refreshTree, loadDocuments, atVirtualRoot, currentVirtualCourseId, courses]);
+  }, [refreshTree, loadDocuments]);
 
   // ── Navigation (Explorer-style back/forward history) ─────────────────────────
-  const navigateToFolder = useCallback((folderId: string | null, vPath?: string[]) => {
+  const navigateToFolder = useCallback((folderId: string | null) => {
     setHistory((h) => {
       const stack = [...h.stack.slice(0, h.index + 1), folderId];
       return { stack, index: stack.length - 1 };
     });
-    if (vPath !== undefined) setVirtualPath(vPath);
     setSelectedId(null);
     setFilterText('');
   }, []);
@@ -275,30 +266,10 @@ export default function DocumentsPage() {
     [documents, searchQuery],
   );
 
-  // Course folders + their soft links, when inside a course node in the tree.
-  const currentCourse = useMemo(
-    () => courses.find((c) => c.id === currentVirtualCourseId) ?? null,
-    [courses, currentVirtualCourseId],
-  );
-  const [courseLinkedIds, setCourseLinkedIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const folderId = currentCourse?.folderId;
-    if (!folderId) return;
-    let cancelled = false;
-    listFolderDocuments(folderId)
-      .then((refs) => {
-        if (!cancelled) setCourseLinkedIds(new Set(refs.filter((r) => r.isLink).map((r) => r.id)));
-      })
-      .catch((err) => console.error('Failed to load course folder links:', err));
-    return () => {
-      cancelled = true;
-    };
-  }, [currentCourse?.folderId, documents.length]);
-
   // Soft links for regular folder browsing (non-course folders).
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (!currentFolderId || atVirtualRoot) return;
+    if (!currentFolderId) return;
     let cancelled = false;
     listFolderDocuments(currentFolderId)
       .then((refs) => {
@@ -308,17 +279,14 @@ export default function DocumentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentFolderId, atVirtualRoot, documents.length]);
+  }, [currentFolderId, documents.length]);
 
   // Files shown in the main pane. Inside a course node: everything the course
   // lists (physical residents + soft links). Otherwise: current folder.
-  const folderDocs = useMemo(() => {
-    if (currentCourse) {
-      const listed = new Set(currentCourse.documentIds);
-      return searchFiltered.filter((d) => listed.has(d.id) || courseLinkedIds.has(d.id));
-    }
-    return searchFiltered.filter((d) => (d.folderId ?? null) === currentFolderId || (currentFolderId !== null && linkedIds.has(d.id)));
-  }, [currentCourse, searchFiltered, courseLinkedIds, currentFolderId, linkedIds]);
+  const folderDocs = useMemo(
+    () => searchFiltered.filter((d) => (d.folderId ?? null) === currentFolderId || (currentFolderId !== null && linkedIds.has(d.id))),
+    [searchFiltered, currentFolderId, linkedIds],
+  );
 
   const sortDocs = useCallback((docs: DocumentFile[]) => {
     const sorted = [...docs];
@@ -349,14 +317,13 @@ export default function DocumentsPage() {
 
   // Subfolders of the current folder, sorted to match the active sort.
   const childFolders = useMemo(() => {
-    if (atVirtualRoot) return []; // course nodes show a flat document list
     const kids = tree.filter((f) => (f.parentId ?? null) === currentFolderId);
     const dir = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'name') kids.sort((a, b) => dir * a.name.localeCompare(b.name));
     else if (sortKey === 'recent') kids.sort((a, b) => dir * (a.createdAt - b.createdAt));
     else kids.sort((a, b) => dir * a.name.localeCompare(b.name)); // size/type: folders by name
     return filterText ? kids.filter((f) => f.name.toLowerCase().includes(filterText.toLowerCase())) : kids;
-  }, [tree, currentFolderId, sortKey, sortDir, filterText, atVirtualRoot]);
+  }, [tree, currentFolderId, sortKey, sortDir, filterText]);
 
   const breadcrumb = useMemo(() => {
     const path: FolderTreeNode[] = [];
@@ -600,50 +567,17 @@ export default function DocumentsPage() {
               <button
                 className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
                 style={{
-                  background: !atVirtualRoot && currentFolderId === null ? 'color-mix(in srgb, var(--color-accent) 13%, transparent)' : 'transparent',
-                  color: !atVirtualRoot && currentFolderId === null ? 'var(--color-accent-700)' : 'var(--color-text)',
-                  fontWeight: !atVirtualRoot && currentFolderId === null ? 600 : 400,
+                  background: currentFolderId === null ? 'color-mix(in srgb, var(--color-accent) 13%, transparent)' : 'transparent',
+                  color: currentFolderId === null ? 'var(--color-accent-700)' : 'var(--color-text)',
+                  fontWeight: currentFolderId === null ? 600 : 400,
                 }}
-                onClick={() => navigateToFolder(null, [])}
+                onClick={() => navigateToFolder(null)}
               >
                 <HiHome className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
                 <span className="flex-1 min-w-0 truncate">Home</span>
               </button>
 
-              {/* Courses section — collapsible, one row per course */}
-              <div className="min-w-0">
-                <button
-                  className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
-                  style={{ opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}
-                  onClick={() => setCoursesExpanded((o) => !o)}
-                >
-                  {coursesExpanded ? <HiChevronDown className="w-3 h-3" /> : <HiChevronRight className="w-3 h-3" />}
-                  Courses
-                </button>
-                {coursesExpanded && courses.map((c) => {
-                  const active = atVirtualRoot && currentVirtualCourseId === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm w-full text-left transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] min-w-0"
-                      style={{
-                        background: active ? 'color-mix(in srgb, var(--color-accent) 13%, transparent)' : 'transparent',
-                        color: active ? 'var(--color-accent-700)' : 'var(--color-text)',
-                        fontWeight: active ? 600 : 400,
-                        paddingLeft: 18,
-                      }}
-                      onClick={() => navigateToFolder(c.folderId ?? null, [`course:${c.id}`])}
-                      title={c.name}
-                    >
-                      <HiAcademicCap
-                        className="w-4 h-4 shrink-0"
-                        style={{ color: c.color || 'var(--color-neutral-500)' }}
-                      />
-                      <span className="flex-1 min-w-0 truncate">{c.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Course folders live in the tree below — no separate Courses list */}
 
               {/* Folder tree (all folders, Home scope) */}
               <div className="pt-1">
@@ -652,9 +586,9 @@ export default function DocumentsPage() {
                 </div>
                 <FolderTree
                   tree={tree}
-                  currentId={atVirtualRoot ? null : currentFolderId}
+                  currentId={currentFolderId}
                   expanded={expandedFolders}
-                  onSelect={(id) => navigateToFolder(id, [])}
+                  onSelect={(id) => navigateToFolder(id)}
                   onToggle={toggleFolder}
                   onCreate={handleCreateFolder}
                   onRename={handleRenameFolder}
@@ -683,7 +617,7 @@ export default function DocumentsPage() {
               >
                 <UploadDropdown
                   disabled={uploading}
-                  destinationName={atVirtualRoot ? currentCourse?.name ?? 'Home' : currentFolder ? currentFolder.name : 'Home'}
+                  destinationName={currentFolder ? currentFolder.name : 'Home'}
                   onPickFiles={() => fileInputRef.current?.click()}
                   onAddLink={() => {
                     setUrlMode(true);
@@ -748,26 +682,13 @@ export default function DocumentsPage() {
                   <button
                     className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] shrink-0"
                     style={{
-                      fontWeight: breadcrumb.length === 0 && !atVirtualRoot ? 600 : 400,
-                      color: breadcrumb.length === 0 && !atVirtualRoot ? 'var(--color-accent-700)' : 'var(--color-text)',
+                      fontWeight: breadcrumb.length === 0 ? 600 : 400,
+                      color: breadcrumb.length === 0 ? 'var(--color-accent-700)' : 'var(--color-text)',
                     }}
-                    onClick={() => navigateToFolder(null, [])}
+                    onClick={() => navigateToFolder(null)}
                   >
                     Home
                   </button>
-                  {atVirtualRoot && currentCourse && (
-                    <>
-                      <HiChevronRight className="w-3 h-3 shrink-0" style={{ opacity: 0.4 }} />
-                      <button
-                        className="text-sm px-1.5 py-0.5 rounded transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)] shrink-0 max-w-[240px] truncate"
-                        style={{ fontWeight: 600, color: 'var(--color-accent-700)' }}
-                        title={currentCourse.name}
-                        onClick={() => navigateToFolder(currentCourse.folderId ?? null, [`course:${currentCourse.id}`])}
-                      >
-                        {currentCourse.name}
-                      </button>
-                    </>
-                  )}
                   {breadcrumb.map((f, i) => (
                     <span key={f.id} className="flex items-center gap-1 shrink-0 min-w-0">
                       <HiChevronRight className="w-3 h-3 shrink-0" style={{ opacity: 0.4 }} />
@@ -778,7 +699,7 @@ export default function DocumentsPage() {
                           fontWeight: i === breadcrumb.length - 1 ? 600 : 400,
                           color: i === breadcrumb.length - 1 ? 'var(--color-accent-700)' : 'var(--color-text)',
                         }}
-                        onClick={() => navigateToFolder(f.id, [])}
+                        onClick={() => navigateToFolder(f.id)}
                       >
                         {f.name}
                       </button>
@@ -966,7 +887,7 @@ export default function DocumentsPage() {
                     isSelected={selectedId === f.id}
                     moveTargets={moveTargetsForSelection}
                     onSelect={() => setSelectedId(f.id)}
-                    onOpen={() => navigateToFolder(f.id, [])}
+                    onOpen={() => navigateToFolder(f.id)}
                     onRename={(name) => handleRenameFolder(f.id, name)}
                     onDelete={async () => {
                       setConfirm({ kind: 'folder', id: f.id, name: f.name, hasContents: f.docCount > 0 || f.hasChildren });
@@ -1061,7 +982,7 @@ export default function DocumentsPage() {
                     isSelected={selectedId === f.id}
                     moveTargets={moveTargetsForSelection}
                     onSelect={() => setSelectedId(f.id)}
-                    onOpen={() => navigateToFolder(f.id, [])}
+                    onOpen={() => navigateToFolder(f.id)}
                     onRename={(name) => handleRenameFolder(f.id, name)}
                     onDelete={async () => {
                       setConfirm({ kind: 'folder', id: f.id, name: f.name, hasContents: f.docCount > 0 || f.hasChildren });

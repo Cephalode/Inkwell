@@ -1,5 +1,10 @@
 // Read-any-selection TTS — Turbo.ai-style. Text selection → floating [Listen] menu → server TTS (edge-tts, keyless).
 // Playback lives in a bottom-anchored bar that slides up while loading/playing.
+// This file intentionally mixes the <SelectionTTS/> component with the speak
+// engine's exported helpers (stopSpeak/speakAll/currentWordIndex) — LessonRunner
+// consumes them directly. A clean split needs a playback-state refactor; until
+// then, silence the fast-refresh rule rather than thread state through props.
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useRef, useState } from 'react';
 import { HiPlay, HiPause, HiStop, HiXMark, HiExclamationTriangle, HiSpeakerWave } from 'react-icons/hi2';
 import Spinner from './Spinner';
