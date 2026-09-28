@@ -35,7 +35,7 @@ export const CATEGORY_META: Record<IntegrationCategory, CategoryMeta> = {
   productivity: { label: 'Productivity', icon: HiBriefcase },
 };
 
-const FALLBACK_ICON = HiLink;
+export const FALLBACK_ICON = HiLink;
 
 export const PROVIDER_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'google-calendar': SiGooglecalendar,

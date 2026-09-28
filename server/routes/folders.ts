@@ -143,15 +143,19 @@ router.patch('/:id', async (req: Request, res: Response) => {
       if (!rowCount) return res.status(400).json({ error: 'Parent folder not found' });
       // Cycle check: walk up from the new parent; if we reach this folder, the
       // move would create a loop (the folder would become its own ancestor).
+      interface ParentRow { parent_id: string | null }
       let cur: string | null = newParent;
       const seen = new Set<string>();
       while (cur) {
         if (cur === id) return res.status(400).json({ error: 'Cannot move a folder into its own subtree' });
         if (seen.has(cur)) break;
         seen.add(cur);
-        const { rows } = await pool.query('SELECT parent_id FROM folders WHERE id = $1 AND user_id = $2', [cur, uid(req)]);
-        if (!rows.length) break;
-        cur = (rows[0] as { parent_id: string | null }).parent_id;
+        const found: { rows: ParentRow[] } = await pool.query<ParentRow>(
+          'SELECT parent_id FROM folders WHERE id = $1 AND user_id = $2',
+          [cur, uid(req)],
+        );
+        if (found.rows.length === 0) break;
+        cur = found.rows[0].parent_id;
       }
     }
     sets.push(`parent_id = $${i++}`);

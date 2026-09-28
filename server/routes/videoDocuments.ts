@@ -73,7 +73,7 @@ router.post('/documents/from-url', async (req: Request, res: Response) => {
   }
 
   // ── General link: no transcript, just a bookmark-style document ────────────
-  let hostname = url;
+  let hostname: string;
   try {
     const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
     if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol');

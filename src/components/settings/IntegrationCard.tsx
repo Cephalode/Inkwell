@@ -4,7 +4,8 @@ import Button from '../shared/Button';
 import Card from '../shared/Card';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import Spinner from '../shared/Spinner';
-import { primaryAccountLine, providerIcon } from '../../config/integrations';
+import { primaryAccountLine } from '../../config/integrations';
+import { ProviderGlyph } from '../../config/ProviderGlyph';
 import type { CalendarEvent, IntegrationStatus } from '../../types/integration';
 import { getIntegrationEvents, refreshIntegration, unlinkIntegration } from '../../services/api/integrations';
 
@@ -23,8 +24,7 @@ export default function IntegrationCard({ integration: s, onChanged, onConnect, 
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const Icon = providerIcon(s.id); // lookup, not creation
-  const isCalendar = s.category === 'calendar';
+    const isCalendar = s.category === 'calendar';
 
   const toggleEvents = async () => {
     const next = !expanded;
@@ -75,7 +75,7 @@ export default function IntegrationCard({ integration: s, onChanged, onConnect, 
       <Card className="h-full">
         <div className="flex flex-col gap-3 h-full">
           <div className="flex items-start gap-3">
-            <Icon className="w-6 h-6 shrink-0 mt-0.5 text-[var(--color-accent)]" />
+            <ProviderGlyph id={s.id} className="w-6 h-6 shrink-0 mt-0.5 text-[var(--color-accent)]" />
             <div className="min-w-0 flex-1">
               <h4 className="leading-tight">{s.label}</h4>
               <p className="text-xs line-clamp-2 mt-0.5" style={{ opacity: 0.6 }}>{s.description}</p>

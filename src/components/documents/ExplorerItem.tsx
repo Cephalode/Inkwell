@@ -39,6 +39,9 @@ interface ExplorerItemProps {
   isSelected: boolean;
   /** Flat move-target list, already filtered to legal destinations. */
   moveTargets: MoveTarget[];
+  /** Single click: select the item (Windows Explorer behavior). */
+  onSelect?: () => void;
+  /** Double click: open the item (folder → navigate, file → preview). */
   onOpen: () => void;
   onPreview?: () => void;
   onRename: (newName: string) => Promise<void>;
@@ -64,6 +67,7 @@ export default function ExplorerItem({
   view,
   isSelected,
   moveTargets,
+  onSelect,
   onOpen,
   onPreview,
   onRename,
@@ -224,8 +228,8 @@ export default function ExplorerItem({
       : undefined;
 
   const commonHandlers = {
-    onClick: onOpen,
-    onDoubleClick: onPreview && kind === 'file' ? onPreview : undefined,
+    onClick: onSelect ?? onOpen, // single click selects; double opens (below)
+    onDoubleClick: onOpen,
     draggable,
     onDragStart: (e: React.DragEvent) => {
       if (!draggable) return;

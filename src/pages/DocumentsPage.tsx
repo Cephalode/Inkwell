@@ -965,6 +965,7 @@ export default function DocumentsPage() {
                     hasChildren={f.hasChildren}
                     isSelected={selectedId === f.id}
                     moveTargets={moveTargetsForSelection}
+                    onSelect={() => setSelectedId(f.id)}
                     onOpen={() => navigateToFolder(f.id, [])}
                     onRename={(name) => handleRenameFolder(f.id, name)}
                     onDelete={async () => {
@@ -994,7 +995,8 @@ export default function DocumentsPage() {
                     isClassifying={doc.classifyStatus === 'classifying' || doc.classifyStatus === 'pending'}
                     isSelected={selectedId === doc.id}
                     moveTargets={moveTargetsForSelection}
-                    onOpen={() => { setSelectedId(doc.id); setPreviewDoc(doc); }}
+                    onSelect={() => setSelectedId(doc.id)}
+                    onOpen={() => setPreviewDoc(doc)}
                     onPreview={() => setPreviewDoc(doc)}
                     onRename={(name) => handleRenameDoc(doc.id, name)}
                     onDelete={async () => {
@@ -1058,6 +1060,7 @@ export default function DocumentsPage() {
                     hasChildren={f.hasChildren}
                     isSelected={selectedId === f.id}
                     moveTargets={moveTargetsForSelection}
+                    onSelect={() => setSelectedId(f.id)}
                     onOpen={() => navigateToFolder(f.id, [])}
                     onRename={(name) => handleRenameFolder(f.id, name)}
                     onDelete={async () => {
@@ -1087,7 +1090,8 @@ export default function DocumentsPage() {
                     isClassifying={doc.classifyStatus === 'classifying' || doc.classifyStatus === 'pending'}
                     isSelected={selectedId === doc.id}
                     moveTargets={moveTargetsForSelection}
-                    onOpen={() => { setSelectedId(doc.id); setPreviewDoc(doc); }}
+                    onSelect={() => setSelectedId(doc.id)}
+                    onOpen={() => setPreviewDoc(doc)}
                     onPreview={() => setPreviewDoc(doc)}
                     onRename={(name) => handleRenameDoc(doc.id, name)}
                     onDelete={async () => {

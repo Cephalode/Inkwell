@@ -9,7 +9,7 @@ for (const id of ids) {
   const fp = rows[0].file_path;
   await pool.query('DELETE FROM documents WHERE id = $1', [id]);
   if (fp && isStorageKey(fp)) {
-    try { await storageDelete(fp); console.log(id.slice(0, 8), 'deleted row + storage object'); } catch (e) { console.log(id.slice(0, 8), 'row deleted, storage cleanup failed:', e.message); }
+    try { await storageDelete(fp); console.log(id.slice(0, 8), 'deleted row + storage object'); } catch (e) { console.log(id.slice(0, 8), 'row deleted, storage cleanup failed:', e instanceof Error ? e.message : String(e)); }
   } else {
     console.log(id.slice(0, 8), 'deleted row (no storage key)');
   }

@@ -4,7 +4,7 @@ import { HiEye, HiEyeOff } from 'react-icons/hi';
 import { HiXMark } from 'react-icons/hi2';
 import Button from '../shared/Button';
 import Card from '../shared/Card';
-import { providerIcon } from '../../config/integrations';
+import { ProviderGlyph } from '../../config/ProviderGlyph';
 import { linkIntegration } from '../../services/api/integrations';
 import type { IntegrationStatus } from '../../types/integration';
 
@@ -19,8 +19,7 @@ export default function LinkIntegrationModal({ integration, onClose, onLinked }:
   const [show, setShow] = useState<Record<string, boolean>>({});
   const [error, setError] = useState('');
   const [linking, setLinking] = useState(false);
-  const Icon = providerIcon(integration.id); // lookup, not creation
-
+  
   const submit = async () => {
     const missing = integration.fields.find((f) => !values[f.key]?.trim());
     if (missing) {
@@ -46,7 +45,7 @@ export default function LinkIntegrationModal({ integration, onClose, onLinked }:
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Icon className="w-6 h-6 shrink-0 text-[var(--color-accent)]" />
+                <ProviderGlyph id={integration.id} className="w-6 h-6 shrink-0 text-[var(--color-accent)]" />
                 <div>
                   <h3 className="leading-tight" style={{ fontSize: 18 }}>{integration.label}</h3>
                   {integration.docsUrl && (
