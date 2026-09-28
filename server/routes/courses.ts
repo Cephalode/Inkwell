@@ -270,6 +270,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
       for (const { id: docId } of residents) await rehomeDoc(userId, docId, folderId);
     }
     await pool.query('DELETE FROM courses WHERE id = $1 AND user_id = $2', [req.params.id, userId]);
+    // The course's folder is course-owned, not user data — remove it too.
+    // (Rehoming above already moved residents out; links cascade with the folder.)
+    if (folderId) await pool.query('DELETE FROM folders WHERE id = $1 AND user_id = $2', [folderId, userId]);
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: String(err) });
