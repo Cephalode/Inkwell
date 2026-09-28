@@ -35,31 +35,30 @@ check('course with long name created', Boolean(created?.id));
 
 await page.goto(`${BASE}/documents`, { waitUntil: 'networkidle' });
 
-// 2. Sidebar course row truncates: span scrollWidth <= clientWidth, button width <= sidebar width
-const row = page.locator('aside button', { hasText: 'Extremely Long Course Name' }).first();
+// 2. Course folder row (now in the tree, not a separate Courses list) truncates.
+const row = page.locator('aside [role="treeitem"]', { hasText: 'Extremely Long Course Name' }).first();
 await row.waitFor({ timeout: 10000 });
-const rowMetrics = await row.evaluate((btn) => {
-  const span = btn.querySelector('span.truncate');
-  const aside = btn.closest('aside');
-  const br = btn.getBoundingClientRect();
+const rowMetrics = await row.evaluate((rowEl) => {
+  const span = Array.from(rowEl.querySelectorAll('span')).find((s) => s.className.includes('truncate'));
+  const aside = rowEl.closest('aside');
+  const rr = rowEl.getBoundingClientRect();
   const ar = aside.getBoundingClientRect();
   return {
     hasSpan: Boolean(span),
     spanClamped: span ? (span.scrollWidth > span.clientWidth ? getComputedStyle(span).textOverflow === 'ellipsis' : true) : false,
-    btnInsideSidebar: br.right <= ar.right + 1 && br.left >= ar.left - 1,
-    btnWidth: Math.round(br.width),
+    insideSidebar: rr.right <= ar.right + 1 && rr.left >= ar.left - 1,
   };
 });
-check('sidebar row has truncating span', rowMetrics.hasSpan);
-check('sidebar span scrollWidth clamped (ellipsis works)', rowMetrics.spanClamped);
-check('sidebar button stays inside sidebar box', rowMetrics.btnInsideSidebar);
+check('tree row has truncating span', rowMetrics.hasSpan);
+check('tree span clamped (ellipsis works)', rowMetrics.spanClamped);
+check('tree row stays inside sidebar box', rowMetrics.insideSidebar);
 
 // 3. No horizontal overflow of the page/sidebar
 const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 check('no horizontal page overflow', pageOverflow);
 
-// 4. Click into the course → breadcrumb truncates inside the address bar
-await row.click();
+// 4. Open the course folder → breadcrumb truncates inside the address bar
+await row.click({ clickCount: 2 });
 await page.waitForTimeout(400);
 const crumb = await page.evaluate(() => {
   const bar = Array.from(document.querySelectorAll('div')).find((d) => d.className.includes('overflow-x-auto') && d.querySelector('button'));
