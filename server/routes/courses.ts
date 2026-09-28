@@ -36,19 +36,41 @@ function rowToCourse(row: CourseRow) {
 // ── Course folder provisioning ────────────────────────────────────────────────
 // Every course owns a folder in the documents tree. Legacy courses (created
 // before folders existed) get one lazily the next time they're touched.
+// Race-safe: overlapping requests each INSERT a candidate folder, but only the
+// single conditional UPDATE ... WHERE folder_id IS NULL winner keeps it — the
+// losers delete their candidate and adopt the winner. Prevents the duplicate
+// orphan folders caused by concurrent GETs self-healing the same course.
 async function ensureCourseFolder(userId: string, courseId: string): Promise<string> {
-  const { rows } = await pool.query<{ folder_id: string | null; name: string; color: string }>(
-    'SELECT folder_id, name, color FROM courses WHERE id = $1 AND user_id = $2',
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { rows } = await pool.query<{ folder_id: string | null; name: string; color: string }>(
+      'SELECT folder_id, name, color FROM courses WHERE id = $1 AND user_id = $2',
+      [courseId, userId],
+    );
+    if (!rows.length) throw new Error('Course not found');
+    const { folder_id: existing } = rows[0];
+    if (existing && (await pool.query('SELECT 1 FROM folders WHERE id = $1', [existing])).rowCount) return existing;
+
+    // Create a candidate folder, then try to claim it atomically.
+    const name = rows[0].name;
+    const color = rows[0].color;
+    const folderId = randomUUID();
+    await pool.query('INSERT INTO folders (id, user_id, name, color) VALUES ($1, $2, $3, $4)', [folderId, userId, name, color || null]);
+    const claimed = await pool.query(
+      'UPDATE courses SET folder_id = $1 WHERE id = $2 AND user_id = $3 AND folder_id IS NULL RETURNING id',
+      [folderId, courseId, userId],
+    );
+    if (claimed.rowCount) return folderId;
+
+    // Lost the race — another request's folder won. Drop our candidate.
+    await pool.query('DELETE FROM folders WHERE id = $1 AND user_id = $2', [folderId, userId]);
+  }
+  // Second pass must have found the winner (or the course vanished mid-flight).
+  const { rows: final } = await pool.query<{ folder_id: string | null }>(
+    'SELECT folder_id FROM courses WHERE id = $1 AND user_id = $2',
     [courseId, userId],
   );
-  if (!rows.length) throw new Error('Course not found');
-  const { folder_id: existing, name, color } = rows[0];
-  if (existing && (await pool.query('SELECT 1 FROM folders WHERE id = $1', [existing])).rowCount) return existing;
-  // Folder row missing (legacy course, or deleted by hand) — recreate.
-  const folderId = randomUUID();
-  await pool.query('INSERT INTO folders (id, user_id, name, color) VALUES ($1, $2, $3, $4)', [folderId, userId, name, color || null]);
-  await pool.query('UPDATE courses SET folder_id = $1 WHERE id = $2 AND user_id = $3', [folderId, courseId, userId]);
-  return folderId;
+  if (final[0]?.folder_id) return final[0].folder_id;
+  throw new Error(`Failed to provision folder for course ${courseId}`);
 }
 
 // Keep the course folder in sync with the course's name/color.
