@@ -216,7 +216,7 @@ export default function ExplorerItem({
       autoFocus
     />
   ) : (
-    <span className={`${view === 'grid' ? 'text-xs' : 'text-sm'} truncate w-full text-left`} title={name}>
+    <span className={`${view === 'grid' ? 'text-xs line-clamp-2 break-words text-left' : 'text-sm truncate w-full text-left'}`} title={name}>
       {name}
     </span>
   );

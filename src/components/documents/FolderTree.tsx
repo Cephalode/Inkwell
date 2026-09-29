@@ -223,7 +223,7 @@ export default function FolderTree({
               autoFocus
             />
           ) : (
-            <span className="flex-1 min-w-0 text-sm truncate py-1">{f.name}</span>
+            <span className="flex-1 min-w-0 text-sm truncate py-1" title={f.name}>{f.name}</span>
           )}
           <span className="text-[10px] shrink-0" style={{ opacity: 0.45 }}>{f.docCount > 0 ? f.docCount : ''}</span>
           <button
