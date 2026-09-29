@@ -71,8 +71,9 @@ check('sort control', await page.locator('button:has-text("Date")').first().isVi
 check('folder tree sidebar', await page.locator('[role="tree"], aside').first().isVisible());
 check('breadcrumbs root', await page.locator('button:has-text("All documents")').first().isVisible());
 
-// 2. Create a folder via toolbar
-await page.locator('button[title="New folder"]').first().click();
+// 2. Create a folder via toolbar (command-bar button has a text label; the
+// sidebar root's + button opens a different inline input in the tree)
+await page.locator('button[title="New folder"]:has(span)').first().click();
 await page.locator('input[placeholder="Folder name…"]').fill(FOLDER);
 await page.locator('input[placeholder="Folder name…"]').press('Enter');
 await page.waitForTimeout(1200);

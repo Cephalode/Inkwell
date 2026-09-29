@@ -50,6 +50,7 @@ import {
 } from 'react-icons/hi2';
 import type { KGNode } from '../types/knowledgeGraph';
 import type { ChapterDocument, Textbook, DocumentFile } from '../types/document';
+import { SUPPORTED_FILE_TYPES } from '../utils/constants';
 
 type SortKey = 'name' | 'recent' | 'size' | 'type';
 type SortDir = 'asc' | 'desc';
@@ -1123,6 +1124,22 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* Hidden file input backing the command-bar "Upload file…" action.
+          The explorer redesign dropped this input, leaving onPickFiles a
+          silent no-op — uploads land in the currently open folder. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={SUPPORTED_FILE_TYPES.join(',')}
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          if (files.length) void uploadFilesTo(currentFolderId, files);
+        }}
+      />
 
       {/* ── Preview modal ── */}
       <FilePreview

@@ -190,7 +190,7 @@ router.get('/:id/documents', async (req: Request, res: Response) => {
   const owned = await pool.query('SELECT 1 FROM folders WHERE id = $1 AND user_id = $2', [id, userId]);
   if (!owned.rowCount) return res.status(404).json({ error: 'Folder not found' });
   const { rows } = await pool.query(
-    `SELECT d.id, CASE WHEN d.folder_id = $1 THEN false ELSE true END AS is_link
+    `SELECT d.id, CASE WHEN d.folder_id = $1 THEN false ELSE true END AS "isLink"
        FROM documents d
        LEFT JOIN document_folder_links l ON l.document_id = d.id AND l.folder_id = $1
       WHERE d.user_id = $2 AND (d.folder_id = $1 OR l.folder_id IS NOT NULL)`,
