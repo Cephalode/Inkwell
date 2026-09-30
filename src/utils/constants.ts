@@ -4,4 +4,5 @@ export const SUPPORTED_FILE_TYPES = [
   '.mp3', '.wav', '.ogg', '.webm', '.m4a', '.aac',
   '.mp4', '.mov', '.m4v', '.webm',
   '.epub', '.xlsx', '.csv',
+  '.zip',
 ];

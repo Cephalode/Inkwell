@@ -13,7 +13,7 @@ export function getFileIcon(type: string): string {
   const icons: Record<string, string> = {
     pdf: '📄', docx: '📝', pptx: '📊', txt: '📃', md: '📝',
     image: '🖼️', audio: '🎵', video: '🎬', epub: '📚',
-    xlsx: '📊', csv: '📊', youtube: '▶️', link: '🔗',
+    xlsx: '📊', csv: '📊', youtube: '▶️', link: '🔗', zip: '🗜️',
   };
   return icons[type] || '📎';
 }

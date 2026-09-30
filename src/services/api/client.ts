@@ -308,6 +308,31 @@ export async function deleteFolder(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to delete folder: ${res.status}`);
 }
 
+/** Result of extracting an uploaded zip into the folder tree. */
+export interface ZipExtractResult {
+  folder: Folder;
+  foldersCreated: number;
+  documentsCreated: number;
+  totalBytes: number;
+}
+
+/**
+ * Upload a .zip and have the server extract it into a new subfolder of
+ * `folderId` (pass null/'root' for the top level). The returned folder is the
+ * newly created archive root, ready to navigate into.
+ */
+export async function extractZipArchive(file: File, folderId: string | null): Promise<ZipExtractResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/folders/${folderId ?? 'root'}/unzip`, { method: 'POST', body: form });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = (json as { error?: string } | null)?.error;
+    throw new Error(message || `Zip extraction failed: ${res.status}`);
+  }
+  return json as ZipExtractResult;
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, { method: 'DELETE' });
   if (!res.ok && res.status !== 204) throw new Error(`Failed to delete document: ${res.status}`);

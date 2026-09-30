@@ -28,7 +28,7 @@ import { useKnowledgeGraphStore } from '../store/knowledgeGraphStore';
 import {
   listChapters, listTextbooks, deleteTextbook, listStudyGuides, getStudyGuide,
   listFolderTree, createFolder, deleteFolder, updateFolder, updateDocument as updateDocumentApi,
-  listFolderDocuments,
+  listFolderDocuments, extractZipArchive,
 } from '../services/api/client';
 import type { FolderTreeNode } from '../services/api/client';
 import { buildKnowledgeGraph } from '../utils/buildKnowledgeGraph';
@@ -41,7 +41,7 @@ import type { StudyGuide } from '../types/studyGuide';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineShare, HiChevronDown, HiChevronRight, HiChevronUp, HiBookOpen, HiTrash,
-  HiExclamationCircle, HiFolder,
+  HiExclamationCircle, HiFolder, HiCheck, HiX,
 } from 'react-icons/hi';
 import {
   HiSquares2X2, HiOutlineListBullet, HiArrowsUpDown,
@@ -120,6 +120,8 @@ export default function DocumentsPage() {
   const [url, setUrl] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Filename currently being uploaded — the command-bar spinner shows it.
+  const [uploadLabel, setUploadLabel] = useState<string | null>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -231,19 +233,51 @@ export default function DocumentsPage() {
     }
   }, [dragging, handleMoveDocToFolder, handleMoveFolder]);
 
-  const uploadFilesTo = useCallback(async (folderId: string | null, files: File[]) => {
+  // ── Zip extraction: upload a .zip, server unzips it into a new subfolder ────
+  const [zipState, setZipState] = useState<{ active: boolean; name: string } | null>(null);
+  const [zipError, setZipError] = useState<string | null>(null);
+
+  const uploadZipTo = useCallback(async (folderId: string | null, file: File) => {
+    setZipState({ active: true, name: file.name });
+    setZipError(null);
+    try {
+      const result = await extractZipArchive(file, folderId);
+      await refreshTree();
+      setZipState({ active: false, name: result.folder.name });
+      // Jump into the freshly created folder so the user sees the extraction.
+      navigateToFolder(result.folder.id);
+      await loadDocuments(); // new docs live inside the folder
+      setTimeout(() => setZipState(null), 4000);
+    } catch (err) {
+      console.error('Zip extraction failed:', err);
+      setZipState(null);
+      setZipError(err instanceof Error ? err.message : 'Zip extraction failed');
+    }
+  }, [refreshTree, navigateToFolder, loadDocuments]);
+
+  // Single entry point for picked/dropped files. Regular files route through
+  // uploadFile (spinner shows the filename); .zip files route through the
+  // extraction flow (spinner shows "Extracting…" until the folder is ready).
+  const uploadAnyTo = useCallback(async (folderId: string | null, files: File[]) => {
     setUploading(true);
     try {
       for (const file of files) {
-        await uploadFile(file, folderId);
+        const isZip = /\.zip$/i.test(file.name) || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+        if (isZip) {
+          await uploadZipTo(folderId, file); // manages its own status state
+        } else {
+          setUploadLabel(file.name);
+          await uploadFile(file, folderId);
+        }
       }
       await refreshTree();
     } catch (err) {
       console.error('Upload failed:', err);
     } finally {
       setUploading(false);
+      setUploadLabel(null);
     }
-  }, [uploadFile, refreshTree]);
+  }, [uploadFile, uploadZipTo, refreshTree]);
 
   // Whole-pane drop (background of the main pane): files → current folder,
   // dragged items → current folder.
@@ -251,11 +285,11 @@ export default function DocumentsPage() {
     e.preventDefault();
     setDragOverPane(false);
     if (e.dataTransfer.files.length > 0) {
-      await uploadFilesTo(currentFolderId, Array.from(e.dataTransfer.files));
+      await uploadAnyTo(currentFolderId, Array.from(e.dataTransfer.files));
       return;
     }
     await handleDropOnFolderTarget(currentFolderId);
-  }, [currentFolderId, uploadFilesTo, handleDropOnFolderTarget]);
+  }, [currentFolderId, uploadAnyTo, handleDropOnFolderTarget]);
 
   // ── Derived data ─────────────────────────────────────────────────────────────
   const searchFiltered = useMemo(
@@ -604,7 +638,7 @@ export default function DocumentsPage() {
                     });
                   }}
                   onDropOnFolder={handleDropOnFolderTarget}
-                  onDropFiles={(targetId, files) => uploadFilesTo(targetId, files)}
+                  onDropFiles={(targetId, files) => uploadAnyTo(targetId, files)}
                 />
               </div>
             </aside>
@@ -625,6 +659,55 @@ export default function DocumentsPage() {
                     requestAnimationFrame(() => urlInputRef.current?.focus());
                   }}
                 />
+                {/* Live upload/extraction status — visible until the file lands
+                    (or, for zips, until the new folder is navigated into). */}
+                {uploading && (
+                  <span
+                    className="flex items-center gap-2 text-sm px-2.5 py-1.5"
+                    style={{ borderRadius: 'var(--radius-md)', color: 'var(--color-accent-700)' }}
+                    role="status"
+                  >
+                    <span
+                      className="w-3.5 h-3.5 border-2 rounded-full animate-spin shrink-0"
+                      style={{ borderColor: 'var(--color-divider)', borderTopColor: 'var(--color-accent)' }}
+                    />
+                    <span className="max-w-[240px] truncate">
+                      {uploadLabel
+                        ? `Uploading ${uploadLabel}…`
+                        : zipState?.active
+                          ? `Extracting ${zipState.name}…`
+                          : 'Uploading…'}
+                    </span>
+                  </span>
+                )}
+                {!uploading && zipState && !zipState.active && (
+                  <span
+                    className="flex items-center gap-1.5 text-sm px-2.5 py-1.5"
+                    style={{ borderRadius: 'var(--radius-md)', color: 'var(--color-success, #2f9e57)' }}
+                    role="status"
+                  >
+                    <HiCheck className="w-4 h-4 shrink-0" />
+                    <span className="max-w-[240px] truncate">Extracted “{zipState.name}”</span>
+                  </span>
+                )}
+                {zipError && (
+                  <span
+                    className="flex items-center gap-1.5 text-sm px-2.5 py-1.5"
+                    style={{ borderRadius: 'var(--radius-md)', color: 'var(--color-danger)' }}
+                    role="alert"
+                  >
+                    <HiExclamationCircle className="w-4 h-4 shrink-0" />
+                    <span className="max-w-[280px] truncate">{zipError}</span>
+                    <button
+                      className="p-0.5 hover:bg-[color-mix(in_srgb,var(--color-text)_10%,transparent)]"
+                      style={{ borderRadius: 'var(--radius-sm)' }}
+                      onClick={() => setZipError(null)}
+                      aria-label="Dismiss"
+                    >
+                      <HiX className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                )}
                 <button
                   className="flex items-center gap-1.5 text-sm px-2.5 py-1.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
                   style={{ borderRadius: 'var(--radius-md)', opacity: 0.85 }}
@@ -904,7 +987,7 @@ export default function DocumentsPage() {
                       else if (dragging.id !== f.id) await handleMoveFolder(dragging.id, f.id).catch((err) => console.error(err));
                       setDragging(null);
                     }}
-                    onDropFiles={dragging ? undefined : (files) => uploadFilesTo(f.id, files)}
+                    onDropFiles={dragging ? undefined : (files) => uploadAnyTo(f.id, files)}
                   />
                 ))}
                 {visibleDocs.map((doc) => (
@@ -999,7 +1082,7 @@ export default function DocumentsPage() {
                       else if (dragging.id !== f.id) await handleMoveFolder(dragging.id, f.id).catch((err) => console.error(err));
                       setDragging(null);
                     }}
-                    onDropFiles={dragging ? undefined : (files) => uploadFilesTo(f.id, files)}
+                    onDropFiles={dragging ? undefined : (files) => uploadAnyTo(f.id, files)}
                   />
                 ))}
                 {visibleDocs.map((doc) => (
@@ -1137,7 +1220,7 @@ export default function DocumentsPage() {
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
-          if (files.length) void uploadFilesTo(currentFolderId, files);
+          if (files.length) void uploadAnyTo(currentFolderId, files);
         }}
       />
 

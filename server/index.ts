@@ -28,6 +28,7 @@ import videosRouter from './routes/videos.js';
 import ttsRouter from './routes/tts.js';
 import flagsRouter from './routes/flags.js';
 import foldersRouter from './routes/folders.js';
+import zipExtractRouter from './routes/zipExtract.js';
 import lessonsRouter from './routes/lessons.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ app.use('/api', videosRouter);
 app.use('/api', ttsRouter);
 app.use('/api', flagsRouter);
 app.use('/api/folders', foldersRouter);
+app.use('/api/folders', zipExtractRouter);
 app.use('/api/lessons', lessonsRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-export type DocumentType = 'pdf' | 'docx' | 'pptx' | 'txt' | 'md' | 'image' | 'audio' | 'video' | 'epub' | 'xlsx' | 'csv' | 'youtube' | 'link';
+export type DocumentType = 'pdf' | 'docx' | 'pptx' | 'txt' | 'md' | 'image' | 'audio' | 'video' | 'epub' | 'xlsx' | 'csv' | 'youtube' | 'link' | 'zip';
 
 export interface Chapter {
   title: string;
