@@ -32,6 +32,8 @@ export interface User {
   name: string | null;
   picture: string | null;
   plan: string;
+  /** True for auto-created guest sessions (anon-first bootstrap). */
+  isAnonymous?: boolean;
 }
 
 declare global {
@@ -50,7 +52,9 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-export async function createSession(res: Response, userId: string): Promise<void> {
+/** Creates a session row + sets the cookie. Returns the raw token so native
+ *  clients (iOS) can be handed it via the inkwell:// redirect in the callback. */
+export async function createSession(res: Response, userId: string): Promise<string> {
   const token = newToken();
   await pool.query(
     `INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)`,
@@ -64,16 +68,18 @@ export async function createSession(res: Response, userId: string): Promise<void
     maxAge: SESSION_TTL_MS,
     path: '/',
   });
+  return token;
 }
 
-async function userForToken(token: string): Promise<User | null> {
+export async function userForToken(token: string): Promise<User | null> {
   const { rows } = await pool.query(
-    `SELECT u.id, u.email, u.name, u.picture, u.plan
+    `SELECT u.id, u.email, u.name, u.picture, u.plan, u.is_anonymous
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = $1 AND s.expires_at > now()`,
     [hashToken(token)],
   );
-  return (rows[0] as User) || null;
+  const { is_anonymous, ...rest } = rows[0] as User & { is_anonymous?: boolean };
+  return rows[0] ? { ...rest, isAnonymous: !!is_anonymous } : null;
 }
 
 /** Read the session cookie and attach req.user (or null). */
@@ -118,8 +124,23 @@ async function claimSharedRows(userId: string): Promise<void> {
 // ── Routes ──────────────────────────────────────────────────────────────────
 const router = Router();
 
-// GET /api/auth/google/start — redirect to Google's consent screen
-router.get('/google/start', (_req: Request, res: Response) => {
+// POST /api/auth/mcp-token — mint a session token for MCP clients (Bearer auth
+// on POST /mcp). Reuses the sessions table; the cookie and this token are the
+// same credential type, so Sign out / expiry revokes both.
+router.post('/mcp-token', requireUser, async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  const token = newToken();
+  await pool.query(
+    `INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)`,
+    [hashToken(token), req.user.id, new Date(Date.now() + SESSION_TTL_MS)],
+  );
+  res.json({ token });
+});
+
+// GET /api/auth/google/start — redirect to Google's consent screen.
+// ?native=1 is for the iOS app (ASWebAuthenticationSession): the callback
+// bounces to the inkwell:// URL scheme instead of the web root.
+router.get('/google/start', (req: Request, res: Response) => {
   if (!AUTH_ENABLED) return res.status(501).json({ error: 'OAuth not configured (missing GOOGLE_CLIENT_ID/SECRET)' });
   const state = newToken();
   const params = new URLSearchParams({
@@ -131,8 +152,11 @@ router.get('/google/start', (_req: Request, res: Response) => {
     prompt: 'select_account',
     access_type: 'online',
   });
-  // stash state in a short-lived cookie for CSRF check at the callback
+  // stash state + native flag in short-lived cookies for the callback
   res.cookie('inkwell_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: PUBLIC_ORIGIN.startsWith('https'), maxAge: 10 * 60 * 1000, path: '/' });
+  if (req.query.native) {
+    res.cookie('inkwell_oauth_native', '1', { httpOnly: true, sameSite: 'lax', secure: PUBLIC_ORIGIN.startsWith('https'), maxAge: 10 * 60 * 1000, path: '/' });
+  }
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
 
@@ -209,7 +233,15 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     }
 
     await claimSharedRows(user.id);
-    await createSession(res, user.id);
+    const token = await createSession(res, user.id);
+    // Native clients (iOS ASWebAuthenticationSession) carry the inkwell_oauth_native
+    // flag cookie — hand the session token to the app via its URL scheme instead
+    // of redirecting to the web root. Token is secret-of-the-web-view only.
+    const native = (req as Request & { cookies?: Record<string, string> }).cookies?.['inkwell_oauth_native'];
+    if (native) {
+      res.clearCookie('inkwell_oauth_native', { path: '/' });
+      return res.redirect(`inkwell://auth/callback#token=${encodeURIComponent(token)}`);
+    }
     res.redirect('/');
   } catch (err: unknown) {
     console.error('OAuth callback error:', err);
@@ -217,10 +249,8 @@ router.get('/google/callback', async (req: Request, res: Response) => {
   }
 });
 
-// ── Anonymous-first sessions (E8 / PRD 9) ───────────────────────────────────
-// Every visitor gets a session immediately; Google sign-in later claims the
-// same rows (no data migration). Requires OAuth to be configured — without it
-// the app runs in legacy shared-user mode anyway.
+// ── Legacy guest migration ──────────────────────────────────────────────────
+// Google sign-in claims the same rows (no data migration needed).
 
 /** Move every row this anon user owns to the claiming user, then remove them. */
 async function mergeAnonUser(anonId: string, intoId: string): Promise<void> {
@@ -237,25 +267,8 @@ async function mergeAnonUser(anonId: string, intoId: string): Promise<void> {
   await pool.query('DELETE FROM users WHERE id = $1', [anonId]);
 }
 
-// POST /api/auth/anon — get (or create) an anonymous session.
-router.post('/anon', async (req: Request, res: Response) => {
-  if (!AUTH_ENABLED) return res.status(501).json({ error: 'Auth not configured' });
-  if (req.user) return res.json({ user: req.user }); // already signed in — nothing to do
-  try {
-    const id = randomBytes(12).toString('hex');
-    const { rows } = await pool.query(
-      `INSERT INTO users (id, email, is_anonymous) VALUES ($1, $2, true)
-       RETURNING id, email, name, picture, plan`,
-      [id, `anon_${id}@anonymous.inkwell.local`],
-    );
-    const user = rows[0] as User;
-    await createSession(res, user.id);
-    res.status(201).json({ user });
-  } catch (err: unknown) {
-    console.error('Anon session creation failed:', err);
-    res.status(500).json({ error: 'Failed to create session' });
-  }
-});
+// (Guest/anon sessions removed — sign-in with Google is the only entry point.
+// mergeAnonUser above stays: it migrates any legacy anon user's data on sign-in.)
 
 // POST /api/auth/referral — one-time funnel capture on the current user.
 router.post('/referral', async (req: Request, res: Response) => {
