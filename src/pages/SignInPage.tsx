@@ -15,6 +15,7 @@ export default function SignInPage() {
       <p className="text-sm text-center max-w-sm" style={{ opacity: 0.6 }}>
         Your AI study companion — notes, flashcards, podcasts and more from anything you upload.
       </p>
+      <div className="flex flex-col items-stretch gap-2">
       <button
         onClick={handleSignIn}
         className="flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-all hover:opacity-90"
@@ -33,6 +34,7 @@ export default function SignInPage() {
         </svg>
         Continue with Google
       </button>
+      </div>
     </div>
   );
 }

@@ -8,7 +8,7 @@ interface PendingTool {
   result?: string;
 }
 
-interface ChatState {
+export interface ChatState {
   isOpen: boolean;
   messages: ChatMessage[];
   isLoading: boolean;
@@ -16,9 +16,13 @@ interface ChatState {
   sessions: ChatSession[];
   activeSessionId: string | null;
   isLoadingSessions: boolean;
+  /** Focuses added via the selection pill's "Send to AI" (Cursor-style). */
+  focusRefs: { id: string; excerpt: string }[];
   open: () => void;
   close: () => void;
   toggle: () => void;
+  addFocus: (excerpt: string) => void;
+  removeFocus: (id: string) => void;
   addMessage: (msg: ChatMessage) => void;
   setLoading: (loading: boolean) => void;
   setPendingTools: (tools: PendingTool[]) => void;
@@ -39,9 +43,19 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   sessions: [],
   activeSessionId: null,
   isLoadingSessions: false,
+  focusRefs: [],
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
+  addFocus: (excerpt) =>
+    set((s) => {
+      const id = `focus-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const trimmed = excerpt.length > 200 ? `${excerpt.slice(0, 200).trimEnd()}…` : excerpt;
+      // Same passage twice → no-op.
+      if (s.focusRefs.some((f) => f.excerpt === trimmed)) return {};
+      return { focusRefs: [...s.focusRefs, { id, excerpt: trimmed }] };
+    }),
+  removeFocus: (id) => set((s) => ({ focusRefs: s.focusRefs.filter((f) => f.id !== id) })),
 
   addMessage: (msg) => {
     const state = get();

@@ -6,7 +6,7 @@
 
 export type Mastery = 'not_started' | 'learning' | 'learned';
 
-export type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast';
+export type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast' | 'diagram' | 'slides' | 'flow';
 
 export type ActivityStatus = 'ready' | 'in_progress' | 'completed' | 'error';
 
@@ -77,6 +77,18 @@ export interface Roadmap {
   steps: RoadmapStep[];
   nextStepId: string | null;
   counts: { total: number; learned: number; learning: number; locked: number };
+  /** All versions of this course's roadmap (active first) — for the switcher. */
+  versions?: RoadmapVersion[];
+}
+
+/** One saved roadmap version in a course's switcher list. */
+export interface RoadmapVersion {
+  id: string;
+  title: string;
+  status: RoadmapStatus;
+  isActive: boolean;
+  createdAt: string;
+  stepCount: number;
 }
 
 // ── Activity content ────────────────────────────────────────────────────────
@@ -144,7 +156,91 @@ export interface PodcastContent {
   renderError?: string;
 }
 
-export type ActivityContent = LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent;
+/** One slide of a generated deck. Every slide carries speaker `notes` — the
+ *  spoken narration TTS reads aloud (also shown under the stage). */
+export type Slide =
+  | { type: 'title'; title: string; subtitle: string; notes: string }
+  | { type: 'bullets'; title: string; bullets: string[]; notes: string }
+  | { type: 'diagram'; title: string; caption: string; svg: string; notes: string };
+
+export interface SlidesContent {
+  /** The deck, in presentation order. */
+  slides: Slide[];
+  /** Storage key; set once the fire-and-forget narration render finishes. */
+  audioPath?: string;
+  /** Per-slide narration timing (seconds) — lets the player auto-advance. */
+  slideAudio?: Array<{ startS: number; durationS: number }>;
+  /** Set when the TTS render failed — the deck still reads fine. */
+  renderError?: string;
+}
+
+export interface SlidesResult {
+  score: number;
+}
+
+export interface DiagramContent {
+  prompt: string;
+  rubric: string[];
+  hints: string[];
+  /** Review-loop transcript (assistant feedback + snapshot markers). */
+  messages: Array<{ role: 'assistant' | 'user'; content: string; at: string }>;
+  maxRounds: number;
+}
+
+export type ActivityContent = LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent | DiagramContent | SlidesContent | FlowLessonContent | FlowQuizContent;
+
+// ── Learning flow (Duolingo-style) ──────────────────────────────────────────
+
+/** The 7-lesson sequence per topic, in order. */
+export const FLOW_SLOTS = ['learn1', 'review1', 'review_prev', 'learn2', 'review2', 'review1b', 'test'] as const;
+export type FlowSlot = (typeof FLOW_SLOTS)[number];
+
+export const FLOW_SLOT_META: Record<FlowSlot, { label: string; blurb: string; kind: 'learn' | 'review' | 'test' }> = {
+  learn1: { label: 'Learn · part 1', blurb: 'First half of this topic', kind: 'learn' },
+  review1: { label: 'Review · part 1', blurb: 'Quick checks on what you just learned', kind: 'review' },
+  review_prev: { label: 'Review · earlier topics', blurb: 'Keep previous topics fresh', kind: 'review' },
+  learn2: { label: 'Learn · part 2', blurb: 'Second half of this topic', kind: 'learn' },
+  review2: { label: 'Review · part 2', blurb: 'Quick checks on part 2', kind: 'review' },
+  review1b: { label: 'Review · part 1 again', blurb: 'One more pass on part 1', kind: 'review' },
+  test: { label: 'Final test', blurb: 'Everything on this topic', kind: 'test' },
+};
+
+export interface FlowSubject {
+  id: string;
+  title: string;
+  explanation: string;
+  example: string;
+  /** Sanitized teaching SVG for the concept page (optional; older decks lack it). */
+  diagram?: string;
+  /** Sanitized teaching SVG for the example page. */
+  exampleDiagram?: string;
+  mcq: { prompt: string; options: string[]; correct: string; explanation: string };
+}
+
+export interface FlowLessonContent {
+  flow: 'lesson';
+  /** Which flow lesson this deck belongs to (stamped server-side). */
+  slot?: FlowSlot;
+  subjects: FlowSubject[];
+}
+
+export interface FlowQuizQuestion {
+  id: string;
+  subject: string;
+  prompt: string;
+  options: string[];
+  correct: string;
+  explanation: string;
+}
+
+export interface FlowQuizContent {
+  flow: 'quiz';
+  slot?: FlowSlot;
+  questions: FlowQuizQuestion[];
+}
+
+/** Account-level teaching style, switched in Settings. */
+export type LearningMode = 'legacy' | 'flow';
 
 // ── Activity results ────────────────────────────────────────────────────────
 
@@ -192,7 +288,25 @@ export interface PodcastResult {
   score: number;
 }
 
-export type ActivityResult = QuizResult | FlashcardsResult | LessonResult | RecallResult | DiscussionResult | PodcastResult;
+export interface DiagramResult {
+  score: number;
+  covered: string[];
+  missing: string[];
+  feedback: string;
+  /** The final canvas snapshot (data URL), for the outcome view. */
+  image?: string;
+}
+
+export type ActivityResult = QuizResult | FlashcardsResult | LessonResult | RecallResult | DiscussionResult | PodcastResult | DiagramResult | SlidesResult | FlowResult;
+
+/** What a completed flow lesson records — per-subject right/wrong drives reviews. */
+export interface FlowResult {
+  score: number;
+  passed: boolean;
+  correct: number;
+  total: number;
+  slot: FlowSlot;
+}
 
 export interface LearningActivity {
   id: string;
@@ -291,13 +405,35 @@ export const ACTIVITY_META: Record<
   ActivityKind,
   { label: string; blurb: string; xp: number; emoji: string; assessed: boolean }
 > = {
+  flow: { label: 'Guided lesson', blurb: 'Learn, review, and test — picked for you', xp: 20, emoji: '🎯', assessed: true },
   lesson: { label: 'Lesson', blurb: 'A short focused explainer with worked examples', xp: 10, emoji: '📖', assessed: false },
+  slides: { label: 'Slides', blurb: 'A slideshow with diagrams, read aloud', xp: 10, emoji: '🖥️', assessed: false },
   flashcards: { label: 'Flashcards', blurb: 'Quick recall drill, grade yourself', xp: 15, emoji: '🃏', assessed: false },
   podcast: { label: 'Podcast', blurb: 'A two-host audio overview of this topic', xp: 15, emoji: '🎙️', assessed: false },
   quiz: { label: 'Quiz', blurb: 'Six questions, graded by the tutor', xp: 20, emoji: '✅', assessed: true },
   recall: { label: 'Teach it back', blurb: 'Explain it from memory, get a rubric review', xp: 25, emoji: '🗣️', assessed: true },
   discussion: { label: 'Talk it through', blurb: 'A Socratic chat until the tutor is convinced', xp: 30, emoji: '💬', assessed: true },
+  diagram: { label: 'Draw a diagram', blurb: 'Sketch the concept; the tutor reviews your drawing', xp: 25, emoji: '✏️', assessed: true },
 };
+
+/**
+ * The strategies grouped into the three-stage learning flow (learn → test →
+ * demonstrate). Drives the picker's grouping and generate-all's queue order:
+ * the natural first stops (Learn) are ready first, Demonstrate last.
+ */
+export interface StrategyStage {
+  /** 1-based display order. */
+  n: 1 | 2 | 3;
+  label: string;
+  hint: string;
+  kinds: ActivityKind[];
+}
+
+export const STRATEGY_STAGES: readonly StrategyStage[] = [
+  { n: 1, label: 'Learn', hint: 'First pass — take it in', kinds: ['lesson', 'slides', 'podcast'] },
+  { n: 2, label: 'Test', hint: 'Find out what stuck', kinds: ['flashcards', 'quiz'] },
+  { n: 3, label: 'Demonstrate', hint: 'Assessed — these move mastery', kinds: ['recall', 'discussion', 'diagram'] },
+];
 
 export const MASTERY_LABEL: Record<Mastery, string> = {
   not_started: 'Not started',

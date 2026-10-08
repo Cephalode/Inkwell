@@ -1,11 +1,11 @@
 import { useRef, useEffect } from 'react';
-import { HiDocumentText, HiBookOpen } from 'react-icons/hi';
+import { HiDocumentText, HiBookOpen, HiOutlineEye } from 'react-icons/hi2';
 
 /** An item that can be @-referenced in the chat input. */
 export interface MentionableItem {
   id: string;
   name: string;
-  type: 'document' | 'chapter';
+  type: 'document' | 'chapter' | 'page';
   parentId?: string;
 }
 
@@ -83,6 +83,8 @@ export default function MentionPopover({ items, activeIndex, onSelect, onClose }
         >
           {item.type === 'chapter' ? (
             <HiBookOpen className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
+          ) : item.type === 'page' ? (
+            <HiOutlineEye className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
           ) : (
             <HiDocumentText className="w-4 h-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
           )}

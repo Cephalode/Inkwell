@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { PiCheckCircleDuotone } from 'react-icons/pi';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLearningStore } from '../../store/learningStore';
 import type { FlashcardsContent } from '../../types/learning';
@@ -158,17 +159,25 @@ export default function FlashcardRunner({ activity, onComplete, onAbandon }: Act
           >
             {flipped ? (
               <>
-                <div style={{ fontSize: 14, opacity: 0.5, maxWidth: '46ch' }}>{current.front}</div>
+                <Markdown
+                  content={current.front}
+                  compact
+                  className="max-w-[46ch] text-[14px] opacity-50 [&_p]:text-[14px]"
+                />
                 <div style={{ width: 48, borderTop: '1px solid var(--color-neutral-400)' }} />
-                <div style={{ fontSize: isMobile ? 18 : 21, lineHeight: 1.5, maxWidth: '46ch', whiteSpace: 'pre-wrap' }}>
-                  {current.back}
-                </div>
+                <Markdown
+                  content={current.back}
+                  compact
+                  className={`max-w-[46ch] [&_p]:mb-0 ${isMobile ? '[&_p]:text-[18px]' : '[&_p]:text-[21px]'} [&_p]:leading-[1.5]`}
+                />
               </>
             ) : (
               <>
-                <div style={{ fontSize: isMobile ? 20 : 24, lineHeight: 1.45, maxWidth: '40ch', whiteSpace: 'pre-wrap' }}>
-                  {current.front}
-                </div>
+                <Markdown
+                  content={current.front}
+                  compact
+                  className={`max-w-[40ch] ${isMobile ? '[&_p]:text-[20px]' : '[&_p]:text-[24px]'} [&_p]:leading-[1.45]`}
+                />
                 <div style={{ fontSize: 12.5, opacity: 0.4 }}>{isMobile ? 'Tap to reveal' : 'Click to reveal'}</div>
               </>
             )}

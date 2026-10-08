@@ -284,6 +284,24 @@ router.get('/me', (req: Request, res: Response) => {
   res.json({ user: req.user || null, authEnabled: AUTH_ENABLED });
 });
 
+// GET/PUT /api/auth/learning-mode — Duolingo-style flow vs legacy strategies.
+router.get('/learning-mode', async (req: Request, res: Response) => {
+  if (!req.user) return res.json({ mode: 'legacy' });
+  try {
+    const { rows } = await pool.query('SELECT learning_mode FROM users WHERE id = $1', [req.user.id]);
+    res.json({ mode: rows[0]?.learning_mode === 'flow' ? 'flow' : 'legacy' });
+  } catch {
+    res.json({ mode: 'legacy' }); // column not migrated yet — fail safe
+  }
+});
+
+router.put('/learning-mode', async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  const mode = req.body?.mode === 'flow' ? 'flow' : 'legacy';
+  await pool.query('UPDATE users SET learning_mode = $2 WHERE id = $1', [req.user.id, mode]);
+  res.json({ mode });
+});
+
 // POST /api/auth/logout
 router.post('/logout', async (req: Request, res: Response) => {
   const token = (req as Request & { cookies?: Record<string, string> }).cookies?.[SESSION_COOKIE];

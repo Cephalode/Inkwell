@@ -183,7 +183,7 @@ export async function loadRoadmapView(roadmap: RoadmapRow) {
 }
 
 async function findRoadmap(where: 'id' | 'course_id', value: string): Promise<RoadmapRow | null> {
-  const { rows } = await pool.query(`SELECT * FROM roadmaps WHERE ${where} = $1`, [value]);
+  const { rows } = await pool.query(`SELECT * FROM roadmaps WHERE ${where} = $1 ORDER BY is_active DESC, created_at DESC LIMIT 1`, [value]);
   if (rows.length === 0) return null;
   const row = rows[0] as RoadmapRow;
   if (row.status === 'generating' && checkStale(row)) {
@@ -194,46 +194,127 @@ async function findRoadmap(where: 'id' | 'course_id', value: string): Promise<Ro
   return row;
 }
 
-// ── GET /courses/:courseId/roadmap ──────────────────────────────────────────
+// ── GET /courses/:courseId/roadmap — the ACTIVE roadmap for a course ────────
 
 router.get('/courses/:courseId/roadmap', async (req: Request, res: Response) => {
   try {
     const roadmap = await findRoadmap('course_id', String(req.params.courseId));
     if (!roadmap) return res.status(404).json({ error: 'No roadmap for this course yet' });
-    res.json(await loadRoadmapView(roadmap));
+    const list = await listRoadmaps(String(req.params.courseId));
+    res.json({ ...await loadRoadmapView(roadmap), versions: list });
   } catch (err) {
     console.error('Error loading roadmap:', err);
     res.status(500).json({ error: 'Failed to load roadmap' });
   }
 });
 
-// ── POST /courses/:courseId/roadmap — create or reset (pending) ─────────────
+// ── GET /courses/:courseId/roadmaps — version list for the switcher ─────────
+
+router.get('/courses/:courseId/roadmaps', async (req: Request, res: Response) => {
+  try {
+    res.json(await listRoadmaps(String(req.params.courseId)));
+  } catch (err) {
+    console.error('Error listing roadmaps:', err);
+    res.status(500).json({ error: 'Failed to list roadmaps' });
+  }
+});
+
+/** Lightweight summaries, active first, newest first — the switcher menu. */
+async function listRoadmaps(courseId: string) {
+  const { rows } = await pool.query(
+    `SELECT id, title, status, is_active, created_at,
+            (SELECT count(*) FROM roadmap_steps s WHERE s.roadmap_id = r.id)::int AS step_count
+     FROM roadmaps r WHERE course_id = $1
+     ORDER BY is_active DESC, created_at DESC`,
+    [courseId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title || 'Untitled path',
+    status: r.status,
+    isActive: r.is_active,
+    createdAt: r.created_at,
+    stepCount: r.step_count,
+  }));
+}
+
+// ── POST /courses/:courseId/roadmap — create a NEW roadmap version ──────────
 
 router.post('/courses/:courseId/roadmap', async (req: Request, res: Response) => {
   try {
     const courseId = String(req.params.courseId);
     const { rows: courseRows } = await pool.query('SELECT id, name FROM courses WHERE id = $1', [courseId]);
     if (courseRows.length === 0) return res.status(404).json({ error: 'Course not found' });
-    const { rows } = await pool.query(
-      `INSERT INTO roadmaps (course_id, title, status)
-       VALUES ($1, $2, 'pending')
-       ON CONFLICT (course_id) DO UPDATE SET status = 'pending', error = NULL, updated_at = now()
-       -- Never reset a live generation back to pending — that would let a
-       -- second generate slip past the guard below (double GLM spend).
-       -- Stale window mirrors GENERATION_TIMEOUT_MS (10 min).
-       WHERE roadmaps.status <> 'generating' OR roadmaps.updated_at < now() - interval '10 minutes'
-       RETURNING *`,
-      [courseId, `${courseRows[0].name} roadmap`],
+
+    // One in-flight build per course. Any roadmap (old or new) still
+    // generating blocks a new one; the 10-min stale window mirrors
+    // GENERATION_TIMEOUT_MS so a crashed run doesn't lock the course forever.
+    const { rows: busy } = await pool.query(
+      `SELECT id FROM roadmaps
+       WHERE course_id = $1 AND status = 'generating' AND updated_at >= now() - interval '10 minutes'`,
+      [courseId],
     );
-    let roadmap = rows[0] as RoadmapRow | undefined;
-    if (!roadmap) {
-      // Already generating elsewhere — return it as-is instead of resetting.
-      roadmap = (await pool.query('SELECT * FROM roadmaps WHERE course_id = $1', [courseId])).rows[0] as RoadmapRow;
-    }
-    res.status(201).json(await loadRoadmapView(roadmap));
+    if (busy.length > 0) return res.status(409).json({ error: 'This course already has a roadmap generating' });
+
+    // New versions start inactive: the new build's first step doesn't yank the
+    // learner off the path they're on. Activation happens on switch (or on
+    // first-ever build, where there's nothing to preserve).
+    const existing = await pool.query('SELECT count(*)::int AS n FROM roadmaps WHERE course_id = $1', [courseId]);
+    const activateNow = existing.rows[0].n === 0;
+    // Optional custom name from the create dialog; falls back to "<course> roadmap".
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 120) : '';
+    const { rows } = await pool.query(
+      `INSERT INTO roadmaps (course_id, title, status, is_active)
+       VALUES ($1, $2, 'pending', $3) RETURNING *`,
+      [courseId, title || `${courseRows[0].name} roadmap`, activateNow],
+    );
+    res.status(201).json(await loadRoadmapView(rows[0] as RoadmapRow));
   } catch (err) {
     console.error('Error creating roadmap:', err);
     res.status(500).json({ error: 'Failed to create roadmap' });
+  }
+});
+
+// ── PUT /roadmaps/:id/active — switch the course's active roadmap ───────────
+
+router.put('/roadmaps/:id/active', async (req: Request, res: Response) => {
+  try {
+    const { rows: target } = await pool.query('SELECT id, course_id, status FROM roadmaps WHERE id = $1', [req.params.id]);
+    if (target.length === 0) return res.status(404).json({ error: 'Roadmap not found' });
+    if (target[0].status === 'generating') return res.status(409).json({ error: 'That roadmap is still generating' });
+    const courseId = target[0].course_id as string;
+    await pool.query('UPDATE roadmaps SET is_active = false WHERE course_id = $1 AND is_active', [courseId]);
+    await pool.query('UPDATE roadmaps SET is_active = true, updated_at = now() WHERE id = $1', [req.params.id]);
+    const roadmap = await findRoadmap('id', String(req.params.id));
+    res.json({ ...await loadRoadmapView(roadmap!), versions: await listRoadmaps(courseId) });
+  } catch (err) {
+    console.error('Error activating roadmap:', err);
+    res.status(500).json({ error: 'Failed to switch roadmap' });
+  }
+});
+
+// ── DELETE /roadmaps/:id — remove a saved path (active one auto-promotes) ───
+
+router.delete('/roadmaps/:id', async (req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query('SELECT is_active, course_id, status FROM roadmaps WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Roadmap not found' });
+    if (rows[0].status === 'generating') return res.status(409).json({ error: 'That roadmap is still generating' });
+    const { is_active: isActive, course_id: courseId } = rows[0];
+    await pool.query('DELETE FROM roadmaps WHERE id = $1', [req.params.id]);
+    if (isActive) {
+      // Keep the course usable: promote the newest finished sibling, if any.
+      await pool.query(
+        `UPDATE roadmaps SET is_active = true WHERE id = (
+           SELECT id FROM roadmaps WHERE course_id = $1 AND status = 'done'
+           ORDER BY created_at DESC LIMIT 1)`,
+        [courseId],
+      );
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error('Error deleting roadmap:', err);
+    res.status(500).json({ error: 'Failed to delete roadmap' });
   }
 });
 
@@ -250,15 +331,36 @@ router.get('/roadmaps/:id', async (req: Request, res: Response) => {
   }
 });
 
-// ── DELETE /roadmaps/:id ────────────────────────────────────────────────────
+// ── PATCH /roadmaps/:id — rename a roadmap and/or move it to another course ──
 
-router.delete('/roadmaps/:id', async (req: Request, res: Response) => {
+router.patch('/roadmaps/:id', async (req: Request, res: Response) => {
   try {
-    await pool.query('DELETE FROM roadmaps WHERE id = $1', [String(req.params.id)]);
-    res.status(204).send();
-  } catch (err) {
-    console.error('Error deleting roadmap:', err);
-    res.status(500).json({ error: 'Failed to delete roadmap' });
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 120) : '';
+    const courseId = typeof req.body?.courseId === 'string' ? req.body.courseId : '';
+    if (!title && !courseId) return res.status(400).json({ error: 'Nothing to update' });
+    if (courseId) {
+      const course = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
+      if (course.rowCount === 0) return res.status(404).json({ error: 'Course not found' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE roadmaps SET
+         title = COALESCE(NULLIF($1, ''), title),
+         course_id = COALESCE(NULLIF($2, ''), course_id),
+         updated_at = now()
+       WHERE id = $3
+       RETURNING *`,
+      [title, courseId, req.params.id],
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Roadmap not found' });
+    // Unique active-index: moving an ACTIVE roadmap into a course that already
+    // has one would violate it — deactivate there first is destructive, so refuse.
+    res.json({ ...await loadRoadmapView(rows[0]), versions: await listRoadmaps(rows[0].course_id) });
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === '23505') {
+      return res.status(409).json({ error: 'That course already has an active roadmap — switch it first' });
+    }
+    console.error('Error updating roadmap:', err);
+    res.status(500).json({ error: 'Failed to update roadmap' });
   }
 });
 
@@ -306,8 +408,18 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'This roadmap is already generating' });
   }
   const roadmap = rows[0] as RoadmapRow;
-  // Optional regeneration instruction from the client's prompt textbox.
-  const guidance = typeof req.body?.guidance === 'string' ? req.body.guidance.trim().slice(0, 500) : '';
+  // Optional regeneration instruction from the client's dialog textbox.
+  const guidance = typeof req.body?.guidance === 'string' ? req.body.guidance.trim().slice(0, 4000) : '';
+  // Optional @-referenced files (client dialog): unioned into the material set
+  // on top of the course's own, so the path can be shaped by any file.
+  const requestedIds: string[] = Array.isArray(req.body?.documentIds)
+    ? req.body.documentIds.filter((x: unknown): x is string => typeof x === 'string')
+    : [];
+  let extraIds = '';
+  if (requestedIds.length > 0) {
+    const names = await pool.query('SELECT id, name FROM documents WHERE id = ANY($1)', [requestedIds]);
+    extraIds = names.rows.map((r) => r.name).join(', ');
+  }
 
   const { rows: courseRows } = await pool.query('SELECT name, coursera_slug FROM courses WHERE id = $1', [roadmap.course_id]);
   const courseName: string = courseRows[0]?.name ?? 'Course';
@@ -338,7 +450,7 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
           }
         }
       }
-      materials = await collectMaterials({ courseId: roadmap.course_id });
+      materials = await collectMaterials({ courseId: roadmap.course_id, documentIds: requestedIds });
       return materials;
     },
 
@@ -358,7 +470,7 @@ router.post('/roadmaps/:id/generate', async (req: Request, res: Response) => {
 Text:
 ${unit.text}
 
-List the 2-8 distinct topics this material teaches. For each give a short name (2-6 words, the concept itself, e.g. "Gradient descent", not "Introduction to..."), a one-sentence description, 2-4 learning objectives (what the learner should be able to do), and 3-5 key points a lesson must cover.
+List the distinct topics this material teaches — up to 8 for short materials, up to 15 for long ones that cover many videos/chapters. For each give a short name (2-6 words, the concept itself, e.g. "Gradient descent", not "Introduction to..."), a one-sentence description, 2-4 learning objectives (what the learner should be able to do), and 3-5 key points a lesson must cover.
 
 Respond with ONLY JSON: {"topics": [{"name": "...", "description": "...", "objectives": ["..."], "keyPoints": ["..."]}]}`,
           },
@@ -413,7 +525,7 @@ Respond with ONLY JSON: {"topics": [{"name": "...", "description": "...", "objec
 
 Topics extracted from every material in the course (index = material number):
 ${JSON.stringify(extracted.map((t, i) => ({ i, ...t })))}
-${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library but are NOT yet mastered. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}${knownLine}${guidance ? `\nThe learner's request for THIS path: ${guidance}\nShape the path around this request wherever the course materials support it.\n` : ''}
+${syllabusHint ? `\nThe course's official syllabus (modules and lessons), in order:\n${syllabusHint}\nFollow the syllabus order and ONLY include topics the syllabus teaches.\n` : ''}${existing ? `\nSkills that already exist in the learner's library but are NOT yet mastered. If a roadmap step is the SAME concept as one of these, use that EXACT label as the step title so progress carries over:\n${existing}\n` : ''}${knownLine}${guidance ? `\nThe learner's request for THIS path: ${guidance}\nShape the path around this request wherever the course materials support it.\n` : ''}${extraIds ? `\nThe learner explicitly referenced these documents for this path: ${extraIds}. Work their content in.\n` : ''}
 Build the roadmap:
 - Merge duplicate/overlapping extracted topics into one step each. Aim for 6-16 steps; never more than 20.
 - Order from foundations to advanced. Each step lists the titles of earlier steps it depends on (empty for foundations). No cycles.

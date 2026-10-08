@@ -5,10 +5,11 @@
 // consumes them directly. A clean split needs a playback-state refactor; until
 // then, silence the fast-refresh rule rather than thread state through props.
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useRef, useState } from 'react';
-import { HiPlay, HiPause, HiStop, HiXMark, HiExclamationTriangle, HiSpeakerWave } from 'react-icons/hi2';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { HiPlay, HiPause, HiStop, HiXMark, HiExclamationTriangle, HiSpeakerWave, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import Spinner from './Spinner';
-import { chunkSpeechText } from '../../utils/speechText';
+import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
+import { useChatStore } from '../../store/chatStore';
 
 const API_BASE: string =
   typeof window !== 'undefined' ? `${window.location.origin}/api` : '/api';
@@ -31,6 +32,8 @@ export function stopSpeak(): void {
   a.pause();
   a.removeAttribute('src');
   a.load();
+  progressState = { phase: 'idle', partsDone: 0, partsTotal: 0 };
+  emitProgress();
 }
 
 /** Word timing from the server: t = seconds into this chunk's audio. */
@@ -63,6 +66,24 @@ async function fetchTts(text: string, words = false): Promise<{ bytes: Uint8Arra
 let activeWord: number | null = null;
 let audioMarks: WordMark[] = [];
 let rafId = 0;
+
+/** Progress signal for long reads (lesson Listen): fires on every audio
+ * state change with {phase, partsDone, partsTotal}. phase: 'generating' |
+ * 'playing' | 'idle'. Fetch ordering makes done counts monotonic. */
+export interface SpeakProgress {
+  phase: 'generating' | 'playing' | 'idle';
+  partsDone: number;
+  partsTotal: number;
+}
+let progressState: SpeakProgress = { phase: 'idle', partsDone: 0, partsTotal: 0 };
+const emitProgress = () => window.dispatchEvent(new Event('tts-progress'));
+/** Subscribe to read-aloud progress. Returns the unsubscribe fn. */
+export function onSpeakProgress(cb: (p: SpeakProgress) => void): () => void {
+  const h = () => cb(progressState);
+  window.addEventListener('tts-progress', h);
+  cb(progressState); // sync current state on subscribe
+  return () => window.removeEventListener('tts-progress', h);
+}
 
 /** Word index currently being spoken, if any. */
 export function currentWordIndex(): number | null {
@@ -112,14 +133,24 @@ function clearWordTracking() {
   }
 }
 
-/** Speak pre-chunked text: fetch chunks in parallel, concatenate the MP3s
- * (MP3 frames concat cleanly — same trick as the podcast pipeline), play as
- * ONE audio so the bar's scrubber covers the whole read. Marks (when fetched)
- * are rebased per chunk byte-length before merging. */
+/** Speak pre-chunked text: fetch each chunk, concatenate the MP3s (MP3 frames
+ * concat cleanly — same trick as the podcast pipeline), play as ONE audio so
+ * the bar's scrubber covers the whole read. Marks (when fetched) are rebased
+ * per chunk byte-length before merging. Fetches SEQUENTIALLY and emits
+ * 'tts-progress' after each part so long reads show N/M generation progress
+ * (ponytail: serial instead of parallel — the latency cost is progress
+ * visibility; parallel + monotonic counting needs in-flight tracking). */
 export async function speakAll(chunks: string[], words = false): Promise<void> {
   stopSpeak(); // one voice at a time — a new read always replaces the old
   clearWordTracking();
-  const parts = await Promise.all(chunks.map((c) => fetchTts(c, words)));
+  progressState = { phase: 'generating', partsDone: 0, partsTotal: chunks.length };
+  emitProgress();
+  const parts: { bytes: Uint8Array; marks: WordMark[] }[] = [];
+  for (const c of chunks) {
+    parts.push(await fetchTts(c, words));
+    progressState = { ...progressState, partsDone: parts.length };
+    emitProgress();
+  }
   const total = parts.reduce((n, p) => n + p.bytes.byteLength, 0);
   const merged = new Uint8Array(total);
   let off = 0;
@@ -132,6 +163,8 @@ export async function speakAll(chunks: string[], words = false): Promise<void> {
   const a = getAudio();
   a.src = URL.createObjectURL(new Blob([merged], { type: 'audio/mpeg' }));
   if (audioMarks.length) startWordRaf(a);
+  progressState = { phase: 'playing', partsDone: parts.length, partsTotal: parts.length };
+  emitProgress();
   await a.play();
 }
 
@@ -161,7 +194,7 @@ export default function SelectionTTS() {
     const a = getAudio();
     const onPlay = () => { setSpeaking(true); setLoading(false); setPaused(false); };
     const onPause = () => { setSpeaking(false); setPaused(true); };
-    const onEnded = () => { setSpeaking(false); setLoading(false); setPaused(false); setBar(null); clearWordTracking(); };
+    const onEnded = () => { setSpeaking(false); setLoading(false); setPaused(false); setBar(null); clearWordTracking(); progressState = { phase: 'idle', partsDone: 0, partsTotal: 0 }; emitProgress(); };
     const onTime = () => { if (!scrubbing) setTime({ cur: a.currentTime, dur: a.duration || 0 }); };
     const onEmptied = () => { stopWordRaf(); }; // stop/replace drops the element's source
     const onSeeked = () => {
@@ -187,6 +220,7 @@ export default function SelectionTTS() {
         hideTimer.current = setTimeout(() => setMenu(null), 150); // grace period to reach the button
         return;
       }
+      if (hideTimer.current) clearTimeout(hideTimer.current); // a fresh selection outranks a pending hide (fast multi-click)
       if (text.length > 5000) return; // server caps at 5000 anyway
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       setMenu({
@@ -250,6 +284,16 @@ export default function SelectionTTS() {
     else a.pause();
   };
 
+  /** "Send to AI": open the chat with the selection attached as a FOCUS — the
+   * reference tells the AI what to look at; the page itself (step + activity
+   * content) rides along in the system prompt as the real context. */
+  const sendToAi = () => {
+    if (!menu) return;
+    useChatStore.getState().addFocus(menu.text);
+    useChatStore.getState().open();
+    setMenu(null);
+  };
+
   const pct = time.dur > 0 ? (time.cur / time.dur) * 100 : 0;
   const barVisible = (loading || speaking || paused) && bar !== null;
 
@@ -261,15 +305,26 @@ export default function SelectionTTS() {
         style={{ left: menu ? menu.x : pillPos.current.x, top: menu ? Math.max(menu.y, 8) : pillPos.current.y }}
       >
         {menu && (
-          <button
-            onMouseDown={(e) => e.preventDefault()} // don't collapse the selection
-            onClick={listen}
-            className="flex -translate-x-1/2 items-center gap-1.5 rounded-md border border-[var(--color-neutral-300)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] shadow-[var(--shadow-md)] hover:bg-[var(--color-neutral-200)]"
-            title="Read aloud"
-          >
-            <HiSpeakerWave className="h-4 w-4 text-[var(--color-accent)]" />
-            Listen
-          </button>
+          <div className="flex -translate-x-1/2 items-center gap-1">
+            <button
+              onMouseDown={(e) => e.preventDefault()} // don't collapse the selection
+              onClick={listen}
+              className="flex items-center gap-1.5 rounded-md border border-[var(--color-neutral-300)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] shadow-[var(--shadow-md)] hover:bg-[var(--color-neutral-200)]"
+              title="Read aloud"
+            >
+              <HiSpeakerWave className="h-4 w-4 text-[var(--color-accent)]" />
+              Listen
+            </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={sendToAi}
+              className="flex items-center gap-1.5 rounded-md border border-[var(--color-neutral-300)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] shadow-[var(--shadow-md)] hover:bg-[var(--color-neutral-200)]"
+              title="Ask the AI about this"
+            >
+              <HiChatBubbleLeftRight className="h-4 w-4 text-[var(--color-accent)]" />
+              Send to AI
+            </button>
+          </div>
         )}
         {error && !loading && (
           <div
@@ -352,4 +407,165 @@ export default function SelectionTTS() {
       </div>
     </>
   );
+}
+
+
+
+// ── Karaoke highlight: paint the currently-spoken word ─────────────────────
+// Speech words and DOM words differ (math becomes spoken words, code is
+// dropped), so alignment runs on the longest common word sequence between
+// buildSpeakable(source) and the container's rendered words. Painting uses
+// the CSS Custom Highlight API — zero DOM mutation, React never notices.
+
+interface TtsNodeInfo {
+  tn: Text;
+  words: { start: number; len: number }[];
+}
+
+/** Collect text nodes under el with their word offsets, in document order. */
+function collectTtsNodes(el: Element): TtsNodeInfo[] {
+  const out: TtsNodeInfo[] = [];
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.textContent ?? '';
+        const words = Array.from(text.matchAll(/\S+/g)).map((m) => ({ start: m.index!, len: m[0].length }));
+        if (words.length) out.push({ tn: child as Text, words });
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        walk(child);
+      }
+    }
+  };
+  walk(el);
+  return out;
+}
+
+/** Normalize a word for comparison: NFKD (KaTeX combining marks fold away),
+ * strip non-alphanumerics, lowercase. */
+function normWord(w: string): string {
+  return w.normalize('NFKD').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+}
+
+/** Longest-common-subsequence alignment: map[domWordIdx] = speechWordIdx | null.
+ * ponytail: O(n·m) DP table (≤ ~10M cells, then bails to no-highlight) —
+ * runs once per read, not per word. Exported for the self-check below. */
+export function alignWords(speech: string[], dom: string[]): (number | null)[] {
+  const map: (number | null)[] = new Array(dom.length).fill(null);
+  const n = speech.length;
+  const m = dom.length;
+  if (!n || !m || n * m > 10_000_000) return map;
+  const a = speech.map(normWord);
+  const b = dom.map(normWord);
+  const dp: Uint16Array[] = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    const ai = a[i];
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = ai && ai === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] && a[i] === b[j]) {
+      map[j] = i;
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  return map;
+}
+
+interface TtsMapState {
+  bySpeech: Map<number, { tn: Text; start: number; len: number }>;
+}
+
+/** Map every speech word index to its DOM (text node, char range), or null. */
+function buildTtsMap(container: HTMLElement, source: string): TtsMapState {
+  const nodes = collectTtsNodes(container);
+  const domWords: string[] = [];
+  for (const n of nodes) for (const w of n.words) domWords.push(n.tn.data.substr(w.start, w.len));
+  const speech = Array.from(buildSpeakable(source).matchAll(/\S+/g)).map((m) => m[0]);
+  const map = alignWords(speech, domWords);
+  const bySpeech = new Map<number, { tn: Text; start: number; len: number }>();
+  let j = 0;
+  for (const n of nodes) {
+    for (const w of n.words) {
+      const s = map[j];
+      if (s !== null && !bySpeech.has(s)) bySpeech.set(s, { tn: n.tn, start: w.start, len: w.len });
+      j++;
+    }
+  }
+  return { bySpeech };
+}
+
+const HL_NAME = 'tts-active';
+
+function clearTtsHighlight(): void {
+  window.CSS?.highlights?.delete(HL_NAME);
+}
+
+/** React hook: while enabled, highlight the word being spoken inside the
+ * container element and keep it in view. No-ops on browsers without the
+ * CSS Custom Highlight API. */
+export function useSpokenWord(
+  containerRef: RefObject<HTMLElement | null>,
+  source: string,
+  enabled: boolean,
+): void {
+  useEffect(() => {
+    if (!enabled || !containerRef.current || !window.CSS?.highlights) return;
+    const state = buildTtsMap(containerRef.current, source);
+    const paint = () => {
+      const idx = currentWordIndex();
+      const hit = idx === null ? undefined : state.bySpeech.get(idx);
+      if (!hit || !hit.tn.isConnected) {
+        clearTtsHighlight();
+        return;
+      }
+      const r = document.createRange();
+      r.setStart(hit.tn, hit.start);
+      r.setEnd(hit.tn, hit.start + hit.len);
+      window.CSS.highlights.set(HL_NAME, new Highlight(r));
+      const rect = r.getBoundingClientRect();
+      if (rect.height && (rect.top < 72 || rect.bottom > window.innerHeight - 72)) {
+        hit.tn.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    };
+    window.addEventListener('tts-word', paint);
+    return () => {
+      window.removeEventListener('tts-word', paint);
+      clearTtsHighlight();
+    };
+  }, [containerRef, source, enabled]);
+}
+
+// Self-check: npx tsx src/components/shared/SelectionTTS.tsx — exercises the
+// LCS alignment in isolation (DOM collection/painting need a real browser;
+// covered by the live smoke test instead).
+if (typeof process !== 'undefined' && process.argv[1]?.includes('SelectionTTS')) {
+  const assert = (cond: boolean, msg: string) => {
+    if (!cond) throw new Error(`FAIL: ${msg}`);
+    console.log(`ok: ${msg}`);
+  };
+  // Exact match, no noise: identity map.
+  const m1 = alignWords(['the', 'cat', 'sat'], ['the', 'cat', 'sat']);
+  assert(JSON.stringify(m1) === '[0,1,2]', 'identity alignment');
+  // Extra DOM words around a match (markdown markers stripped from speech).
+  const m2 = alignWords(['cat', 'sat'], ['**', 'the', 'cat', 'sat', '**']);
+  assert(m2[2] === 0 && m2[3] === 1, 'match survives DOM padding');
+  // Speech-only words (math → spoken) must map to nothing.
+  const m3 = alignWords(['x', 'squared', 'plus', 'one'], ['x', '+', 'one']);
+  assert(m3[0] === 0 && m3[2] === 3, 'speech extras skipped');
+  // Punctuation differs (speech "squared" vs DOM "squared."): norm strips it.
+  assert(normWord('Squared.') === normWord('squared'), 'normalization folds case/punct');
+  // Diacritics (KaTeX combining marks) fold: x̃ === x.
+  assert(normWord('x\u0303') === normWord('x'), 'combining marks fold');
+  // Empty inputs never crash.
+  assert(alignWords([], ['a']).every((v) => v === null), 'empty speech → all null');
+  assert(alignWords(['a'], []).length === 0, 'empty dom → empty map');
+  // LCS prefers in-order matches over greedy grabs.
+  const m4 = alignWords(['a', 'b'], ['b', 'a', 'b']);
+  assert(m4[1] === 0 && m4[2] === 1, 'in-order preference');
+  console.log('all SelectionTTS alignment checks passed');
 }

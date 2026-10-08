@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   HiUser,
   HiArrowRightOnRectangle,
@@ -14,12 +14,22 @@ import { HOME } from '../../config/home';
 
 const itemStyle = 'flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]';
 
-function Row({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
+function ActionRow({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
   return (
     <button type="button" className={itemStyle} onClick={onClick}>
       <span className="shrink-0" style={{ color: 'var(--color-accent)' }}>{icon}</span>
       {label}
     </button>
+  );
+}
+
+/** Real <a href> so middle-click / Cmd+click open in a new tab (browsers only do this for anchors). */
+function NavRow({ icon, label, to, onNavigate }: { icon: ReactNode; label: string; to: string; onNavigate: () => void }) {
+  return (
+    <Link to={to} className={itemStyle} onClick={onNavigate}>
+      <span className="shrink-0" style={{ color: 'var(--color-accent)' }}>{icon}</span>
+      {label}
+    </Link>
   );
 }
 
@@ -32,7 +42,6 @@ function initials(name: string | null, email: string): string {
 /** Turbo.ai-style account menu, top right. Home for Settings + Theme + Sign out,
  *  plus global search and the full page nav (replaces the deleted rail). */
 export default function ProfileMenu() {
-  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -93,39 +102,47 @@ export default function ProfileMenu() {
           <div style={{ borderTop: '1px solid var(--color-divider)' }} />
 
           {/* Global pages — the rail's job, now living here */}
-          {[
+          {([
             ['Search documents', <HiMagnifyingGlass className="h-4.5 w-4.5" />, '/documents'],
             ['Learn', <HiAcademicCap className="h-4.5 w-4.5" />, HOME],
-          ].map(([label, icon, to]) => (
-            <Row
-              key={to as string}
-              icon={icon as ReactNode}
-              label={label as string}
-              onClick={() => {
-                setOpen(false);
-                navigate(to as string);
-              }}
+          ] as [string, ReactNode, string][]).map(([label, icon, to]) => (
+            <NavRow
+              key={to}
+              icon={icon}
+              label={label}
+              to={to}
+              onNavigate={() => setOpen(false)}
             />
           ))}
 
           <div style={{ borderTop: '1px solid var(--color-divider)' }} />
-          <Row
+          <NavRow
             icon={<HiUser className="h-4.5 w-4.5" />}
             label="Settings"
-            onClick={() => {
-              setOpen(false);
-              navigate('/settings');
-            }}
+            to="/settings"
+            onNavigate={() => setOpen(false)}
           />
-          <Row
+          <ActionRow
             icon={theme === 'dark' ? <HiSun className="h-4.5 w-4.5" /> : <HiMoon className="h-4.5 w-4.5" />}
             label={`Theme · ${theme === 'dark' ? 'light' : 'dark'} mode`}
             onClick={toggleTheme}
           />
+          {u?.isAnonymous && (
+            <ActionRow
+              icon={<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+                <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+                <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+                <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+              </svg>}
+              label="Sign in with Google"
+              onClick={() => { window.location.href = '/api/auth/google/start'; }}
+            />
+          )}
           {u && (
-            <Row
+            <ActionRow
               icon={<HiArrowRightOnRectangle className="h-4.5 w-4.5" />}
-              label="Log out"
+              label={u.isAnonymous ? 'Exit guest mode' : 'Log out'}
               onClick={() => void logout()}
             />
           )}

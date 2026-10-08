@@ -12,31 +12,134 @@ import {
   type Mastery,
 } from '../src/mastery.js';
 import {
+  buildDiagram,
   buildFlashcards,
+  buildFlowLesson,
+  buildFlowQuiz,
   buildLesson,
   buildPodcast,
   buildQuiz,
   buildRecall,
+  buildSlides,
   continueDiscussion,
+  gradeDiagram,
   gradeQuiz,
   gradeRecall,
   groundingText,
   openDiscussion,
+  reviewDiagram,
   synthesizePodcastAudio,
+  synthesizeSlidesAudio,
+  type DiagramContent,
   type DiscussionAssessment,
   type DiscussionContent,
   type FlashcardsContent,
+  type FlowLessonContent,
+  type FlowQuizContent,
   type LessonContent,
   type PodcastContent,
   type QuizContent,
   type RecallContent,
+  type SlidesContent,
   type StepContext,
 } from '../src/tutor.js';
 
 const router = Router();
 
-type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast';
-const KINDS: ReadonlySet<string> = new Set(['lesson', 'quiz', 'flashcards', 'discussion', 'recall', 'podcast']);
+type ActivityKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'podcast' | 'diagram' | 'slides' | 'flow';
+const KINDS: ReadonlySet<string> = new Set(['lesson', 'quiz', 'flashcards', 'discussion', 'recall', 'podcast', 'diagram', 'slides', 'flow']);
+
+// ── Learning flow (Duolingo-style) ──────────────────────────────────────────
+// kind='flow' + slot ∈ {learn1, review1, review_prev, learn2, review2, review1b, test}.
+// The slot decides what gets generated; the 7-slot sequence itself lives in the
+// client (FlowLesson.tsx) since it's pure presentation order.
+
+type FlowSlot = 'learn1' | 'review1' | 'review_prev' | 'learn2' | 'review2' | 'review1b' | 'test';
+
+interface FlowAttempt { subject: string; correct: boolean }
+
+/** Per-subject right/wrong from every completed flow activity on this step. */
+function flowAttempts(stepActivities: ActivityRow[]): FlowAttempt[] {
+  const attempts: FlowAttempt[] = [];
+  for (const a of stepActivities) {
+    if (a.kind !== 'flow' || a.status !== 'completed' || !a.result) continue;
+    const r = a.result as { attempts?: FlowAttempt[] };
+    if (Array.isArray(r.attempts)) attempts.push(...r.attempts);
+  }
+  return attempts;
+}
+
+/** Weak subjects (any miss, most-missed first) + solid subjects (all right). */
+function flowSubjectStats(attempts: FlowAttempt[]): { focus: string[]; sprinkle: string[]; taught: string[] } {
+  const tally = new Map<string, { right: number; wrong: number }>();
+  for (const a of attempts) {
+    const t = tally.get(a.subject) ?? { right: 0, wrong: 0 };
+    if (a.correct) t.right++; else t.wrong++;
+    tally.set(a.subject, t);
+  }
+  const focus: string[] = [];
+  const sprinkle: string[] = [];
+  for (const [subject, t] of tally) (t.wrong > 0 ? focus : sprinkle).push(subject);
+  focus.sort((a, b) => (tally.get(b)!.wrong - tally.get(a)!.wrong));
+  return { focus, sprinkle, taught: [...tally.keys()] };
+}
+
+/** Generate the content for a flow activity, per its slot. */
+async function buildFlowContent(slot: FlowSlot, step: StepRow, ctx: StepContext, grounding: string, activities: ActivityRow[]): Promise<FlowLessonContent | FlowQuizContent> {
+  const learn = (opts: { maxSubjects?: number; exclude?: string[] }) => buildFlowLesson(ctx, grounding, opts);
+  switch (slot) {
+    case 'learn1':
+      // First half of the topic's subjects.
+      return learn({ maxSubjects: 4 });
+    case 'learn2': {
+      // Second half: exclude everything the first lesson taught.
+      const taught = flowSubjectStats(flowAttempts(activities)).taught;
+      return learn({ maxSubjects: 4, exclude: taught });
+    }
+    case 'review1':
+    case 'review1b': {
+      // Quizzed on the FIRST learn lesson's subjects only.
+      const first = activities.find((a) => a.kind === 'flow' && (a.result as { slot?: string } | null)?.slot === 'learn1' && a.status === 'completed');
+      const subjects = first ? flowSubjectStats(flowAttempts([first])).taught : [];
+      if (subjects.length === 0) return buildFlowQuiz(ctx, grounding, { count: 6, focus: [], sprinkle: [] }); // learn not done yet — general quiz
+      return buildFlowQuiz(ctx, grounding, { count: Math.min(8, subjects.length * 2), focus: subjects, sprinkle: [] });
+    }
+    case 'review2': {
+      // Second-half subjects only.
+      const second = activities.find((a) => a.kind === 'flow' && (a.result as { slot?: string } | null)?.slot === 'learn2' && a.status === 'completed');
+      const subjects = second ? flowSubjectStats(flowAttempts([second])).taught : [];
+      if (subjects.length === 0) return buildFlowQuiz(ctx, grounding, { count: 6, focus: [], sprinkle: [] });
+      return buildFlowQuiz(ctx, grounding, { count: Math.min(8, subjects.length * 2), focus: subjects, sprinkle: [] });
+    }
+    case 'review_prev': {
+      // Everything from EARLIER topics of the roadmap (completed steps before this one).
+      const { rows } = await pool.query(
+        `SELECT a.result FROM learning_activities a
+         JOIN roadmap_steps s ON s.id = a.step_id
+         WHERE s.roadmap_id = $1 AND s.position < $2 AND a.kind = 'flow' AND a.status = 'completed'`,
+        [step.roadmap_id, step.position],
+      );
+      const attempts = (rows as Array<{ result: unknown }>).flatMap((r) =>
+        r.result && Array.isArray((r.result as { attempts?: FlowAttempt[] }).attempts) ? (r.result as { attempts: FlowAttempt[] }).attempts : [],
+      );
+      const { focus, sprinkle } = flowSubjectStats(attempts);
+      if (focus.length + sprinkle.length === 0) {
+        // First topic of the roadmap (or nothing recorded): brief all-coverage quiz.
+        return buildFlowQuiz(ctx, grounding, { count: 5, focus: [], sprinkle: [] });
+      }
+      // Weakest previous subjects first, one keeps-fresh question each, cap 8.
+      return buildFlowQuiz(ctx, grounding, { count: Math.min(8, Math.max(focus.length, 3) + sprinkle.length), focus: focus.slice(0, 4), sprinkle: sprinkle.slice(0, 4) });
+    }
+    case 'test': {
+      // Everything on this topic, misses weighted hardest.
+      const { focus, sprinkle } = flowSubjectStats(flowAttempts(activities));
+      const total = Math.min(12, Math.max(8, focus.length * 2 + sprinkle.length));
+      return buildFlowQuiz(ctx, grounding, { count: total, focus, sprinkle });
+    }
+  }
+}
+
+const FLOW_SLOTS: ReadonlySet<string> = new Set(['learn1', 'review1', 'review_prev', 'learn2', 'review2', 'review1b', 'test']);
 
 /** XP bonus for a strong assessment result / for a skill becoming learned. */
 const XP_PASS_BONUS = 10;
@@ -253,65 +356,125 @@ router.post('/roadmap-steps/:stepId/activities', async (req: Request, res: Respo
     const step = await loadStep(String(req.params.stepId));
     if (!step) return res.status(404).json({ error: 'Step not found' });
 
-    const ctx = stepContext(step);
-    const grounding = await groundingText(ctx);
-
-    let content: LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent;
-    switch (kind as ActivityKind) {
-      case 'lesson':
-        content = await buildLesson(ctx, grounding);
-        break;
-      case 'quiz': {
-        const quiz = await buildQuiz(ctx, grounding);
-        if (quiz.questions.length === 0) throw new Error('The tutor could not write questions for this topic — try again');
-        content = quiz;
-        break;
-      }
-      case 'flashcards': {
-        const cards = await buildFlashcards(ctx, grounding);
-        if (cards.cards.length === 0) throw new Error('The tutor could not write cards for this topic — try again');
-        content = cards;
-        break;
-      }
-      case 'discussion':
-        content = await openDiscussion(ctx, grounding);
-        break;
-      case 'recall':
-        content = await buildRecall(ctx, grounding);
-        break;
-      case 'podcast': {
-        const podcast = await buildPodcast(ctx, grounding);
-        content = podcast;
-        break;
-      }
-      default:
-        return res.status(400).json({ error: 'Unsupported kind' });
+    // Flow activities carry their slot in the request; it drives generation
+    // and is stamped onto the result at submit time (review slots read it).
+    let flowSlot: FlowSlot | null = null;
+    if (kind === 'flow') {
+      const slot = String((req.body as { slot?: string }).slot ?? '');
+      if (!FLOW_SLOTS.has(slot)) return res.status(400).json({ error: `slot must be one of ${[...FLOW_SLOTS].join(', ')}` });
+      flowSlot = slot as FlowSlot;
     }
 
+    // Insert the row NOW and return it: a cold GLM generation runs 1-4 min —
+    // past Cloudflare's 100 s proxy cap, which 524s the tunnel and the UI
+    // reports failure while the server finishes anyway. The client polls
+    // GET /learning-activities/:id until content lands.
     const { rows } = await pool.query(
-      `INSERT INTO learning_activities (step_id, kind, status, content, started_at)
-       VALUES ($1, $2, 'in_progress', $3::jsonb, now()) RETURNING *`,
-      [step.id, kind, JSON.stringify(content)],
+      `INSERT INTO learning_activities (step_id, kind, status, started_at)
+       VALUES ($1, $2, 'in_progress', now()) RETURNING *`,
+      [step.id, kind],
     );
+    const activityId = (rows[0] as ActivityRow).id;
     res.status(201).json(toClientActivity(rows[0] as ActivityRow));
 
-    if (kind === 'podcast') {
-      // ponytail: TTS render runs fire-and-forget (1-4 min) — script returns
-      // now so the request clears Cloudflare's proxy cap; the runner polls
-      // the activity until audioPath (or renderError) lands in content.
-      const activityId = (rows[0] as ActivityRow).id;
-      const attach = (patch: object) =>
-        pool.query(
-          "UPDATE learning_activities SET content = content || $1::jsonb, updated_at = now() WHERE id = $2 AND status <> 'completed'",
-          [JSON.stringify(patch), activityId],
+    void (async () => {
+      try {
+        const ctx = stepContext(step);
+        const grounding = await groundingText(ctx);
+
+        let content: LessonContent | QuizContent | FlashcardsContent | DiscussionContent | RecallContent | PodcastContent | DiagramContent | SlidesContent | FlowLessonContent | FlowQuizContent;
+        switch (kind as ActivityKind) {
+          case 'flow': {
+            // The slot picks what to build: learn → subjects deck, review/test → quiz.
+            const existing = await pool.query('SELECT * FROM learning_activities WHERE step_id = $1 ORDER BY created_at ASC', [step.id]);
+            content = await buildFlowContent(flowSlot!, step, ctx, grounding, existing.rows as ActivityRow[]);
+            // Stamp the slot into the content so a resumed activity knows
+            // which lesson it is without needing the request body again.
+            (content as { slot?: FlowSlot }).slot = flowSlot!;
+            break;
+          }
+          case 'lesson':
+            content = await buildLesson(ctx, grounding);
+            break;
+          case 'quiz': {
+            const quiz = await buildQuiz(ctx, grounding);
+            if (quiz.questions.length === 0) throw new Error('The tutor could not write questions for this topic — try again');
+            content = quiz;
+            break;
+          }
+          case 'flashcards': {
+            const cards = await buildFlashcards(ctx, grounding);
+            if (cards.cards.length === 0) throw new Error('The tutor could not write cards for this topic — try again');
+            content = cards;
+            break;
+          }
+          case 'discussion':
+            content = await openDiscussion(ctx, grounding);
+            break;
+          case 'recall':
+            content = await buildRecall(ctx, grounding);
+            break;
+          case 'podcast':
+            content = await buildPodcast(ctx, grounding);
+            break;
+          case 'diagram':
+            content = await buildDiagram(ctx, grounding);
+            break;
+          case 'slides':
+            content = await buildSlides(ctx, grounding);
+            break;
+          default:
+            throw new Error('Unsupported kind');
+        }
+
+        // Status stays 'in_progress' (the UI's resumable state) until submission
+        // completes it — content presence is what unlocks the tile/runner.
+        await pool.query(
+          `UPDATE learning_activities SET content = $1::jsonb, updated_at = now() WHERE id = $2`,
+          [JSON.stringify(content), activityId],
         );
-      void synthesizePodcastAudio(activityId, content as PodcastContent)
-        .then((audioPath) => attach({ audioPath }))
-        .catch((err: unknown) => {
-          console.error('Podcast TTS render failed:', err);
-          return attach({ renderError: err instanceof Error ? err.message : String(err) });
-        });
-    }
+
+        if (kind === 'podcast') {
+          // ponytail: TTS render runs fire-and-forget (1-4 min) — script returns
+          // now so the request clears Cloudflare's proxy cap; the runner polls
+          // the activity until audioPath (or renderError) lands in content.
+          const attach = (patch: object) =>
+            pool.query(
+              "UPDATE learning_activities SET content = content || $1::jsonb, updated_at = now() WHERE id = $2 AND status <> 'completed'",
+              [JSON.stringify(patch), activityId],
+            );
+          void synthesizePodcastAudio(activityId, content as PodcastContent)
+            .then((audioPath) => attach({ audioPath }))
+            .catch((err: unknown) => {
+              console.error('Podcast TTS render failed:', err);
+              return attach({ renderError: err instanceof Error ? err.message : String(err) });
+            });
+        }
+
+        if (kind === 'slides') {
+          // Same pattern as podcasts: narration renders fire-and-forget (1-4
+          // min of TTS); the runner polls the activity until audioPath (or
+          // renderError) lands in content.
+          const attach = (patch: object) =>
+            pool.query(
+              "UPDATE learning_activities SET content = content || $1::jsonb, updated_at = now() WHERE id = $2 AND status <> 'completed'",
+              [JSON.stringify(patch), activityId],
+            );
+          void synthesizeSlidesAudio(activityId, content as SlidesContent)
+            .then(({ audioPath, slideAudio }) => attach({ audioPath, slideAudio }))
+            .catch((err: unknown) => {
+              console.error('Slides TTS render failed:', err);
+              return attach({ renderError: err instanceof Error ? err.message : String(err) });
+            });
+        }
+      } catch (err) {
+        console.error('Error generating activity:', err);
+        await pool.query(
+          `UPDATE learning_activities SET status = 'error', error = $1, updated_at = now() WHERE id = $2`,
+          [(err instanceof Error ? err.message : String(err)).slice(0, 500), activityId],
+        ).catch(() => {});
+      }
+    })();
   } catch (err) {
     console.error('Error creating activity:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create activity' });
@@ -343,18 +506,19 @@ router.delete('/learning-activities/:id', async (req: Request, res: Response) =>
   }
 });
 
-// ── GET /learning-activities/:id/audio — stream a podcast activity's MP3 ────
+// ── GET /learning-activities/:id/audio — stream podcast/slides narration ────
 
 router.get('/learning-activities/:id/audio', async (req: Request, res: Response) => {
   try {
     const a = await loadActivity(String(req.params.id));
-    if (!a || a.kind !== 'podcast') return res.status(404).json({ error: 'Activity not found' });
-    const path = (a.content as PodcastContent | null)?.audioPath;
-    if (!path) return res.status(404).json({ error: 'Podcast audio not ready yet' });
+    if (!a || (a.kind !== 'podcast' && a.kind !== 'slides')) return res.status(404).json({ error: 'Activity not found' });
+    const path = (a.content as PodcastContent | SlidesContent | null)?.audioPath;
+    if (!path) return res.status(404).json({ error: 'Audio not ready yet' });
     const buf = await storageDownload(path);
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Length', String(buf.length));
     res.setHeader('Accept-Ranges', 'none'); // ponytail: no range support, same as document podcasts
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // ponytail: audio bytes immutable per key
     res.end(buf);
   } catch (err) {
     console.error('Error streaming podcast audio:', err);
@@ -374,6 +538,31 @@ router.post('/learning-activities/:id/submit', async (req: Request, res: Respons
     const body = (req.body ?? {}) as Record<string, unknown>;
 
     switch (a.kind) {
+      case 'flow': {
+        // Duolingo-style: the client already graded each MCQ instantly (the
+        // payload carries {slot, attempts:[{subject,correct}], hintsUsed}).
+        // Score = share right; slot decides evidence strength — the test
+        // closes the topic, reviews keep it warm, learns just open it.
+        const content = a.content as FlowLessonContent | FlowQuizContent | null;
+        if (!content) return res.status(409).json({ error: 'This lesson has no content yet' });
+        const slot = String((body as { slot?: string }).slot ?? '') as FlowSlot;
+        const attempts = (Array.isArray((body as { attempts?: unknown }).attempts) ? (body as { attempts: Array<{ subject?: unknown; correct?: unknown }> }).attempts : [])
+          .map((x) => ({ subject: String(x.subject ?? ''), correct: x.correct === true }))
+          .filter((x) => x.subject);
+        if (attempts.length === 0) return res.status(400).json({ error: 'attempts are required' });
+        const hintsUsed = Math.max(0, Math.min(99, Number((body as { hintsUsed?: unknown }).hintsUsed ?? 0)));
+        const correct = attempts.filter((x) => x.correct).length;
+        const score = correct / attempts.length;
+        const evidence: { kind: EvidenceKind; weight: number; note: string } =
+          slot === 'test'
+            ? { kind: 'quiz', weight: 1.2, note: `Flow test ${Math.round(score * 100)}% (${correct}/${attempts.length})` }
+            : slot.startsWith('review')
+              ? { kind: 'quiz', weight: 0.8, note: `Flow review ${Math.round(score * 100)}% (${correct}/${attempts.length})` }
+              : { kind: 'lesson', weight: 0.4, note: `Flow lesson ${Math.round(score * 100)}% (${correct}/${attempts.length})` };
+        return res.json(
+          await completeActivity(a, step, { score, passed: score >= 0.8, correct, total: attempts.length, slot, attempts, hintsUsed }, evidence),
+        );
+      }
       case 'quiz': {
         const quiz = a.content as QuizContent;
         const answers = (body.answers ?? {}) as Record<string, string | boolean | undefined>;
@@ -452,6 +641,33 @@ router.post('/learning-activities/:id/submit', async (req: Request, res: Respons
           }),
         );
       }
+      case 'slides': {
+        // Viewing a deck (with or without narration) is weak evidence, like
+        // reading a lesson or listening to a podcast: fixed score, XP only.
+        return res.json(
+          await completeActivity(a, step, { score: 0.5 }, {
+            kind: 'slides',
+            weight: 0.4,
+            note: 'Slides viewed',
+          }),
+        );
+      }
+      case 'diagram': {
+        // Normal path: the review loop graded the final canvas (image passed
+        // with the last turn). Direct submit grades whatever is on it now.
+        const imageDataUrl = String((body as { image?: string }).image ?? '');
+        if (!imageDataUrl.startsWith('data:image/')) {
+          return res.status(400).json({ error: 'image (data URL) is required — export your canvas first' });
+        }
+        const grade = await gradeDiagram(stepContext(step), a.content as DiagramContent, imageDataUrl);
+        return res.json(
+          await completeActivity(a, step, { ...grade, image: imageDataUrl }, {
+            kind: 'diagram',
+            weight: 1.2,
+            note: `Diagram ${Math.round(grade.score * 100)}%`,
+          }),
+        );
+      }
       default:
         return res.status(400).json({ error: 'Unsupported kind' });
     }
@@ -514,6 +730,52 @@ router.post('/learning-activities/:id/messages', async (req: Request, res: Respo
   }
 });
 
+// ── POST /learning-activities/:id/diagram — one vision review round ─────────
+
+router.post('/learning-activities/:id/diagram', async (req: Request, res: Response) => {
+  try {
+    const a = await loadActivity(String(req.params.id));
+    if (!a) return res.status(404).json({ error: 'Activity not found' });
+    if (a.kind !== 'diagram') return res.status(400).json({ error: 'Not a diagram activity' });
+    if (a.status === 'completed') return res.status(409).json({ error: 'Diagram already graded' });
+    const image = String((req.body as { image?: string }).image ?? '');
+    if (!image.startsWith('data:image/')) return res.status(400).json({ error: 'image (data URL) is required' });
+    const step = await loadStep(a.step_id);
+    if (!step) return res.status(404).json({ error: 'Step not found' });
+
+    const ctx = stepContext(step);
+    const content = a.content as DiagramContent;
+    const review = await reviewDiagram(ctx, content, image);
+    const done = review.verdict === 'done';
+
+    content.messages.push(
+      { role: 'user', content: `(submitted diagram snapshot, round ${content.messages.length + 1})`, at: new Date().toISOString() },
+      { role: 'assistant', content: review.feedback, at: new Date().toISOString() },
+    );
+    await pool.query('UPDATE learning_activities SET content = $1::jsonb, updated_at = now() WHERE id = $2', [
+      JSON.stringify(content),
+      a.id,
+    ]);
+    if (done) {
+      const grade = await gradeDiagram(ctx, content, image);
+      const closed = await completeActivity(a, step, { ...grade, image }, {
+        kind: 'diagram',
+        weight: 1.2,
+        note: `Diagram ${Math.round(grade.score * 100)}%`,
+      });
+      return res.json({ ...closed, review, done: true });
+    }
+    const { rows } = await pool.query(
+      'UPDATE learning_activities SET content = $1::jsonb, updated_at = now() WHERE id = $2 RETURNING *',
+      [JSON.stringify(content), a.id],
+    );
+    res.json({ activity: toClientActivity(rows[0] as ActivityRow), review, done: false });
+  } catch (err) {
+    console.error('Error reviewing diagram:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to review diagram' });
+  }
+});
+
 // ── Skills ──────────────────────────────────────────────────────────────────
 
 router.get('/skills', async (_req: Request, res: Response) => {
@@ -573,13 +835,34 @@ router.post('/skills/:id/mastery', async (req: Request, res: Response) => {
 
 // ── GET /learning/overview — the Learn page + dashboard feed ────────────────
 
+// ── PATCH /learning/profile — set the daily XP goal (PRD-13) ────────────────
+// learner_profile.daily_goal_xp had no setter anywhere (web only displays it).
+// Clamped 10–1000; upsert mirrors awardXp so the single row is self-healing.
+
+router.patch('/learning/profile', async (req: Request, res: Response) => {
+  try {
+    const raw = req.body?.dailyGoalXp;
+    const goal = Number(raw);
+    if (!Number.isFinite(goal)) return res.status(400).json({ error: 'dailyGoalXp required' });
+    const clamped = Math.round(Math.min(1000, Math.max(10, goal)));
+    await pool.query(
+      `INSERT INTO learner_profile (id, daily_goal_xp) VALUES (1, $1)
+       ON CONFLICT (id) DO UPDATE SET daily_goal_xp = $1`,
+      [clamped],
+    );
+    res.json({ profile: await getProfile() });
+  } catch (err) {
+    console.error('Error updating profile:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
 router.get('/learning/overview', async (_req: Request, res: Response) => {
   try {
     const profile = await getProfile();
-
     const { rows: courseRows } = await pool.query(
       `SELECT c.id, c.name, c.is_current, r.id AS roadmap_id, r.status
-       FROM courses c LEFT JOIN roadmaps r ON r.course_id = c.id
+       FROM courses c LEFT JOIN roadmaps r ON r.course_id = c.id AND r.is_active
        ORDER BY c.is_current DESC, c.updated_at DESC`,
     );
     const courses = [];

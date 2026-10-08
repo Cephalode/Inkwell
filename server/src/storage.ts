@@ -22,13 +22,45 @@ export async function storageUpload(path: string, body: Buffer | Uint8Array, con
     body,
   });
   if (!res.ok) throw new Error(`storageUpload(${path}) failed: ${res.status} ${await res.text()}`);
+  cacheInvalidate(path);
 }
 
-/** Download an object. Returns raw bytes. */
+// ponytail: byte cache — podcast replays + repeated PDF text extraction were
+// blowing the 5 GB Supabase egress cap. Naive FIFO eviction, no TTL; add LRU
+// if the working set ever thrashes. Buffers are shared with callers — safe
+// today (res.end / Uint8Array-copy), don't mutate the returned Buffer.
+const MAX_CACHE_BYTES = 256 * 1024 * 1024;
+const cache = new Map<string, Buffer>();
+let cacheBytes = 0;
+
+function cacheEvict(): void {
+  while (cacheBytes > MAX_CACHE_BYTES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cacheBytes -= cache.get(oldest)!.length;
+    cache.delete(oldest);
+  }
+}
+
+function cacheInvalidate(path: string): void {
+  const buf = cache.get(path);
+  if (buf) {
+    cacheBytes -= buf.length;
+    cache.delete(path);
+  }
+}
+
+/** Download an object. Returns raw bytes (cached after first fetch). */
 export async function storageDownload(path: string): Promise<Buffer> {
+  const hit = cache.get(path);
+  if (hit) return hit;
   const res = await fetch(`${base}/object/${BUCKET}/${path}`, { headers: auth() });
   if (!res.ok) throw new Error(`storageDownload(${path}) failed: ${res.status} ${await res.text()}`);
-  return Buffer.from(await res.arrayBuffer());
+  const buf = Buffer.from(await res.arrayBuffer());
+  cache.set(path, buf);
+  cacheBytes += buf.length;
+  cacheEvict();
+  return buf;
 }
 
 /** Delete an object (missing objects are a no-op, like unlinkSync). */
@@ -39,6 +71,7 @@ export async function storageDelete(path: string): Promise<void> {
   });
   // 404 = already gone; treat as success like the old unlinkSync try/catch
   if (!res.ok && res.status !== 404) throw new Error(`storageDelete(${path}) failed: ${res.status} ${await res.text()}`);
+  cacheInvalidate(path);
 }
 
 /**

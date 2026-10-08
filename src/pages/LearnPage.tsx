@@ -42,7 +42,7 @@ function Pill({ active, onClick, children }: { active: boolean; onClick: () => v
 export default function LearnPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { courses, isLoading, loadCourses } = useCourses();
+  const { courses, isLoading, loadCourses, setCurrentCourse } = useCourses();
   const cached = useLearningStore((s) => s.roadmapsByCourseId);
   const loadRoadmap = useLearningStore((s) => s.loadRoadmap);
 
@@ -68,7 +68,13 @@ export default function LearnPage() {
   );
   const mergedReady = withMaterials.length > 0 && withMaterials.every((c) => cached[c.id] !== undefined);
 
-  const pick = (id: string) => setParams(id === 'all' ? { course: 'all' } : { course: id });
+  // Picking a course also persists it on the account (is_current), so the next
+  // visit — on any device — reopens the last course + its active roadmap.
+  // ponytail: "All courses" isn't persisted; it's a browse view, not a class.
+  const pick = (id: string) => {
+    setParams(id === 'all' ? { course: 'all' } : { course: id });
+    if (id !== 'all') void setCurrentCourse(id).catch(() => {});
+  };
 
   if (courses.length === 0) {
     return (

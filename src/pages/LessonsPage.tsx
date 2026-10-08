@@ -2,7 +2,7 @@
 // List: create a lesson from any document. Reader: TOC + typed sections,
 // quiz sections graded inline, progress persists to the lesson row.
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { HiPlus, HiX, HiArrowLeft, HiCheck, HiRefresh, HiTrash } from 'react-icons/hi';
 import Spinner from '../components/shared/Spinner';
 import { useDocumentStore } from '../store/documentStore';
@@ -140,7 +140,7 @@ function LessonList() {
         <div className="space-y-3">
           {lessons.map((l) => (
             <div key={l.id} className="flex items-center gap-3" style={{ padding: '12px 0', borderTop: '1px solid var(--color-neutral-300)' }}>
-              <button onClick={() => navigate(`/lessons/${l.id}`)} className="flex-1 min-w-0 text-left">
+              <Link to={`/lessons/${l.id}`} className="flex-1 min-w-0 text-left">
                 <div className="min-w-0" style={{ fontSize: 15 }}>
                   <span className="font-semibold">{l.title}</span>
                   {l.document_name && <span style={{ opacity: 0.5, fontSize: 13 }}> · {l.document_name}</span>}
@@ -155,7 +155,7 @@ function LessonList() {
                   )}
                   {l.status === 'error' && <span className="text-xs" style={{ color: 'var(--color-danger)' }}>failed</span>}
                 </div>
-              </button>
+              </Link>
               <button onClick={() => void remove(l.id)} className="btn btn-ghost" title="Delete lesson">
                 <HiTrash className="w-4 h-4" />
               </button>

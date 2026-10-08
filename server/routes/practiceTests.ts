@@ -232,6 +232,14 @@ Respond with valid JSON: {
 
         if (response?.questions) {
           for (const q of response.questions) {
+            // Models gravitate to the longest option when writing in order — shuffle
+            // so length gives nothing away (correct_answer is stored as text).
+            if (q.qtype === 'mcq' && Array.isArray(q.options) && q.options.length > 1) {
+              for (let j = q.options.length - 1; j > 0; j--) {
+                const k = Math.floor(Math.random() * (j + 1));
+                [q.options[j], q.options[k]] = [q.options[k], q.options[j]];
+              }
+            }
             await db.query(
               `INSERT INTO test_questions (test_id, position, qtype, prompt, options, correct_answer, explanation, hint, topic)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,

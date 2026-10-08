@@ -48,6 +48,23 @@ export interface SystemMessageContext {
   viewerPage?: number;
   /** Files explicitly @-referenced by the student in their message. */
   attachedFileRefs?: { id: string; name: string; type: string }[];
+  /** The learning step page the student is on (Cursor-style page reference):
+   * step metadata + the active activity's full content ride along so the AI
+   * sees the whole "file", not just what was highlighted. */
+  learningPage?: {
+    stepId: string;
+    title: string;
+    courseName: string;
+    objectives: string[];
+    keyPoints: string[];
+    activityKind?: string | null;
+    activityLabel?: string | null;
+    activityText?: string | null;
+  } | null;
+  /** What the student highlighted on that page — a focus pointer, not the payload. */
+  focusExcerpt?: string | null;
+  /** "@ Current page" reference — a text snapshot of the screen at send time. */
+  pageRef?: { path: string; title: string; text: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,13 +118,49 @@ export function buildSystemMessage(context: SystemMessageContext): string {
     attachedInfo = `\nThe user explicitly referenced the following files. Use get_document / get_chapter / list_chapters to read their content before answering:\n${list}`;
   }
 
+  // Learning step page — the whole "file" behind a Send-to-AI reference.
+  let learningInfo = '';
+  const lp = context.learningPage;
+  if (lp) {
+    learningInfo = `\n--- BEGIN LEARNING PAGE REFERENCE ---
+The student is on the learning step "${lp.title}" (step id: ${lp.stepId}) in the course "${lp.courseName}".`;
+    if (lp.objectives.length > 0) {
+      learningInfo += `\nWhat they'll be able to do:\n${lp.objectives.map((o) => `- ${o}`).join('\n')}`;
+    }
+    if (lp.keyPoints.length > 0) {
+      learningInfo += `\nKey points:\n${lp.keyPoints.map((k) => `- ${k}`).join('\n')}`;
+    }
+    if (lp.activityText) {
+      learningInfo += `\n\nContent of the open activity (${lp.activityLabel ?? lp.activityKind}):\n${lp.activityText}`;
+    }
+    learningInfo += `\n--- END LEARNING PAGE REFERENCE ---
+Treat the above as the file the student has open: answer from it directly, cite the step or activity by name, and only reach for tools for things it doesn't cover.`;
+  }
+
+  // Highlighted text = focus, not payload.
+  let focusInfo = '';
+  if (context.focusExcerpt) {
+    focusInfo = `\nThe student highlighted this passage on the page — it signals what they want to focus on, not the full context (the whole page is above):\n"${context.focusExcerpt}"`;
+  }
+
+  // "@ Current page" — everything visible on the screen, snapped at send time.
+  let pageInfo = '';
+  const pr = context.pageRef;
+  if (pr) {
+    const MAX_PAGE_TEXT = 12000;
+    const text = pr.text.length > MAX_PAGE_TEXT
+      ? pr.text.slice(0, MAX_PAGE_TEXT) + '… [truncated]'
+      : pr.text;
+    pageInfo = `\n--- BEGIN CURRENT PAGE ("${pr.title}", ${pr.path}) ---\n${text || '(no readable content)'}\n--- END CURRENT PAGE ---\nThe student explicitly referenced this page with @: answer questions about what's on it directly from the snapshot above.`;
+  }
+
   const toolDescriptions = toolDefinitions
     .map((t) => `- ${t.function.name}: ${t.function.description}`)
     .join('\n');
 
   return `You are Inkwell AI, an expert study assistant integrated into the Inkwell application. You help students understand their course materials, create study aids, and answer questions based on the provided content. Always cite specific parts of the source material when answering.
 
-${docInfo}.${chapterInfo}${chapterContent}${attachedInfo}
+${docInfo}.${chapterInfo}${chapterContent}${attachedInfo}${learningInfo}${focusInfo}${pageInfo}
 The student is currently on page "${context.currentPage}".
 
 You have access to the following tools. Use them when the student asks you to perform actions that are better handled programmatically (e.g., searching documents, summarizing pages). Only call a tool when it directly helps answer the user's request.

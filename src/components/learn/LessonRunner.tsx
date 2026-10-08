@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { HiCheck, HiOutlineClock, HiSpeakerWave } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
-import { speakAll, stopSpeak } from '../shared/SelectionTTS';
+import Spinner from '../shared/Spinner';
+import { speakAll, stopSpeak, onSpeakProgress, useSpokenWord, type SpeakProgress } from '../shared/SelectionTTS';
 import { useLearningStore } from '../../store/learningStore';
 import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
 import type { LessonContent } from '../../types/learning';
@@ -21,6 +22,15 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [ttsProgress, setTtsProgress] = useState<SpeakProgress | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
+  const speakable = content?.markdown ?? '';
+
+  // Generating N/M / playing state for the Listen button.
+  useEffect(() => onSpeakProgress(setTtsProgress), []);
+
+  // Karaoke: paint the word currently being spoken (CSS Highlight API).
+  useSpokenWord(articleRef, speakable, reading);
 
   const readAloud = async () => {
     if (reading) {
@@ -33,7 +43,7 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
     try {
       // Parse the markdown SOURCE: formatting markers, code blocks and the
       // like are skipped, math is converted to speakable words.
-      await speakAll(chunkSpeechText(buildSpeakable(content?.markdown ?? '')), true);
+      await speakAll(chunkSpeechText(buildSpeakable(speakable)), true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read the lesson aloud');
     } finally {
@@ -62,6 +72,9 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
 
   const setGrade = (i: number, ok: boolean) => setGrades((g) => ({ ...g, [i]: ok }));
 
+  // Generating N/M phase (True while the server renders each chunk).
+  const generating = reading && ttsProgress?.phase === 'generating';
+
   const finish = async () => {
     setSubmitting(true);
     setError(null);
@@ -89,11 +102,21 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
             onClick={() => void readAloud()}
             title="Read the whole lesson aloud"
           >
-            <HiSpeakerWave className="h-4 w-4" />
-            {reading ? 'Stop reading' : 'Listen'}
+            {generating ? (
+              <Spinner size="sm" />
+            ) : (
+              <HiSpeakerWave className="h-4 w-4" />
+            )}
+            {generating
+              ? `Generating ${ttsProgress?.partsDone ?? 0}/${ttsProgress?.partsTotal ?? 0}…`
+              : reading
+                ? 'Stop reading'
+                : 'Listen'}
           </button>
         </div>
-        <Markdown content={content.markdown} className="text-[15px]" />
+        <div ref={articleRef as React.RefObject<HTMLDivElement | null>} data-tts-root>
+          <Markdown content={content.markdown} className="text-[15px]" />
+        </div>
       </article>
 
       {/* Checkpoints */}
@@ -117,7 +140,7 @@ export default function LessonRunner({ activity, onComplete, onAbandon }: Activi
                 <div className="card-kicker">
                   Checkpoint {i + 1} of {total}
                 </div>
-                <p className="text-sm font-semibold">{cp.question}</p>
+                <Markdown content={cp.question} compact className="[&_p]:font-semibold" />
                 {!shown ? (
                   <button
                     type="button"

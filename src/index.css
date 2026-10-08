@@ -216,10 +216,9 @@ input[type='checkbox'] {
   opacity: 0.55;
 }
 
-/* Read-aloud karaoke highlight — current spoken word (Markdown data-w spans) */
-.tts-hl {
+/* Read-aloud karaoke highlight — current spoken word, painted via the CSS
+ * Custom Highlight API (SelectionTTS useSpokenWord → Highlight('tts-active')). */
+::highlight(tts-active) {
   background: color-mix(in srgb, var(--color-accent) 24%, transparent);
   border-radius: 3px;
-  box-shadow: 0 -2px 0 color-mix(in srgb, var(--color-accent) 24%, transparent) inset;
 }
-.tts-hl strong, .tts-hl em, .tts-hl b, .tts-hl i { color: var(--color-accent-700); }

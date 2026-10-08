@@ -10,6 +10,7 @@ import {
   HiOutlineClock,
   HiOutlineExclamationTriangle,
   HiOutlineMap,
+  HiOutlinePencilSquare,
   HiOutlinePlay,
   HiOutlineRocketLaunch,
   HiOutlineSparkles,
@@ -20,6 +21,8 @@ import { HiExternalLink } from 'react-icons/hi';
 import Spinner from '../shared/Spinner';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useLearningStore } from '../../store/learningStore';
+import { useCourseStore } from '../../store/courseStore';
+import NewRoadmapDialog from './NewRoadmapDialog';
 import type { Course } from '../../types/course';
 import type { GenerationProgress } from '../../types/generation';
 import {
@@ -456,9 +459,17 @@ export default function CourseRoadmap({
   const progress: GenerationProgress | undefined = useLearningStore((s) => s.generation[course.id]);
   const loadRoadmap = useLearningStore((s) => s.loadRoadmap);
   const generateRoadmap = useLearningStore((s) => s.generateRoadmap);
+  const switchRoadmap = useLearningStore((s) => s.switchRoadmap);
+  const renameRoadmap = useLearningStore((s) => s.renameRoadmap);
+  const deleteRoadmap = useLearningStore((s) => s.deleteRoadmap);
+  const courses = useCourseStore((s) => s.courses);
   const [loadError, setLoadError] = useState<{ courseId: string; message: string } | null>(null);
   const [actionError, setActionError] = useState<{ courseId: string; message: string } | null>(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [regenOpen, setRegenOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     if (isMerged) return; // merged view is prebuilt by the caller
@@ -487,21 +498,59 @@ export default function CourseRoadmap({
     loadRoadmap(course.id, true).catch((err: unknown) => setLoadError({ courseId: course.id, message: errorMessage(err) }));
   };
 
-  const generate = async (guidance?: string) => {
+  const generate = async (guidance?: string, documentIds?: string[], title?: string) => {
     setActionError(null);
     try {
-      await generateRoadmap(course.id, undefined, guidance);
+      await generateRoadmap(course.id, undefined, guidance, documentIds, title);
     } catch (err) {
       setActionError({ courseId: course.id, message: errorMessage(err) });
     }
   };
 
-  const regenerate = () => {
-    // ponytail: native prompt() — a modal with textarea + Cancel needs react-modal for one string
-    const guidance = window.prompt(
-      `Rebuild the learning path for ${course.name}?\n\nOptional: tell Inkwell how to reshape it — e.g. "focus on exam topics" or "skip the theory". Progress is safe: mastery lives on skills, and topics you've already mastered won't be taught again.`,
-    );
-    if (guidance !== null) void generate(guidance);
+  const regenerate = () => setRegenOpen(true);
+
+  const switchTo = async (roadmapId: string) => {
+    setSwitcherOpen(false);
+    setSwitching(true);
+    setActionError(null);
+    try {
+      await switchRoadmap(course.id, roadmapId);
+    } catch (err) {
+      setActionError({ courseId: course.id, message: errorMessage(err) });
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const saveRoadmapMeta = async (updates: { title?: string; courseId?: string }) => {
+    setEditOpen(false);
+    setSwitching(true);
+    setActionError(null);
+    try {
+      await renameRoadmap(course.id, roadmap!.id, updates);
+      if (updates.courseId && updates.courseId !== course.id) navigate('/learn'); // moved away from this course
+    } catch (err) {
+      setActionError({ courseId: course.id, message: errorMessage(err) });
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const deleteThisPath = async () => {
+    const label = roadmap!.versions!.find((v) => v.isActive)?.title ?? roadmap!.title;
+    if (!window.confirm(`Delete the "${label}" path? Its steps and your progress on them are removed. Any other saved paths stay.`))
+      return;
+    setEditOpen(false);
+    setSwitcherOpen(false);
+    setSwitching(true);
+    setActionError(null);
+    try {
+      await deleteRoadmap(course.id, roadmap!.id);
+    } catch (err) {
+      setActionError({ courseId: course.id, message: errorMessage(err) });
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const openStep = (id: string) => navigate(`/learn/steps/${id}`);
@@ -572,17 +621,17 @@ export default function CourseRoadmap({
         </p>
         {error && (
           <div className="mt-3">
-            <ErrorBanner message={error} actionLabel="Try again" onAction={generate} />
+            <ErrorBanner message={error} actionLabel="Try again" onAction={regenerate} />
           </div>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button className="btn btn-primary" onClick={() => generate()} disabled={noMaterials}>
+          <button className="btn btn-primary" onClick={regenerate}>
             <HiOutlineSparkles className="h-4 w-4" />
             {error ? 'Try again' : 'Build my roadmap'}
           </button>
           {noMaterials && (
             <span className="text-xs" style={{ opacity: 0.55 }}>
-              Add materials to this course first
+              Build with course materials, or @-reference files — add some to the dialog
             </span>
           )}
         </div>
@@ -706,15 +755,90 @@ export default function CourseRoadmap({
               <HiOutlineMap className="h-3.5 w-3.5" />
               Topic map
             </button>
+            {!isMerged && (roadmap?.versions?.length ?? 0) > 0 && (
+              <div className="relative">
+                <button
+                  className="btn btn-ghost"
+                  style={GHOST_BTN}
+                  onClick={() => setSwitcherOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={switcherOpen}
+                  title="Switch between saved paths for this course"
+                >
+                  <HiOutlineArrowsRightLeft className="h-3.5 w-3.5" />
+                  {roadmap!.versions!.find((v) => v.isActive)?.title ?? 'Paths'}
+                  <HiChevronDown className="h-3 w-3" />
+                </button>
+                {switcherOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-full z-20 mt-1 flex flex-col"
+                    style={{
+                      minWidth: 240,
+                      maxHeight: 280,
+                      overflowY: 'auto',
+                      padding: 4,
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-divider)',
+                      boxShadow: 'var(--shadow-md)',
+                    }}
+                  >
+                    <span className="section-label" style={{ margin: 0, padding: '4px 8px 2px', fontSize: 10 }}>
+                      Saved paths
+                    </span>
+                    {roadmap!.versions!.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        role="menuitem"
+                        disabled={switching || v.isActive || v.status !== 'done'}
+                        onClick={() => void switchTo(v.id)}
+                        className="flex items-center justify-between gap-3 text-left text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] hover:text-[var(--color-accent)] disabled:opacity-50"
+                        style={{ padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{v.title}</span>
+                        <span className="shrink-0" style={{ opacity: 0.55 }}>
+                          {v.status === 'done' ? `${v.stepCount} steps` : v.status}
+                          {v.isActive ? ' · active' : ''}
+                        </span>
+                      </button>
+                    ))}
+                    <div className="my-1" style={{ borderTop: '1px solid var(--color-divider)' }} />
+                    {editOpen ? (
+                      <EditRoadmapForm
+                        roadmap={roadmap!}
+                        courses={courses}
+                        busy={switching}
+                        onSave={(updates) => void saveRoadmapMeta(updates)}
+                        onDelete={() => void deleteThisPath()}
+                        onCancel={() => setEditOpen(false)}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => setEditOpen(true)}
+                        className="flex w-full items-center gap-2 text-left text-xs transition-colors hover:bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] hover:text-[var(--color-accent)]"
+                        style={{ padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}
+                      >
+                        <HiOutlinePencilSquare className="h-3.5 w-3.5" />
+                        Rename or move this path…
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {!isMerged && (
               <button
                 className="btn btn-ghost"
                 style={GHOST_BTN}
                 onClick={regenerate}
-                title="Rebuild the path from the course materials. Mastery is kept — it lives on skills, and topics you've already mastered are left out."
+                title="Create a new path from the course materials — plus any files you reference with @. Your current path stays saved."
               >
-                <HiOutlineArrowPath className="h-3.5 w-3.5" />
-                Regenerate
+                <HiOutlineSparkles className="h-3.5 w-3.5" />
+                New path
               </button>
             )}
           </div>
@@ -783,6 +907,116 @@ export default function CourseRoadmap({
     <div className="space-y-4">
       {body}
       {courseraLine}
+      {!isMerged && regenOpen && (
+        <NewRoadmapDialog
+          courseName={course.name}
+          onConfirm={(name, guidance, documentIds) => {
+            setRegenOpen(false);
+            void generate(guidance || undefined, documentIds.length ? documentIds : undefined, name || undefined);
+          }}
+          onCancel={() => setRegenOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/** Inline form (inside the switcher menu) to rename a roadmap / move it to another course. */
+function EditRoadmapForm({
+  roadmap,
+  courses,
+  busy,
+  onSave,
+  onDelete,
+  onCancel,
+}: {
+  roadmap: Roadmap;
+  courses: Course[];
+  busy: boolean;
+  onSave: (updates: { title?: string; courseId?: string }) => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(roadmap.title);
+  const [courseId, setCourseId] = useState(roadmap.courseId);
+  const moved = courseId !== roadmap.courseId;
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave({
+          ...(title.trim() && title.trim() !== roadmap.title ? { title: title.trim() } : {}),
+          ...(moved ? { courseId } : {}),
+        });
+      }}
+      className="flex flex-col gap-2"
+      style={{ padding: 8 }}
+    >
+      <label className="section-label" style={{ margin: 0, fontSize: 10 }}>
+        Path name
+      </label>
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        maxLength={120}
+        className="text-xs"
+        style={{
+          padding: '4px 6px',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--color-divider)',
+          background: 'var(--color-surface)',
+        }}
+        placeholder="e.g. Exam cram"
+        autoFocus
+      />
+      <label className="section-label" style={{ margin: 0, fontSize: 10 }}>
+        Course
+      </label>
+      <select
+        value={courseId}
+        onChange={(e) => setCourseId(e.target.value)}
+        className="text-xs"
+        style={{
+          padding: '4px 6px',
+          borderRadius: 'var(--radius-sm)',
+          border: '1px solid var(--color-divider)',
+          background: 'var(--color-surface)',
+        }}
+      >
+        {courses.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      {moved && (
+        <p style={{ fontSize: 11, opacity: 0.6 }}>
+          Moves this path to another course. Steps and mastery come along; progress on this course's page will
+          switch to its next saved path.
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-1.5">
+        <button
+          type="button"
+          className="btn btn-ghost text-xs"
+          style={{ padding: '3px 8px', color: 'var(--color-danger)' }}
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`Delete the "${roadmap.title}" path? Its steps and your progress on them are removed.`))
+              onDelete();
+          }}
+        >
+          Delete this path…
+        </button>
+        <div className="flex items-center gap-1.5">
+          <button type="button" className="btn btn-secondary text-xs" style={{ padding: '3px 8px' }} onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary text-xs" style={{ padding: '3px 8px' }} disabled={busy || (!title.trim() && !moved)}>
+            Save
+          </button>
+        </div>
+      </div>
+    </form>
   );
 }

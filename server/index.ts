@@ -30,6 +30,8 @@ import flagsRouter from './routes/flags.js';
 import foldersRouter from './routes/folders.js';
 import zipExtractRouter from './routes/zipExtract.js';
 import lessonsRouter from './routes/lessons.js';
+import mcpRouter from './mcp.js';
+import eventsRouter from './routes/events.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -94,6 +96,9 @@ app.get('/api/health', (_req: Request, res: Response) => {
 });
 // Public share endpoints mount BEFORE the auth gate — the token is the capability.
 app.use('/api/public', sharesRouter);
+// Event ingest also mounts pre-gate: pre-auth friction is a signal (sign-in loops).
+// Attach runs first so user_id still resolves from the session cookie when present.
+app.use('/api', eventsRouter);
 // Everything under /api requires a signed-in user (when OAuth is configured).
 app.use('/api', requireUser);
 
@@ -119,6 +124,7 @@ app.use('/api', flagsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/folders', zipExtractRouter);
 app.use('/api/lessons', lessonsRouter);
+app.use('/', mcpRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {
@@ -223,6 +229,24 @@ async function reapStuckGenerations(): Promise<void> {
       // A transient DB error must not kill the interval.
       console.error(`[reaper] Failed to reap ${table}:`, err);
     }
+  }
+  // skills.video_search_status: a search that dies without reaching its catch
+  // (429 + DB blip mid-flight, process restart) sticks at 'searching' forever
+  // and the step page spins on it. Unstick so the UI can offer a retry.
+  try {
+    const result = await pool.query(
+      `UPDATE skills
+       SET video_search_status = 'error', video_search_error = 'Search timed out', updated_at = NOW()
+       WHERE video_search_status = 'searching'
+         AND updated_at < NOW() - ($1 || ' milliseconds')::interval
+       RETURNING id`,
+      [GENERATION_TIMEOUT_MS],
+    );
+    if (result.rows.length > 0) {
+      console.log(`[reaper] Unstuck ${result.rows.length} skill video searches: ${result.rows.map((r: { id: string }) => r.id).join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[reaper] Failed to reap skill video searches:', err);
   }
 }
 

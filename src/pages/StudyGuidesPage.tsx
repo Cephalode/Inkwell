@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { HiPlus, HiX, HiTrash, HiAcademicCap } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
@@ -173,7 +173,11 @@ export default function StudyGuidesPage() {
                   borderTop: '1px solid var(--color-neutral-300)',
                 }}
               >
-                <div className="min-w-0">
+                <Link
+                  to={`/study-guides/${guide.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="min-w-0"
+                >
                   <div className="min-w-0" style={{ fontSize: 15 }}>
                     <span className="font-semibold">{guide.title}</span>{' '}
                     <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
@@ -197,7 +201,7 @@ export default function StudyGuidesPage() {
                       />
                     </div>
                   )}
-                </div>
+                </Link>
 
                 <GuideStatusBadge status={guide.status} isGenerating={isGenerating} />
 

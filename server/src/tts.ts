@@ -10,6 +10,9 @@ export interface DialogLine {
 const HOST_VOICE = 'en-US-AndrewNeural';
 const GUEST_VOICE = 'en-US-AvaNeural';
 
+/** The single narration voice used for slide decks and other solo reads. */
+export { HOST_VOICE };
+
 /**
  * Split long text into ≤600-char sentence-ish chunks. One giant request makes
  * Edge's websocket drop before turn.end (prod 502 on select-all, 2026-09-21).

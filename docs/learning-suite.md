@@ -12,7 +12,7 @@ trail that decides when a topic is *learned*.
 | Skill | `skills` | One row per distinct topic across all courses (`slug` = normalised label). Holds `mastery` (`not_started` / `learning` / `learned`) and `mastery_score` (0–1). |
 | Roadmap | `roadmaps` | One per course. Generated from every material in the course (chapter analyses, transcripts, PDFs) via the shared SSE generation pipeline. |
 | Step | `roadmap_steps` | Ordered topic in a roadmap. Points at a skill, carries objectives, key points, source refs and `depends_on` (earlier step ids). |
-| Activity | `learning_activities` | One run of a strategy on a step: `lesson`, `quiz`, `flashcards`, `discussion` (Socratic tutor chat) or `recall` (teach it back). `content` is the generated payload, `result` the grading. |
+| Activity | `learning_activities` | One run of a strategy on a step: `lesson`, `quiz`, `flashcards`, `discussion` (Socratic tutor chat), `recall` (teach it back), `podcast` (two-host audio) or `diagram` (Excalidraw sketch, vision-reviewed). `content` is the generated payload, `result` the grading. |
 | Evidence | `skill_evidence` | Every mastery signal: kind, score, weight. Mastery is recomputed from the trail (`server/src/mastery.ts`). |
 | Profile | `learner_profile` | Single row: XP, today's XP, daily goal, streak. |
 
@@ -45,7 +45,8 @@ GET    /api/roadmaps/:id                     DELETE /api/roadmaps/:id
 GET    /api/roadmap-steps/:stepId            step detail: activities, evidence, prev/next ids
 POST   /api/roadmap-steps/:stepId/activities { kind }  → generated activity (quiz answers hidden)
 GET    /api/learning-activities/:id          DELETE (abandon an unfinished one)
-POST   /api/learning-activities/:id/submit   quiz {answers} · flashcards {grades} · lesson {checkpointsCorrect} · recall {answer} · discussion {} (close early)
+POST   /api/learning-activities/:id/submit   quiz {answers} · flashcards {grades} · lesson {checkpointsCorrect} · recall {answer} · diagram {image (data URL)} · discussion {} (close early)
+POST   /api/learning-activities/:id/diagram  {image} → one vision review round (verdict add|done; done completes + grades the activity)
 POST   /api/learning-activities/:id/messages { content } — one tutor turn; closes the activity when the tutor is convinced
 GET    /api/skills                           every skill with the courses/steps that teach it
 POST   /api/skills/:id/mastery               { mastery: 'learned' | 'not_started' }

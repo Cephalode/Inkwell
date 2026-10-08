@@ -22,7 +22,7 @@
 
 import type { Request, Response } from 'express';
 import pool from '../db.js';
-import { send, setSSEHeaders } from './sse.js';
+import { ping, send, setSSEHeaders } from './sse.js';
 import type { MaterialUnit } from './materials.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -204,6 +204,14 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
     closed = true;
   });
 
+  // Keepalive: long LLM phases (roadmap synthesis is a single 5+ minute call)
+  // emit no events, and Cloudflare kills idle tunnel streams (~100s). A spec
+  // comment line every 15s keeps the stream alive; clients ignore it.
+  const pingTimer = setInterval(() => {
+    if (!closed) ping(res);
+  }, 15_000);
+  pingTimer.unref();
+
   // Build the emit helper bound to this response.
   const emit: EmitFn = (type, data) => {
     if (data !== undefined) {
@@ -269,8 +277,10 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
 
     // 7. Emit done and close the stream.
     emit('done', { count: totalProduced });
+    clearInterval(pingTimer);
     res.end();
   } catch (err: unknown) {
+    clearInterval(pingTimer);
     console.error(`Generation pipeline error for ${table}:${id}:`, err);
     const message = err instanceof Error ? err.message : String(err);
 

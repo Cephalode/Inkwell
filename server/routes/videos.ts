@@ -88,15 +88,18 @@ router.post('/skills/:id/videos/search', async (req: Request, res: Response) => 
         cached: true,
       });
     }
-    const log: string[] = [];
-    const videos = await searchVideosForSkill(skill.id, (m) => log.push(m));
-    const fresh = (await loadSkillSearch(skill.id))!;
-    res.json({
-      skill: skillSearchInfo(fresh),
-      videos: selectSubjectVideos(forSkill(videos, skill.id)),
-      videosJudged: videos.length,
+    // Cold searches take 1-4 min — longer than Cloudflare's 100 s proxy cap,
+    // so holding the request open 524s the tunnel and the UI shows "failed".
+    // Queue it and return immediately; the client already polls
+    // GET /skills/:id/videos while searchStatus === 'searching'.
+    await pool.query(`UPDATE skills SET video_search_status = 'searching', video_search_error = NULL, updated_at = now() WHERE id = $1`, [skill.id]);
+    void runSearches([skill.id]);
+    return res.json({
+      skill: { ...skillSearchInfo(skill), searchStatus: 'searching' },
+      videos: selectSubjectVideos(await rankVideos({ skillIds: [skill.id], includeLearned: true })),
+      videosJudged: 0,
       cached: false,
-      log,
+      queued: true,
     });
   } catch (err) {
     console.error('Error searching skill videos:', err);
@@ -219,10 +222,10 @@ async function loadUnlearnedMilestones(courseId?: string): Promise<MilestoneRow[
                      ORDER BY r.course_id) AS courses
      FROM skills k
      JOIN roadmap_steps s ON s.skill_id = k.id
-     JOIN roadmaps r ON r.id = s.roadmap_id
+     JOIN roadmaps r ON r.id = s.roadmap_id AND r.is_active
      JOIN courses c ON c.id = r.course_id
      WHERE k.mastery <> 'learned'
-       ${courseId ? 'AND k.id IN (SELECT s2.skill_id FROM roadmap_steps s2 JOIN roadmaps r2 ON r2.id = s2.roadmap_id WHERE r2.course_id = $1)' : ''}
+       ${courseId ? 'AND k.id IN (SELECT s2.skill_id FROM roadmap_steps s2 JOIN roadmaps r2 ON r2.id = s2.roadmap_id WHERE r2.course_id = $1 AND r2.is_active)' : ''}
      GROUP BY k.id`,
     courseId ? [courseId] : [],
   );

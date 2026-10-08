@@ -2,7 +2,10 @@ import type { ReactNode } from 'react';
 import { HiCheck, HiXMark } from 'react-icons/hi2';
 import {
   ACTIVITY_META,
+  FLOW_SLOTS,
+  FLOW_SLOT_META,
   MASTERY_LABEL,
+  type DiagramResult,
   type DiscussionResult,
   type FlashcardsResult,
   type LearningActivity,
@@ -15,6 +18,7 @@ import {
   type SubmitResponse,
 } from '../../types/learning';
 import Badge from '../shared/Badge';
+import Markdown from '../shared/Markdown';
 
 interface ActivityOutcomeProps {
   result: SubmitResponse;
@@ -22,6 +26,8 @@ interface ActivityOutcomeProps {
   onNext: () => void;
   onAgain: () => void;
   onBack: () => void;
+  /** Guided flow: onAgain jumps straight into the next picked lesson. */
+  flowMode?: boolean;
 }
 
 const pct = (n: number) => Math.round(Math.max(0, Math.min(1, n)) * 100);
@@ -88,6 +94,58 @@ export function MasteryBar({ score, mastery }: { score: number; mastery: Mastery
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────
+
+/** The 7-slot guided-flow sequence with live checkmarks (flow mode UI). */
+export function FlowProgressDots({
+  step,
+  current,
+}: {
+  step: StepDetail;
+  current: import('../../types/learning').FlowSlot | null;
+}) {
+  const done = new Set<import('../../types/learning').FlowSlot>();
+  for (const a of step.activities) {
+    if (a.kind !== 'flow' || a.status !== 'completed') continue;
+    const slot = (a.result as { slot?: import('../../types/learning').FlowSlot } | null)?.slot;
+    if (slot) done.add(slot);
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="list" aria-label="Lesson sequence">
+      {FLOW_SLOTS.map((slot) => {
+        const meta = FLOW_SLOT_META[slot];
+        const isDone = done.has(slot);
+        const isCurrent = slot === current;
+        const color = isDone
+          ? 'var(--color-success)'
+          : isCurrent
+            ? 'var(--color-accent)'
+            : 'var(--color-neutral-400)';
+        return (
+          <span
+            key={slot}
+            role="listitem"
+            title={`${meta.label} — ${meta.blurb}`}
+            className="inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium"
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${isCurrent ? 'var(--color-accent)' : 'var(--color-divider)'}`,
+              background: isDone
+                ? 'color-mix(in srgb, var(--color-success) 12%, transparent)'
+                : isCurrent
+                  ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
+                  : 'transparent',
+              color: isDone || isCurrent ? color : undefined,
+              opacity: isDone || isCurrent ? 1 : 0.55,
+            }}
+          >
+            {isDone ? <HiCheck className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />}
+            {meta.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 function ScoreRing({ score }: { score: number }) {
   const r = 40;
@@ -174,7 +232,9 @@ function QuizDetail({ result, content }: { result: QuizResult; content: QuizCont
               <span className="mt-0.5 shrink-0" style={{ color }} aria-label={g.isCorrect ? 'Correct' : 'Incorrect'}>
                 {g.isCorrect ? <HiCheck className="h-4 w-4" /> : <HiXMark className="h-4 w-4" />}
               </span>
-              <p className="flex-1 text-sm font-semibold">{q?.prompt ?? `Question ${i + 1}`}</p>
+              <div className="min-w-0 flex-1 text-sm font-semibold">
+                {q ? <Markdown content={q.prompt} compact /> : `Question ${i + 1}`}
+              </div>
             </div>
             <p className="text-xs">
               <span style={{ opacity: 0.55 }}>Your answer: </span>
@@ -231,6 +291,38 @@ function RecallDetail({ result }: { result: RecallResult }) {
             </p>
           </details>
         )}
+      </div>
+    </Section>
+  );
+}
+
+function DiagramDetail({ result }: { result: DiagramResult }) {
+  return (
+    <Section title="Tutor review" aside={`${result.covered.length}/${result.covered.length + result.missing.length} rubric points`}>
+      <div className="card space-y-4 p-4">
+        {result.image && (
+          <img
+            src={result.image}
+            alt="Your final diagram"
+            className="w-full"
+            style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-divider)', maxHeight: 360, objectFit: 'contain', background: '#fff' }}
+          />
+        )}
+        {result.feedback && <p className="text-sm leading-relaxed">{result.feedback}</p>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-success)' }}>
+              Shown in your diagram
+            </div>
+            <CheckList items={result.covered} tone="success" />
+          </div>
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-warning)' }}>
+              Missing
+            </div>
+            <CheckList items={result.missing} tone="warning" />
+          </div>
+        </div>
       </div>
     </Section>
   );
@@ -301,6 +393,8 @@ function KindDetail({ activity }: { activity: LearningActivity }) {
       return <QuizDetail result={r as QuizResult} content={activity.content as QuizContent | null} />;
     case 'recall':
       return <RecallDetail result={r as RecallResult} />;
+    case 'diagram':
+      return <DiagramDetail result={r as DiagramResult} />;
     case 'discussion':
       return <DiscussionDetail result={r as DiscussionResult} />;
     case 'flashcards': {
@@ -313,6 +407,8 @@ function KindDetail({ activity }: { activity: LearningActivity }) {
     }
     case 'podcast':
       return <TallyDetail title="Podcast" done={1} total={1} noun="episode listened" />;
+    case 'slides':
+      return <TallyDetail title="Slides" done={1} total={1} noun="deck viewed" />;
     default:
       return null;
   }
@@ -321,7 +417,7 @@ function KindDetail({ activity }: { activity: LearningActivity }) {
 // ── Outcome ─────────────────────────────────────────────────────────────────
 
 /** Celebration + breakdown after an activity is submitted. */
-export default function ActivityOutcome({ result, step, onNext, onAgain, onBack }: ActivityOutcomeProps) {
+export default function ActivityOutcome({ result, step, onNext, onAgain, onBack, flowMode = false }: ActivityOutcomeProps) {
   const { activity, skill, previousMastery, justLearned, xpGained, profile } = result;
   const meta = ACTIVITY_META[activity.kind];
   const score = activity.score;
@@ -408,11 +504,21 @@ export default function ActivityOutcome({ result, step, onNext, onAgain, onBack 
       <KindDetail activity={activity} />
 
       <div className="flex flex-wrap gap-3">
-        <button type="button" className="btn btn-primary" onClick={onNext}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onNext}
+          disabled={!!step.nextStepId && skill.mastery !== 'learned'}
+          title={
+            !!step.nextStepId && skill.mastery !== 'learned'
+              ? 'Master this topic first (or tap "I already know this")'
+              : undefined
+          }
+        >
           {step.nextStepId ? 'Next topic' : 'Back to roadmap'}
         </button>
         <button type="button" className="btn btn-secondary" onClick={onAgain}>
-          Try another strategy
+          {flowMode ? 'Next lesson' : 'Try another strategy'}
         </button>
         <button type="button" className="btn btn-ghost" onClick={onBack}>
           Back to course

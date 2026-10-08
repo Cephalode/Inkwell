@@ -26,7 +26,7 @@ import pool from '../db.js';
 
 export type Mastery = 'not_started' | 'learning' | 'learned';
 
-export type EvidenceKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'video' | 'manual' | 'podcast';
+export type EvidenceKind = 'lesson' | 'quiz' | 'flashcards' | 'discussion' | 'recall' | 'video' | 'manual' | 'podcast' | 'diagram' | 'slides';
 
 export interface EvidenceInput {
   kind: EvidenceKind;
@@ -62,6 +62,8 @@ export const XP_BY_KIND: Record<EvidenceKind, number> = {
   recall: 25,
   discussion: 30,
   podcast: 15,
+  diagram: 25,
+  slides: 10,
   manual: 0,
 };
 
@@ -101,7 +103,6 @@ export function computeMastery(trail: EvidenceRow[]): { score: number; mastery: 
     (e) => ASSESSMENT_KINDS.has(e.kind) && clamp01(e.score) >= ASSESSMENT_FLOOR,
   );
   const byTrail = score >= LEARNED_THRESHOLD && n >= MIN_EVIDENCE && passedAssessment;
-
   // The tutor's verdict is decisive: when the latest discussion closed with
   // "learned" (score ≥ threshold) and no assessment since then has failed,
   // the topic is learned even if earlier attempts drag the average down.
@@ -113,7 +114,13 @@ export function computeMastery(trail: EvidenceRow[]): { score: number; mastery: 
   }
 
   const learned = byTrail || tutorScore > 0;
-  return { score: learned ? Math.max(score, tutorScore) : score, mastery: learned ? 'learned' : 'learning' };
+  // Coverage damp: the mean alone is a *quality* measure — one perfect lesson
+  // would read 100% while half the path is still ahead. Blend in how much of
+  // the guided path (~7 slots) the evidence trail actually covers so the bar
+  // fills as the path fills. Status still uses the gated rules above.
+  const coverage = Math.min(1, n / 7);
+  const displayScore = learned ? Math.max(score, tutorScore) : score * coverage;
+  return { score: displayScore, mastery: learned ? 'learned' : 'learning' };
 }
 
 /**

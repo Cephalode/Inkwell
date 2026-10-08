@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { HiDocumentText, HiMagnifyingGlass } from 'react-icons/hi2';
 import { PiLightningDuotone } from 'react-icons/pi';
 import InkwellLogo from '../shared/InkwellLogo';
@@ -110,15 +110,14 @@ export default function TopBar() {
       style={{ background: 'var(--color-surface)', borderBottom: '1px solid var(--color-divider)' }}
     >
       {/* Brand */}
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        className="flex cursor-pointer items-center gap-2 text-sm font-bold"
+      <Link
+        to="/"
+        className="flex items-center gap-2 text-sm font-bold"
         style={{ color: 'var(--color-accent)' }}
       >
         <InkwellLogo className="h-5 w-5" />
         Inkwell
-      </button>
+      </Link>
 
       {/* Unified search: lessons + documents */}
       <div className="relative min-w-0 flex-1" style={{ maxWidth: 420 }} ref={boxRef}>
@@ -171,10 +170,10 @@ export default function TopBar() {
                   Lessons
                 </div>
                 {lessonHits.map((l) => (
-                  <button
+                  <Link
                     key={l.id}
-                    type="button"
-                    onClick={() => goLesson(l.id)}
+                    to={`/lessons/${l.id}`}
+                    onClick={() => { setOpen(false); setSearch(''); }}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--color-neutral-200)]"
                   >
                     <PiLightningDuotone className="h-4 w-4 shrink-0" style={{ color: 'var(--color-accent)' }} />
@@ -182,7 +181,7 @@ export default function TopBar() {
                     <span className="shrink-0 text-[10px]" style={{ color: 'var(--color-neutral-500)' }}>
                       {l.status === 'ready' && l.percent_completed != null ? `${Math.round(l.percent_completed)}%` : l.status}
                     </span>
-                  </button>
+                  </Link>
                 ))}
               </div>
             )}
@@ -196,10 +195,10 @@ export default function TopBar() {
                   Documents
                 </div>
                 {docHits.map((d) => (
-                  <button
+                  <Link
                     key={d.id}
-                    type="button"
-                    onClick={() => goDoc(d.id)}
+                    to={`/documents/${d.id}`}
+                    onClick={() => { setOpen(false); setSearch(''); }}
                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--color-neutral-200)]"
                   >
                     <HiDocumentText className="h-4 w-4 shrink-0" style={{ color: 'var(--color-neutral-500)' }} />
@@ -209,7 +208,7 @@ export default function TopBar() {
                         {(d.tags ?? []).slice(0, 2).join(', ')}
                       </span>
                     )}
-                  </button>
+                  </Link>
                 ))}
               </div>
             )}
@@ -221,23 +220,22 @@ export default function TopBar() {
             )}
 
             {q && (docHits.length > 0 || lessonHits.length > 0) && (
-              <button
-                type="button"
-                onClick={goAllDocs}
+              <Link
+                to={`/documents?q=${encodeURIComponent(search.trim())}`}
+                onClick={() => { setOpen(false); setSearch(''); }}
                 className="block w-full border-t px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--color-neutral-200)]"
                 style={{ borderColor: 'var(--color-divider)', color: 'var(--color-neutral-500)' }}
               >
                 See all documents matching “{search.trim()}”
-              </button>
+              </Link>
             )}
           </div>
         )}
       </div>
 
       {/* Documents nav link */}
-      <button
-        type="button"
-        onClick={() => navigate('/documents')}
+      <Link
+        to="/documents"
         aria-current={onDocuments ? 'page' : undefined}
         className={`flex items-center gap-1.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-sm font-medium transition-colors ${
           onDocuments
@@ -247,7 +245,7 @@ export default function TopBar() {
       >
         <HiDocumentText className="h-4 w-4" />
         Documents
-      </button>
+      </Link>
 
       <div className="flex-1" />
       <ProfileMenu />

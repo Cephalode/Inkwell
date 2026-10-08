@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import { useLearningStore } from '../../store/learningStore';
 import type { QuizContent, QuizQuestionType } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
@@ -14,6 +16,19 @@ const TYPE_LABEL: Record<QuizQuestionType, string> = {
 };
 
 const isAnswered = (a: Answer | undefined) => a !== undefined && (typeof a !== 'string' || a.trim() !== '');
+
+// Draft persistence: answers + position survive remount (Resume) and reload.
+// Keyed by activity id — a regenerated quiz gets a new id, so drafts never
+// collide. Abandoned quizzes leave a stale key behind (~2 KB); harmless.
+const draftKey = (activityId: string) => `quiz-draft:${activityId}`;
+const readDraft = (key: string): { index: number; answers: Record<string, Answer> } => {
+  try {
+    const d = JSON.parse(localStorage.getItem(key) ?? '');
+    return { index: Number(d?.index) || 0, answers: d?.answers ?? {} };
+  } catch {
+    return { index: 0, answers: {} };
+  }
+};
 
 function Radio({ on }: { on: boolean }) {
   return (
@@ -36,10 +51,33 @@ export default function QuizRunner({ activity, onComplete, onAbandon }: Activity
   const content = activity.content as QuizContent | null;
   const questions = content?.questions ?? [];
 
-  const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  const [index, setIndex] = useState(() => {
+    const d = readDraft(draftKey(activity.id));
+    return Math.min(Math.max(0, d.index), (content?.questions.length ?? 1) - 1);
+  });
+  const [answers, setAnswers] = useState<Record<string, Answer>>(() => readDraft(draftKey(activity.id)).answers);
+  const draft = draftKey(activity.id);
+
+  // Save the draft on every change (cheapest correct hook: write-behind on
+  // state change, no debounce needed at this payload size).
+  useEffect(() => {
+    localStorage.setItem(draft, JSON.stringify({ index, answers }));
+  }, [draft, index, answers]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Grading overlay progress: eased estimate asymptotic to 90% (grading is
+  // one server LLM call — no real per-step progress; jumps to done on
+  // completion because the overlay unmounts). ponytail: time-based; switch
+  // to server streaming if grading ever becomes multi-step.
+  const [gradePct, setGradePct] = useState(0);
+  useEffect(() => {
+    if (!submitting) return;
+    const id = window.setInterval(() => {
+      setGradePct((p) => p + Math.max(0.5, (90 - p) * 0.08));
+    }, 400);
+    return () => window.clearInterval(id);
+  }, [submitting]);
 
   if (questions.length === 0) {
     return (
@@ -78,6 +116,7 @@ export default function QuizRunner({ activity, onComplete, onAbandon }: Activity
         if (isAnswered(a)) payload[qq.id] = typeof a === 'string' ? a.trim() : a;
       }
       const result = await submitActivity(activity.id, { answers: payload });
+      localStorage.removeItem(draft);
       onComplete(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not grade the quiz');
@@ -146,9 +185,9 @@ export default function QuizRunner({ activity, onComplete, onAbandon }: Activity
         style={{ padding: 'var(--space-6)', opacity: submitting ? 0.6 : 1, pointerEvents: submitting ? 'none' : 'auto' }}
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-xl leading-snug" style={{ margin: 0 }}>
-            {q.prompt}
-          </h2>
+          <div className="min-w-0 flex-1 text-xl leading-snug">
+            <Markdown content={q.prompt} compact className="[&_p]:text-xl [&_p]:leading-snug" />
+          </div>
           <span
             className="whitespace-nowrap px-2 py-1 text-xs"
             style={{ background: 'var(--color-neutral-200)', borderRadius: 'var(--radius-sm)', opacity: 0.75 }}
@@ -172,7 +211,7 @@ export default function QuizRunner({ activity, onComplete, onAbandon }: Activity
                   style={optionStyle(on)}
                 >
                   <Radio on={on} />
-                  <span>{opt}</span>
+                  <Markdown content={opt} compact />
                 </button>
               );
             })}
@@ -268,6 +307,40 @@ export default function QuizRunner({ activity, onComplete, onAbandon }: Activity
           The tutor is grading your answers — short answers can take a few seconds.
         </div>
       )}
+
+      {/* Grading overlay: full-screen blur + centered label + progress bar.
+       * Grading is one server LLM call, so progress is an eased estimate that
+       * asymptotes to 90% and jumps to done on completion (ponytail:
+       * time-based; real per-step progress needs server streaming). */}
+      {submitting &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9990] flex items-center justify-center backdrop-blur-md"
+            style={{ background: 'color-mix(in srgb, var(--color-surface) 55%, transparent)' }}
+            role="alert"
+            aria-busy="true"
+            aria-label="Your quiz is being graded"
+          >
+            <div className="flex w-[min(420px,calc(100%-3rem))] flex-col items-center gap-5">
+              <h2 className="text-center text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                Your quiz is being graded
+              </h2>
+              <div
+                className="h-2 w-full overflow-hidden"
+                style={{ background: 'var(--color-neutral-300)', borderRadius: 999 }}
+              >
+                <div
+                  className="h-full transition-[width] duration-700 ease-out"
+                  style={{ background: 'var(--color-accent)', width: `${gradePct}%`, borderRadius: 999 }}
+                />
+              </div>
+              <span className="text-xs" style={{ opacity: 0.6 }}>
+                The tutor is reading your answers…
+              </span>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -33,10 +33,14 @@ const components: ComponentPropsWithoutRef<typeof ReactMarkdown>['components'] =
   ),
 
   // react-markdown wraps fenced blocks in <pre><code class="language-x">;
-  // inline code has no language- class. We style the box on <code> and let
-  // <pre> be a transparent margin wrapper (mirrors the GlobalChat approach).
+  // inline code has no language- class. Fenced blocks WITHOUT a language tag
+  // also lack the class, so fall back to a newline check: CommonMark converts
+  // line endings inside inline code spans to spaces, so multi-line content is
+  // always a fenced block. We style the box on <code> and let <pre> be a
+  // transparent margin wrapper (mirrors the GlobalChat approach).
   code: ({ className, children }) => {
-    const isBlock = /language-(\w+)/.test(className ?? '');
+    const text = Array.isArray(children) ? children.join('') : String(children ?? '');
+    const isBlock = /language-(\w+)/.test(className ?? '') || text.includes('\n');
     if (isBlock) {
       return (
         <code

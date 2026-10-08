@@ -12,6 +12,10 @@ export default defineConfig({
         target: 'http://localhost:3002',
         changeOrigin: true,
       },
+      '/mcp': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
     },
   },
   plugins: [react(), tailwindcss()],

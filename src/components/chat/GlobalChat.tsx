@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock, HiBookOpen, HiDocumentText } from 'react-icons/hi';
+import { useLocation } from 'react-router-dom';
+import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock, HiBookOpen, HiDocumentText, HiOutlineSparkles } from 'react-icons/hi';
+import { HiOutlineEye } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
 import { useChatStore } from '../../store/chatStore';
 import { useDocumentStore } from '../../store/documentStore';
+import { useLearningStore } from '../../store/learningStore';
 import { runAgentTurn, type SystemMessageContext } from '../../services/chat/agent';
 import { generateUUID } from '../../utils/uuid';
 import { listTextbooks } from '../../services/api/client';
@@ -247,6 +250,9 @@ function SessionListDropdown({
 
 // ── Main GlobalChat component ───────────────────────────────────────────────
 
+/** Synthetic @-reference id for "the page I'm looking at". */
+const CURRENT_PAGE_REF_ID = '__current_page__';
+
 export default function GlobalChat() {
   const {
     isOpen,
@@ -273,17 +279,32 @@ export default function GlobalChat() {
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
 
   // ── @ mention state (Feature 3) ────────────────────────────────────────
+  const location = useLocation();
+  // Which learn-step page (if any) we're on — decides "Current page" mention
+  // availability and the auto-attached learning-page context.
+  const learningStepId = useMemo(() => {
+    const m = /^\/learn\/steps\/([a-z0-9-]+)/i.exec(location.pathname);
+    return m ? m[1] : null;
+  }, [location.pathname]);
   const [attachedRefs, setAttachedRefs] = useState<MentionableItem[]>([]);
+  const focusRefs = useChatStore((s) => s.focusRefs);
+  const removeFocus = useChatStore((s) => s.removeFocus);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
 
   // Build the list of mentionable items (documents + textbook chapters).
+  // On learn-step pages the whole step already rides along automatically, so
+  // the "Current page" reference would be redundant — offer it elsewhere.
   const mentionItems = useMemo<MentionableItem[]>(() => {
+    const pageItem: MentionableItem[] = learningStepId
+      ? []
+      : [{ id: CURRENT_PAGE_REF_ID, name: 'Current page', type: 'page' as const }];
     const docItems: MentionableItem[] = documents.map((d) => ({
       id: d.id,
       name: d.name,
@@ -302,12 +323,12 @@ export default function GlobalChat() {
     }
     // De-duplicate by id (a doc might appear as both a document and a chapter)
     const seen = new Set<string>();
-    return [...docItems, ...chapterItems].filter((it) => {
+    return [...pageItem, ...docItems, ...chapterItems].filter((it) => {
       if (seen.has(it.id)) return false;
       seen.add(it.id);
       return true;
     });
-  }, [documents, textbooks]);
+  }, [learningStepId, documents, textbooks]);
 
   // Filtered + capped view of mention items for the popover.
   const filteredMentionItems = useMemo(() => {
@@ -352,6 +373,21 @@ export default function GlobalChat() {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
+  // (Send-to-AI no longer injects text — the selection becomes a focus chip
+  // in the store; see focusRefs above.)
+
+  // Autosize: height follows content on every value change (typing, wrap,
+  // and programmatic drafts like "Send to AI"), clamped to maxHeight by CSS.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+    // Mirror overlay must scroll in lockstep with the textarea or the painted
+    // @mention highlight (and its text) desyncs once content exceeds maxHeight.
+    if (mirrorRef.current) mirrorRef.current.scrollTop = el.scrollTop;
+  }, [input]);
+
   // Cmd/Ctrl+L to toggle chat
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -373,7 +409,7 @@ export default function GlobalChat() {
     : (activeSession?.title ?? 'New chat');
 
   // ── @ mention input handling (Feature 3) ───────────────────────────────
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     const caret = e.target.selectionStart ?? val.length;
     const before = val.slice(0, caret);
@@ -424,6 +460,49 @@ export default function GlobalChat() {
     setAttachedRefs((prev) => prev.filter((r) => r.id !== id));
   };
 
+  // ── Learning page context (Cursor-style file reference) ──────────────────
+  // On a /learn/steps page, the whole step — metadata + active activity
+  // content — is the "file" the student has open. (location + learningStepId
+  // are derived up top with the mention state.)
+  const learningStep = useLearningStore((s) =>
+    learningStepId ? s.stepsById[learningStepId] : undefined,
+  );
+  const activeActivity = learningStep?.activities.find((a) => a.status === 'in_progress') ?? null;
+
+  const activityText = useMemo(() => {
+    const c = activeActivity?.content;
+    if (!c) return null;
+    // `in`-guards narrow the ActivityContent union without casts.
+    if ('markdown' in c) return c.markdown;
+    if ('questions' in c)
+      return c.questions.map((q, i) => `${i + 1}. ${q.prompt}${q.options ? `\n   ${q.options.join(' | ')}` : ''}`).join('\n');
+    if ('cards' in c) return c.cards.map((card) => `Q: ${card.front}\nA: ${card.back}`).join('\n\n');
+    if ('rubric' in c) return `Prompt: ${c.prompt}\nRubric:\n${c.rubric.map((r) => `- ${r}`).join('\n')}`;
+    if ('lines' in c) return c.lines.map((l) => `${l.speaker === 'host' ? 'Host' : 'Guest'}: ${l.text}`).join('\n');
+    if ('messages' in c)
+      return c.messages.map((m) => `${m.role === 'assistant' ? 'Tutor' : 'Student'}: ${m.content}`).join('\n\n');
+    return null;
+  }, [activeActivity]);
+
+  /** Cap the activity text so one giant lesson can't blow up the prompt. */
+  const LEARNING_TEXT_MAX = 12000;
+  const learningPage = learningStep
+    ? {
+        stepId: learningStep.id,
+        title: learningStep.title,
+        courseName: learningStep.courseName,
+        objectives: learningStep.objectives,
+        keyPoints: learningStep.keyPoints,
+        activityKind: activeActivity?.kind ?? null,
+        activityLabel: activeActivity?.kind ?? null,
+        activityText: activityText
+          ? activityText.length > LEARNING_TEXT_MAX
+            ? `${activityText.slice(0, LEARNING_TEXT_MAX)}\n… [truncated]`
+            : activityText
+          : null,
+      }
+    : null;
+
   const handleSend = useCallback(async () => {
     const msg = input.trim();
     if (!msg || isLoading) return;
@@ -457,6 +536,17 @@ export default function GlobalChat() {
           attachedRefs.length > 0
             ? attachedRefs.map((r) => ({ id: r.id, name: r.name, type: r.type }))
             : undefined,
+        learningPage,
+        focusExcerpt: focusRefs.length > 0 ? focusRefs.map((f) => f.excerpt).join(' … ') : null,
+        // "@ Current page" — a snapshot of what's on screen right now.
+        pageRef:
+          attachedRefs.some((r) => r.id === CURRENT_PAGE_REF_ID)
+            ? {
+                path: window.location.pathname,
+                title: document.title.replace(/\s*[|·-]\s*Inkwell\s*$/i, '').trim() || window.location.pathname,
+                text: (document.querySelector('main')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+              }
+            : null,
       };
 
       const result = await runAgentTurn(msg, allMessages.filter((m) => m.id !== userMsg.id), context, {
@@ -507,7 +597,7 @@ export default function GlobalChat() {
     // Clear attached references after the message has been sent
     setAttachedRefs([]);
     setLoading(false);
-  }, [input, isLoading, currentDocument, currentChapter, currentChapterText, viewerPage, attachedRefs, addMessage, setLoading, setPendingTools]);
+  }, [input, isLoading, currentDocument, currentChapter, currentChapterText, viewerPage, attachedRefs, learningPage, focusRefs, addMessage, setLoading, setPendingTools]);
 
   return (
     <>
@@ -644,6 +734,37 @@ export default function GlobalChat() {
 
         {/* Input */}
         <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--color-divider)' }}>
+        {/* Focus chips — selections attached via "Send to AI" (Cursor-style):
+            they tell the AI what to look at; the page rides in the prompt. */}
+        {focusRefs.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {focusRefs.map((f) => (
+              <span
+                key={f.id}
+                className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 text-xs max-w-full"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--color-accent-700)',
+                }}
+                title={f.excerpt}
+              >
+                <HiOutlineSparkles className="w-3 h-3 shrink-0" />
+                <span className="truncate italic">"{f.excerpt}"</span>
+                <button
+                  type="button"
+                  onClick={() => removeFocus(f.id)}
+                  className="p-0.5 rounded-[var(--radius-sm)] hover:bg-[color-mix(in_srgb,var(--color-accent)_25%,transparent)] transition-colors shrink-0"
+                  title="Remove focus"
+                >
+                  <HiX className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
           {/* Attached @ references (Feature 3) */}
           {attachedRefs.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
@@ -660,6 +781,8 @@ export default function GlobalChat() {
                 >
                   {ref.type === 'chapter' ? (
                     <HiBookOpen className="w-3 h-3 shrink-0" />
+                  ) : ref.type === 'page' ? (
+                    <HiOutlineEye className="w-3 h-3 shrink-0" />
                   ) : (
                     <HiDocumentText className="w-3 h-3 shrink-0" />
                   )}
@@ -685,23 +808,35 @@ export default function GlobalChat() {
                 borderRadius: 'var(--radius-md)',
               }}
             >
-              {/* Mirror: renders the value with @mentions highlighted in cyan,
-                  positioned behind a transparent input so the caret/typing
-                  is handled by the real input while styling comes from here. */}
+              {/* Mirror: paints ONLY the @mention highlight boxes — its base
+                  text is transparent so the real (textarea) glyphs are the
+                  only ones ever drawn. Guarantees the old double-render bug
+                  (mirror/textarea metric drift) can never come back. */}
               <div
+                ref={mirrorRef}
                 aria-hidden="true"
-                className="absolute inset-0 px-4 py-2 text-sm leading-[1.5] whitespace-pre overflow-hidden pointer-events-none"
+                className="absolute inset-0 px-4 py-2 text-base leading-[1.5] whitespace-break-spaces break-words overflow-hidden pointer-events-none !text-transparent"
               >
                 {input.split(/(@\S+)/g).map((part, i) =>
                   part.startsWith('@') ? (
-                    <span key={i} className="font-medium" style={{ color: 'var(--color-accent)' }}>{part}</span>
+                    <span
+                      key={i}
+                      className="rounded-[3px]"
+                      style={{
+                        background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                        boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                      }}
+                    >
+                      {part}
+                    </span>
                   ) : (
                     <span key={i}>{part}</span>
                   ),
                 )}
               </div>
-              <input
+              <textarea
                 ref={inputRef}
+                rows={1}
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={(e) => {
@@ -730,12 +865,24 @@ export default function GlobalChat() {
                     }
                   }
                   if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault(); // textarea would otherwise insert a newline
                     handleSend();
                   }
                 }}
+                onScroll={(e) => {
+                  // Wheel/arrow scrolling desyncs the overlay too — sync on
+                  // every scroll event, not just value changes.
+                  if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+                }}
                 placeholder={currentDocument ? 'Ask about this document… (@ to reference)' : 'Ask a question… (@ to reference)'}
-                className="relative w-full px-4 py-2 bg-transparent border-0 text-sm text-transparent placeholder:text-[var(--color-neutral-500)] focus:outline-none"
-                style={{ caretColor: 'var(--color-accent)', borderRadius: 'var(--radius-md)' }}
+                className="relative w-full px-4 py-2 bg-transparent border-0 text-sm leading-[1.5] placeholder:text-[var(--color-neutral-500)] focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                style={{
+                  color: 'var(--color-text)',
+                  caretColor: 'var(--color-accent)',
+                  borderRadius: 'var(--radius-md)',
+                  minHeight: '2.5rem',
+                  maxHeight: '10rem',
+                }}
               />
               {mentionOpen && (
                 <MentionPopover

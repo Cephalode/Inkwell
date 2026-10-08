@@ -508,7 +508,7 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
                 letterSpacing: '.14em',
                 textTransform: 'uppercase',
                 color: c.hue,
-                opacity: glow ? 1 : 0.75,
+                opacity: glow ? 1 : 0,
                 textShadow: glow
                   ? `0 0 10px color-mix(in srgb, ${c.hue} 85%, transparent), 0 0 24px color-mix(in srgb, ${c.hue} 55%, transparent)`
                   : 'none',
@@ -592,9 +592,12 @@ export default function TopicMapCanvas({ map, hidden, selectedId, onSelect, heig
                 style={{
                   font: `${isFoc ? 600 : 500} 11px var(--font-body)`,
                   color: 'var(--color-text)',
-                  opacity: isFoc ? 1 : faded ? 0.6 : 0.72,
+                  // Labels stay hidden until the node, its course or a connected
+                  // focus is hovered/selected — keeps the map readable as pure shape.
+                  opacity: isFoc || isSel || (hoverCluster !== null && t.courseIds.includes(hoverCluster)) ? 1 : 0,
                   whiteSpace: 'nowrap',
                   marginTop: 5,
+                  transition: 'opacity .15s',
                 }}
               >
                 {t.label}

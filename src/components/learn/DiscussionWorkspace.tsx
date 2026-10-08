@@ -6,6 +6,7 @@ import {
   HiChevronLeft,
   HiChevronUp,
   HiOutlineArrowsRightLeft,
+  HiOutlineArrowPath,
   HiOutlinePaperAirplane,
 } from 'react-icons/hi2';
 import AutoResizingTextarea from '../shared/AutoResizingTextarea';
@@ -270,11 +271,17 @@ export default function DiscussionWorkspace({
   step,
   onComplete,
   onAbandon,
+  onLeave,
+  onRegenerate,
 }: {
   activity: LearningActivity;
   step: StepDetail;
   onComplete: (result: SubmitResponse) => void;
   onAbandon: () => void;
+  /** Leave the discussion without deleting it (Resume from its tile). */
+  onLeave: () => void;
+  /** Discard this discussion and start a fresh one (page confirms first). */
+  onRegenerate: () => void;
 }) {
   const navigate = useNavigate();
   const session = useDiscussionSession(activity);
@@ -359,7 +366,7 @@ export default function DiscussionWorkspace({
         <div style={{ fontSize: 14, fontWeight: 600 }}>This session is closed</div>
         <div style={{ fontSize: 13, opacity: 0.55 }}>The tutor has made its call — the transcript stays here for reference.</div>
       </div>
-      <button type="button" className="btn btn-secondary" onClick={onAbandon}>
+      <button type="button" className="btn btn-secondary" onClick={onLeave}>
         Back
       </button>
     </div>
@@ -450,6 +457,17 @@ export default function DiscussionWorkspace({
             {session.ending ? 'Ending…' : 'End session'}
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ fontSize: 12.5 }}
+          disabled={session.busy}
+          title="Discard this discussion and start a fresh one"
+          onClick={onRegenerate}
+        >
+          <HiOutlineArrowPath className="h-3.5 w-3.5" />
+          Regenerate
+        </button>
       </div>
 
       <div className="flex items-baseline flex-wrap" style={{ gap: 'var(--space-2)', padding: '0 2px' }}>

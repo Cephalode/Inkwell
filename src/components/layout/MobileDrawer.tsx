@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HiXMark } from 'react-icons/hi2';
 import { NAV_ITEMS } from '../../config/navigation';
@@ -7,15 +7,9 @@ import InkwellLogo from '../shared/InkwellLogo';
 
 export default function MobileDrawer() {
   const { mobileDrawerOpen, setMobileDrawerOpen } = useUIStore();
-  const navigate = useNavigate();
   const location = useLocation();
 
   const closeDrawer = () => setMobileDrawerOpen(false);
-
-  const handleNavClick = (to: string) => {
-    navigate(to);
-    closeDrawer();
-  };
 
   return (
     <AnimatePresence>
@@ -67,9 +61,10 @@ export default function MobileDrawer() {
               {NAV_ITEMS.map(({ path, icon: Icon, label }) => {
                 const isActive = location.pathname === path;
                 return (
-                  <button
+                  <Link
                     key={path}
-                    onClick={() => handleNavClick(path)}
+                    to={path}
+                    onClick={closeDrawer}
                     className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-[var(--radius-md)] text-sm font-medium transition-all duration-200 ${
                       isActive
                         ? 'bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-[var(--color-accent)] border border-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]'
@@ -78,7 +73,7 @@ export default function MobileDrawer() {
                   >
                     <Icon className="w-5 h-5 shrink-0" />
                     <span>{label}</span>
-                  </button>
+                  </Link>
                 );
               })}
             </nav>

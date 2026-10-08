@@ -32,7 +32,7 @@ const AUDIO_EXTS = new Set(['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'opus', 'f
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi']);
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic']);
 
-function typeForExt(ext: string, mime: string): string {
+export function typeForExt(ext: string, mime: string): string {
   return AUDIO_EXTS.has(ext) && (mime.startsWith('audio/') || !VIDEO_EXTS.has(ext))
     ? 'audio'
     : VIDEO_EXTS.has(ext)
@@ -42,7 +42,7 @@ function typeForExt(ext: string, mime: string): string {
         : ext;
 }
 
-function mimeForExt(ext: string): string {
+export function mimeForExt(ext: string): string {
   const table: Record<string, string> = {
     pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
     gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', heic: 'image/heic',

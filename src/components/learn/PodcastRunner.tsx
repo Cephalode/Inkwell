@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { HiCheck, HiSpeakerWave } from 'react-icons/hi2';
 import Spinner from '../shared/Spinner';
+import Markdown from '../shared/Markdown';
 import { getActivity } from '../../services/api/learning';
 import { useLearningStore } from '../../store/learningStore';
-import type { PodcastContent } from '../../types/learning';
+import type { LearningActivity, PodcastContent } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
 
 /**
@@ -13,19 +14,21 @@ import type { ActivityRunnerProps } from './runnerProps';
  * activity; the readable transcript is shown immediately. "Done" just
  * submits — listening earns XP like reading a lesson, no grading.
  */
-export default function PodcastRunner({ activity, onComplete, onAbandon }: ActivityRunnerProps) {
+export default function PodcastRunner({ activity, onComplete, onAbandon, onLeave }: ActivityRunnerProps) {
   const submitActivity = useLearningStore((s) => s.submitActivity);
-  const content = activity.content as PodcastContent | null;
-
-  const [current, setCurrent] = useState(activity);
+  const [current, setCurrent] = useState<LearningActivity | null>(activity);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fresh content from a poll must be visible to the render: poll writes into
+  // `current`, so read content from `current` — `activity` stays frozen at the
+  // pre-audio snapshot (this mismatch once stalled the player forever).
+  const content = (current ?? activity).content as PodcastContent | null;
 
   // Poll while the TTS render is in flight (bounded ~5 min at 5s intervals).
   const [polls, setPolls] = useState(0);
   useEffect(() => {
-    if (current.content && (current.content as PodcastContent).audioPath) return;
-    if (current.content && (current.content as PodcastContent).renderError) return;
+    if (current?.content && (current.content as PodcastContent).audioPath) return;
+    if (current?.content && (current.content as PodcastContent).renderError) return;
     if (polls >= 60) return;
     const t = setTimeout(() => {
       getActivity(activity.id)
@@ -99,7 +102,7 @@ export default function PodcastRunner({ activity, onComplete, onAbandon }: Activ
             <span className="text-xs font-semibold" style={{ color: line.speaker === 'host' ? 'var(--color-accent)' : 'var(--color-pink, var(--color-accent))' }}>
               {line.speaker === 'host' ? 'Host' : 'Guest'}
             </span>
-            <p className="text-sm leading-snug">{line.text}</p>
+            <Markdown content={line.text} compact className="text-sm [&_p]:leading-snug" />
           </div>
         ))}
       </div>
@@ -115,7 +118,7 @@ export default function PodcastRunner({ activity, onComplete, onAbandon }: Activ
           {submitting ? <Spinner size="sm" /> : <HiCheck className="h-4 w-4" aria-hidden />}
           Done listening
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onAbandon}>
+        <button type="button" className="btn btn-ghost" onClick={onLeave}>
           Back to strategies
         </button>
       </div>

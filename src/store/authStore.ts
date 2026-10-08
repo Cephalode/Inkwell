@@ -6,6 +6,7 @@ export interface AuthUser {
   name: string | null;
   picture: string | null;
   plan: string;
+  isAnonymous?: boolean;
 }
 
 interface AuthState {
@@ -14,8 +15,6 @@ interface AuthState {
   loading: boolean;
   load: () => Promise<void>;
   logout: () => Promise<void>;
-  /** E8: when auth is on and no session exists, silently create an anon one. */
-  ensureSession: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
@@ -35,16 +34,5 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     await fetch('/api/auth/logout', { method: 'POST' });
     set({ user: null });
     window.location.href = '/';
-  },
-  ensureSession: async () => {
-    const { user, authEnabled } = get();
-    if (!authEnabled || user) return;
-    try {
-      const res = await fetch('/api/auth/anon', { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) set({ user: data.user });
-      }
-    } catch { /* anon bootstrap is best-effort */ }
   },
 }));

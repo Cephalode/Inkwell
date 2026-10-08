@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { HiPlus, HiX, HiTrash, HiDocument, HiExclamationCircle } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
@@ -292,7 +292,11 @@ export default function PracticeTestsPage() {
                     borderTop: '1px solid var(--color-neutral-300)',
                   }}
                 >
-                  <div className="min-w-0">
+                  <Link
+                    to={`/tests/${test.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="min-w-0"
+                  >
                     <div className="min-w-0" style={{ fontSize: 15 }}>
                       <span className="font-semibold">{test.title}</span>{' '}
                       <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
@@ -313,11 +317,11 @@ export default function PracticeTestsPage() {
                             width: `${Math.min(100, (prog.itemsGenerated / questionTarget) * 100)}%`,
                           }}
                         />
-                      </div>
-                    )}
-                  </div>
+                        </div>
+                        )}
+                        </Link>
 
-                  {test.status === 'done' ? (
+                        {test.status === 'done' ? (
                     <Badge color="green">Ready</Badge>
                   ) : isGenerating ? (
                     <Badge color="teal">Generating…</Badge>

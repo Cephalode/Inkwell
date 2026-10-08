@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { HiPlus, HiX, HiTrash, HiBookOpen, HiExclamationCircle } from 'react-icons/hi';
 import EmptyState from '../components/shared/EmptyState';
 import Spinner from '../components/shared/Spinner';
@@ -254,7 +254,11 @@ export default function FlashcardsPage() {
                     borderTop: '1px solid var(--color-neutral-300)',
                   }}
                 >
-                  <div className="min-w-0">
+                  <Link
+                    to={`/flashcards/${deck.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="min-w-0"
+                  >
                     <div className="min-w-0" style={{ fontSize: 15 }}>
                       <span className="font-semibold">{deck.title}</span>{' '}
                       <span style={{ opacity: 0.5, fontSize: 13 }}>{sourceName}</span>
@@ -275,11 +279,11 @@ export default function FlashcardsPage() {
                             width: `${Math.min(100, (prog.itemsGenerated / (deck.config?.count || FLASHCARD_TARGET)) * 100)}%`,
                           }}
                         />
-                      </div>
-                    )}
-                  </div>
+                        </div>
+                        )}
+                        </Link>
 
-                  {deck.status === 'done' ? (
+                        {deck.status === 'done' ? (
                     <Badge color="green">Ready</Badge>
                   ) : isGenerating ? (
                     <Badge color="yellow">Generating…</Badge>

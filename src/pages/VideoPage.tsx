@@ -18,6 +18,7 @@ import Spinner from '../components/shared/Spinner';
 import { MasteryPill } from '../components/learn/ActivityOutcome';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useVideoStore } from '../store/videoStore';
+import { HOME } from '../config/home';
 import { MASTERY_LABEL } from '../types/learning';
 import { formatDuration, type VideoMilestone, type WatchQuizQuestion, type WatchedResponse } from '../types/videos';
 import { getWatchQuiz } from '../services/api/videos';
@@ -26,7 +27,6 @@ type Navigate = (to: string) => void;
 type Chapter = VideoMilestone & { startSeconds: number };
 
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -228,14 +228,18 @@ function TheatrePlayer({
   embedSrc,
   title,
   onExit,
-  speedHint,
+  hint,
+  speedRow,
   children,
 }: {
   embedSrc: string;
   title: string;
   onExit: () => void;
-  /** Non-null shows a transient "1.5×"-style indicator on the player. */
-  speedHint: number | null;
+  /** Non-null shows a transient overlay on the player ("1.5×", "0:15"…). */
+  hint: string | null;
+  /** Clickable playback-speed chips (keys don't reach the page once the
+   *  cross-origin iframe has focus). */
+  speedRow: ReactNode;
   /** Chapter panel content (the normal-mode chapters list). */
   children: ReactNode;
 }) {
@@ -272,7 +276,7 @@ function TheatrePlayer({
           style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
         />
 
-        {speedHint !== null && (
+        {hint !== null && (
           <div
             aria-live="polite"
             style={{
@@ -287,7 +291,7 @@ function TheatrePlayer({
               font: '600 13px var(--font-body)',
             }}
           >
-            {speedHint}×
+            {hint}
           </div>
         )}
 
@@ -315,6 +319,21 @@ function TheatrePlayer({
             <HiOutlineArrowsPointingIn className="h-4 w-4" />
             Exit theatre
           </button>
+        </div>
+
+        {/* Speed chips, bottom edge of the player. */}
+        <div
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center"
+          style={{
+            gap: 4,
+            maxWidth: 'calc(100% - 16px)',
+            padding: '4px 8px',
+            borderRadius: 999,
+            background: 'rgba(0,0,0,0.55)',
+            color: '#fff',
+          }}
+        >
+          {speedRow}
         </div>
 
         {/* Chapter list overlay, dismissed with the same button or a click outside. */}
@@ -371,6 +390,8 @@ function VideoView({ videoId }: { videoId: string }) {
   const [answers, setAnswers] = useState<string[]>([]);
   /** Per-question correctness from a rejected attempt (400 from the server). */
   const [quizResults, setQuizResults] = useState<boolean[] | null>(null);
+  /** True after a submit attempt with unanswered questions. */
+  const [nudge, setNudge] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const quizRef = useRef<HTMLDivElement>(null);
   const [theatreMode, setTheatreMode] = useState(false);
@@ -387,33 +408,109 @@ function VideoView({ videoId }: { videoId: string }) {
   /** Desired playback rate, tracked parent-side (the cross-origin player
    *  can't be queried). '<' steps down, '>' steps up, YouTube-style. */
   const [rate, setRate] = useState(1);
-  const [speedHint, setSpeedHint] = useState<number | null>(null);
+  /** Transient overlay on the player: "1.5×" after a rate change, a
+   *  timestamp after a j/l seek. */
+  const [hint, setHint] = useState<string | null>(null);
   const hintTimer = useRef<number | null>(null);
+  const showHint = useCallback((text: string) => {
+    setHint(text);
+    if (hintTimer.current) window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setHint(null), 1200);
+  }, []);
+
+  const setRateTo = useCallback(
+    (next: number) => {
+      setRate(next);
+      postYTCommand('setPlaybackRate', [next]);
+      showHint(`${next}×`);
+    },
+    [showHint],
+  );
+
+  /** Last playhead reported by the embed (streamed via the widget channel —
+   *  see the handshake effect below); j/l seek relative to it, falling back
+   *  to the embed's start time before the first report arrives. */
+  const timeRef = useRef(0);
+  const seekTimerRef = useRef<number | null>(null);
+  const seekBy = useCallback(
+    (delta: number) => {
+      const target = Math.max(0, timeRef.current + delta);
+      timeRef.current = target;
+      postYTCommand('seekTo', [target, true]);
+      showHint(formatDuration(target));
+      // Freshly-remounted embeds (theatre enter/exit, chapter jump) drop
+      // commands until init finishes (~5s worst case observed). The
+      // currentTime stream tells us whether the seek landed — re-send until
+      // the playhead is at the target.
+      if (seekTimerRef.current) window.clearInterval(seekTimerRef.current);
+      let tries = 0;
+      seekTimerRef.current = window.setInterval(() => {
+        if (Math.abs(timeRef.current - target) < 1 || ++tries >= 12) {
+          if (seekTimerRef.current) window.clearInterval(seekTimerRef.current);
+          seekTimerRef.current = null;
+          return;
+        }
+        postYTCommand('seekTo', [target, true]);
+      }, 500);
+    },
+    [showHint],
+  );
+
+  // The embed only streams infoDelivery messages (currentTime among them)
+  // after the host announces it's listening — the undocumented handshake the
+  // IFrame API performs internally. Re-ping every 2s so a handshake sent
+  // before player init is retried. If it ever stops working, j/l just fall
+  // back to seeking from the embed's start time. */
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== 'https://www.youtube.com') return;
+      try {
+        const t = (JSON.parse(e.data as string) as { info?: { currentTime?: unknown } })?.info?.currentTime;
+        if (typeof t === 'number') timeRef.current = t;
+      } catch {
+        /* frame messages may be non-JSON */
+      }
+    };
+    window.addEventListener('message', onMsg);
+    // id+channel are required — a bare {event:'listening'} gets ignored.
+    const ping = window.setInterval(
+      () =>
+        document.querySelectorAll<HTMLIFrameElement>('iframe[src*="youtube.com/embed"]').forEach((f) => {
+          try {
+            f.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 0, channel: 'widget' }), 'https://www.youtube.com');
+          } catch {
+            /* guarded anyway */
+          }
+        }),
+      2000,
+    );
+    return () => {
+      window.removeEventListener('message', onMsg);
+      window.clearInterval(ping);
+    };
+  }, []);
 
   const changeRate = useCallback(
     (dir: 1 | -1) => {
       const idx = PLAYBACK_RATES.indexOf(rate);
-      const next = PLAYBACK_RATES[Math.min(PLAYBACK_RATES.length - 1, Math.max(0, (idx === -1 ? PLAYBACK_RATES.indexOf(1) : idx) + dir))];
-      setRate(next);
-      postYTCommand('setPlaybackRate', [next]);
-      setSpeedHint(next);
-      if (hintTimer.current) window.clearTimeout(hintTimer.current);
-      hintTimer.current = window.setTimeout(() => setSpeedHint(null), 1200);
+      setRateTo(PLAYBACK_RATES[Math.min(PLAYBACK_RATES.length - 1, Math.max(0, (idx === -1 ? PLAYBACK_RATES.indexOf(1) : idx) + dir))]);
     },
-    [rate],
+    [rate, setRateTo],
   );
 
   // Window-level so it works in theatre mode too; skips while typing.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== '<' && e.key !== '>') return;
+      if (e.key !== '<' && e.key !== '>' && e.key !== 'j' && e.key !== 'l') return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-      changeRate(e.key === '>' ? 1 : -1);
+      if (e.key === 'j') seekBy(-10);
+      else if (e.key === 'l') seekBy(10);
+      else changeRate(e.key === '>' ? 1 : -1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [changeRate]);
+  }, [changeRate, seekBy]);
 
   // Iframes come back at 1× after any remount (chapter jump, theatre enter/
   // exit) — re-apply the chosen rate on each embed load. Commands sent
@@ -449,6 +546,23 @@ function VideoView({ videoId }: { videoId: string }) {
     };
   }, [videoId, loadVideo]);
 
+  // Prefetch the check-your-understanding questions while the user watches,
+  // so the first click reveals them instantly instead of waiting on the
+  // server. A failure just means the click fetches on demand.
+  useEffect(() => {
+    let cancelled = false;
+    getWatchQuiz(videoId)
+      .then((data) => {
+        if (!cancelled) setQuiz(data.questions);
+      })
+      .catch(() => {
+        /* click falls back to fetching on demand */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId]);
+
   if (!video) {
     if (loadError) {
       const missing = /not found/i.test(loadError);
@@ -482,6 +596,7 @@ function VideoView({ videoId }: { videoId: string }) {
       // records the watch.
       if (quiz && quizOpen) {
         if (answers.filter(Boolean).length < quiz.length) {
+          setNudge(true);
           setWatchBusy(false);
           return;
         }
@@ -500,10 +615,14 @@ function VideoView({ videoId }: { videoId: string }) {
         }
         return;
       }
-      // First click — load the quiz (cached server-side) and reveal the panel.
-      const data = await getWatchQuiz(video.id);
-      setQuiz(data.questions);
-      setAnswers(new Array(data.questions.length).fill(''));
+      // First click — reveal the (prefetched) questions. Prefetch failed?
+      // Fetch now, then reveal.
+      let questions = quiz;
+      if (!questions) {
+        questions = (await getWatchQuiz(video.id)).questions;
+        setQuiz(questions);
+      }
+      setAnswers(new Array(questions.length).fill(''));
       setQuizResults(null);
       setQuizOpen(true);
       requestAnimationFrame(() => quizRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -594,7 +713,7 @@ function VideoView({ videoId }: { videoId: string }) {
           style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
         />
       )}
-      {speedHint !== null && (
+      {hint !== null && (
         <div
           aria-live="polite"
           style={{
@@ -609,9 +728,35 @@ function VideoView({ videoId }: { videoId: string }) {
             font: '600 13px var(--font-body)',
           }}
         >
-          {speedHint}×
+          {hint}
         </div>
       )}
+    </div>
+  );
+
+  // Clickable speed options — keys die once the cross-origin iframe grabs
+  // focus, so the buttons are the reliable path.
+  const speedRow = (
+    <div className="flex flex-wrap items-center" style={{ gap: 6, marginTop: 8 }}>
+      <span style={{ fontSize: 12.5, opacity: 0.55, marginRight: 2 }}>Speed</span>
+      {PLAYBACK_RATES.map((r) => (
+        <button
+          key={r}
+          type="button"
+          aria-pressed={rate === r}
+          onClick={() => setRateTo(r)}
+          title={`Play at ${r}×`}
+          style={{
+            ...chipStyle,
+            padding: '2px 9px',
+            borderColor: rate === r ? 'color-mix(in srgb, var(--color-accent) 55%, transparent)' : 'var(--color-neutral-300)',
+            background: rate === r ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'var(--color-surface)',
+            color: rate === r ? 'var(--color-accent-700)' : 'var(--color-text)',
+          }}
+        >
+          {r}×
+        </button>
+      ))}
     </div>
   );
 
@@ -659,6 +804,7 @@ function VideoView({ videoId }: { videoId: string }) {
       >
         <div ref={playerRef} className="min-w-0">
           {playerBox}
+          {speedRow}
           {activeChapter && (
             <div className="flex flex-wrap items-center" style={{ gap: 10, marginTop: 8, fontSize: 13, opacity: 0.75 }} aria-live="polite">
               <HiOutlinePlay className="h-3.5 w-3.5" style={{ color: 'var(--color-accent)' }} />
@@ -703,7 +849,7 @@ function VideoView({ videoId }: { videoId: string }) {
           iframe, which returns the embed to 1× — the load handler re-applies
           the chosen rate. */}
       {theatreMode && (
-        <TheatrePlayer embedSrc={embedSrc} title={video.title} onExit={() => setTheatreMode(false)} speedHint={speedHint}>
+        <TheatrePlayer embedSrc={embedSrc} title={video.title} onExit={() => setTheatreMode(false)} hint={hint} speedRow={speedRow}>
           {chapters.length > 0 ? (
             chaptersList
           ) : (
@@ -742,89 +888,121 @@ function VideoView({ videoId }: { videoId: string }) {
           )}
         </div>
         {quizOpen && !video.watchedAt && quiz && (
-          <div ref={quizRef} className="card space-y-4" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 45%, transparent)' }}>
-            <div>
+          <div ref={quizRef} className="card" style={{ borderColor: 'color-mix(in srgb, var(--color-accent) 45%, transparent)', padding: 'var(--space-5)' }}>
+            <div style={{ paddingBottom: 'var(--space-3)', borderBottom: '1px solid var(--color-neutral-200)' }}>
               <div className="card-kicker" style={{ color: 'var(--color-accent)' }}>
                 Check your understanding
               </div>
               <p style={{ fontSize: 13.5, opacity: 0.65, margin: '2px 0 0' }}>
-                Answer both correctly to mark this video as watched.
+                Answer all {quiz.length} correctly to mark this video as watched.
               </p>
             </div>
-            {quiz.map((q, qi) => (
-              <div key={qi}>
-                <p className="font-semibold" style={{ fontSize: 14.5, margin: '0 0 6px', lineHeight: 1.4 }}>
-                  {qi + 1}. {q.question}
-                </p>
-                <div className="flex flex-col" style={{ gap: 6 }}>
-                  {q.options.map((opt, oi) => {
-                    const selected = answers[qi] === String(oi);
-                    const wrong = quizResults?.[qi] === false && selected;
-                    return (
-                      <button
-                        key={oi}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() =>
-                          setAnswers((a) => {
-                            const next = [...a];
-                            next[qi] = String(oi);
-                            return next;
-                          })
-                        }
-                        className="flex items-start text-left"
-                        style={{
-                          gap: 8,
-                          padding: '8px 12px',
-                          borderRadius: 'var(--radius-md)',
-                          border: `1px solid ${
-                            wrong
-                              ? 'color-mix(in srgb, var(--color-danger) 55%, transparent)'
+            <div className="flex flex-col" style={{ gap: 'var(--space-4)', paddingTop: 'var(--space-4)' }}>
+              {quiz.map((q, qi) => (
+                <div key={qi} style={{ borderTop: qi > 0 ? '1px solid var(--color-neutral-200)' : undefined, paddingTop: qi > 0 ? 'var(--space-4)' : undefined }}>
+                  <p className="font-semibold" style={{ fontSize: 15, margin: '0 0 10px', lineHeight: 1.45 }}>
+                    <span className="tabular-nums" style={{ color: 'var(--color-accent-700)', marginRight: 6 }}>
+                      {qi + 1}.
+                    </span>
+                    {q.question}
+                  </p>
+                  <div className="flex flex-col" style={{ gap: 8 }}>
+                    {q.options.map((opt, oi) => {
+                      const selected = answers[qi] === String(oi);
+                      const wrong = quizResults?.[qi] === false && selected;
+                      return (
+                        <button
+                          key={oi}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => {
+                            setNudge(false);
+                            setAnswers((a) => {
+                              const next = [...a];
+                              next[qi] = String(oi);
+                              return next;
+                            });
+                          }}
+                          className="flex w-full items-start text-left"
+                          style={{
+                            gap: 12,
+                            padding: '10px 14px',
+                            borderRadius: 'var(--radius-lg)',
+                            border: `1px solid ${
+                              wrong
+                                ? 'color-mix(in srgb, var(--color-danger) 55%, transparent)'
+                                : selected
+                                  ? 'color-mix(in srgb, var(--color-accent) 55%, transparent)'
+                                  : 'var(--color-neutral-300)'
+                            }`,
+                            background: wrong
+                              ? 'color-mix(in srgb, var(--color-danger) 8%, transparent)'
                               : selected
-                                ? 'color-mix(in srgb, var(--color-accent) 55%, transparent)'
-                                : 'var(--color-neutral-300)'
-                          }`,
-                          background: wrong
-                            ? 'color-mix(in srgb, var(--color-danger) 8%, transparent)'
-                            : selected
-                              ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
-                              : 'transparent',
-                          color: 'var(--color-text)',
-                          font: 'inherit',
-                          fontSize: 13.5,
-                          lineHeight: 1.45,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <span
-                          className="font-semibold tabular-nums shrink-0"
-                          style={{ fontSize: 12, color: selected ? 'var(--color-accent-700)' : 'inherit', opacity: selected ? 1 : 0.5 }}
+                                ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
+                                : 'var(--color-surface)',
+                            color: 'var(--color-text)',
+                            font: 'inherit',
+                            fontSize: 14,
+                            lineHeight: 1.5,
+                            cursor: 'pointer',
+                          }}
                         >
-                          {String.fromCharCode(65 + oi)}
-                        </span>
-                        <span className="min-w-0">{opt}</span>
-                      </button>
-                    );
-                  })}
+                          <span
+                            className="flex shrink-0 items-center justify-center font-semibold tabular-nums"
+                            style={{
+                              width: 24,
+                              height: 24,
+                              marginTop: 1,
+                              borderRadius: 999,
+                              fontSize: 12,
+                              border: `1px solid ${
+                                wrong
+                                  ? 'color-mix(in srgb, var(--color-danger) 55%, transparent)'
+                                  : selected
+                                    ? 'color-mix(in srgb, var(--color-accent) 55%, transparent)'
+                                    : 'var(--color-neutral-300)'
+                              }`,
+                              background: selected ? 'color-mix(in srgb, var(--color-accent) 12%, transparent)' : 'transparent',
+                              color: selected ? 'var(--color-accent-700)' : 'var(--color-text)',
+                            }}
+                          >
+                            {String.fromCharCode(65 + oi)}
+                          </span>
+                          <span className="min-w-0">{opt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-            <p style={{ fontSize: 12.5, opacity: 0.5, margin: 0 }}>
-              {answers.filter(Boolean).length} of {quiz.length} answered
-              {quizResults && ' · red highlight = the answer you picked was wrong'}
+              ))}
+            </div>
+            <p className="flex flex-wrap items-center" style={{ fontSize: 13, opacity: 0.65, margin: 'var(--space-3) 0 0', gap: 8 }}>
+              <span>
+                {answers.filter(Boolean).length} of {quiz.length} answered
+              </span>
+              {quizResults && <span style={{ color: 'var(--color-danger)' }}>red highlight = the answer you picked was wrong</span>}
+              {nudge && <span style={{ color: 'var(--color-danger)' }}>Answer every question to submit.</span>}
             </p>
           </div>
         )}
         {outcome && (
           <Note tone="success">
             <HiCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
+            <span className="min-w-0 flex-1">
               <strong>+{outcome.xpGained} XP</strong>
               {' · '}
               {moved.length > 0
                 ? moved.map((s) => `${s.label} → ${MASTERY_LABEL[s.mastery]}`).join(' · ')
                 : 'no milestone changed level yet — an assessed strategy will'}
             </span>
+            <button
+              type="button"
+              className={`btn btn-primary ${smallBtn}`}
+              onClick={() => navigate(HOME)}
+              title="Back to the roadmap"
+            >
+              Back to roadmap
+            </button>
           </Note>
         )}
         {watchError && <Note tone="danger">{watchError}</Note>}
@@ -837,7 +1015,7 @@ function VideoView({ videoId }: { videoId: string }) {
             Milestones in this video
           </h3>
           <span className="whitespace-nowrap" style={{ fontSize: 13, opacity: 0.5 }}>
-            {plural(unlearned, 'unlearned')}
+            {unlearned} unlearned
             {milestones.length - unlearned > 0 ? ` · ${milestones.length - unlearned} already learned` : ''}
           </span>
         </div>

@@ -1,4 +1,4 @@
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { HiRocketLaunch, HiDocumentText, HiBars3, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import { useUIStore } from '../../store/uiStore';
 import { useChatStore } from '../../store/chatStore';
@@ -10,7 +10,6 @@ const tabs = [
 ] as const;
 
 export default function MobileTabBar() {
-  const navigate = useNavigate();
   const location = useLocation();
   const toggleMobileDrawer = useUIStore((s) => s.toggleMobileDrawer);
   const setMobileActiveTab = useUIStore((s) => s.setMobileActiveTab);
@@ -23,11 +22,6 @@ export default function MobileTabBar() {
     if (path.startsWith('/documents')) return 'documents';
     return '';
   })();
-
-  const handleTabClick = (tab: (typeof tabs)[number]) => {
-    setMobileActiveTab(tab.key);
-    navigate(tab.path);
-  };
 
   const handleMoreClick = () => {
     toggleMobileDrawer();
@@ -50,10 +44,10 @@ export default function MobileTabBar() {
           const isActive = activeKey === tab.key;
           const Icon = tab.icon;
           return (
-            <button
+            <Link
               key={tab.key}
-              type="button"
-              onClick={() => handleTabClick(tab)}
+              to={tab.path}
+              onClick={() => setMobileActiveTab(tab.key)}
               className={`
                 flex flex-col items-center justify-center
                 min-w-[44px] min-h-[44px]
@@ -63,7 +57,7 @@ export default function MobileTabBar() {
             >
               <Icon className="text-xl" />
               <span className="text-[10px] mt-0.5 leading-none">{tab.label}</span>
-            </button>
+            </Link>
           );
         })}
 

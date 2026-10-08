@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Auth Sketch: 012 Big Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-700:#83c9e6;
+  --serif:"Source Serif 4",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-700:#006786;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+.ledger{display:grid;grid-template-columns:1.15fr 1fr;min-height:100vh}
+.lhs{border-right:1px solid var(--divider);padding:44px 48px;display:flex;flex-direction:column}
+.rhs{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:44px 40px}
+
+/* LHS */
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:34px}
+.brand svg{color:var(--accent)}
+.brand .word{font-size:17px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+.lhs h1{font-size:clamp(34px,4.6vw,54px);font-weight:700;line-height:1.06;max-width:13ch}
+.lhs .deck{margin-top:18px;max-width:44ch;color:var(--n700);font-size:16px;text-align:justify;hyphens:auto}
+.entries{margin-top:auto;padding-top:34px}
+.entries .rule{border-top:3px double var(--text);opacity:.85;margin-bottom:14px}
+.entry{display:flex;gap:14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--divider);max-width:520px}
+.entry:last-child{border-bottom:none}
+.entry .num{font-family:var(--mono);font-size:11px;color:var(--accent);flex-shrink:0;letter-spacing:.06em}
+.entry .t{font-size:15px}
+.entry .t small{display:block;font-family:var(--mono);font-size:10.5px;color:var(--n500);margin-top:2px;letter-spacing:.04em}
+
+/* RHS */
+.form-col{width:100%;max-width:360px}
+.form-kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px;text-align:center}
+.ways{border:1px solid var(--divider);background:var(--surface)}
+.way{display:flex;align-items:center;gap:12px;width:100%;padding:15px 16px;background:none;border:none;border-bottom:1px solid var(--divider);color:var(--text);font-family:var(--serif);font-size:15.5px;cursor:pointer;text-align:left;transition:background .15s}
+.way:last-child{border-bottom:none}
+.way:hover{background:var(--bg)}
+.way .arrow{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--n500);transition:color .15s}
+.way:hover .arrow{color:var(--accent)}
+.way[disabled]{opacity:.6;cursor:default}
+.spin{width:14px;height:14px;border:2px solid var(--divider);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.note{font-family:var(--mono);font-size:10.5px;color:var(--accent);margin-top:12px;text-align:center;min-height:16px}
+.fine{font-family:var(--mono);font-size:10.5px;color:var(--n500);margin-top:26px;text-align:center;line-height:1.8;letter-spacing:.04em}
+
+.theme-btn{position:fixed;top:12px;right:14px;z-index:9;font-family:var(--mono);font-size:11px;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:4px 9px;cursor:pointer}
+.theme-btn:hover{color:var(--text);border-color:var(--n500)}
+
+@media (max-width:820px){
+  .ledger{grid-template-columns:1fr;min-height:0}
+  .lhs{border-right:none;border-bottom:1px solid var(--divider);padding:32px 24px}
+  .entries{display:none}
+  .rhs{padding:36px 24px}
+}
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="toggleTheme()">☀ light</button>
+<main class="ledger">
+
+  <section class="lhs">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M24 8 L40 8 L40 14 Q40 17 44 19 Q50 22 50 30 L50 48 Q50 54 44 54 L20 54 Q14 54 14 48 L14 30 Q14 22 20 19 Q24 17 24 14 Z" fill="currentColor"/>
+        <g transform="translate(41 28) scale(1.22) translate(-41 -28)">
+          <path d="M40.8 27.5 C39.9 22.0 40.4 16.5 41.2 13.6 C41.6 12.2 42.3 10.4 44.0 8.9 C44.5 8.5 44.9 8.2 45.1 8.1 C45.2 8.4 45.2 9.1 45.1 10.0 C44.9 13.0 44.0 17.4 42.7 21.6 C42.0 23.9 41.3 26.0 40.8 27.5 Z M40.9 28.3 C41.5 26.6 42.3 24.4 43.0 21.9 C44.4 17.6 45.3 13.1 45.5 10.0 C45.6 8.8 45.6 7.9 45.4 7.4 C45.3 7.1 45.1 6.9 44.8 7.1 C44.5 7.3 44.0 7.8 43.4 8.4 C41.6 10.1 40.8 12.1 40.4 13.6 C39.6 16.6 39.1 22.3 40.0 28.0 C40.2 29.3 40.5 30.2 40.7 30.2 C40.8 30.2 40.9 29.4 40.9 28.3 Z" fill="currentColor" fill-rule="evenodd"/>
+        </g>
+      </svg>
+      <span class="word">Inkwell</span>
+    </div>
+
+    <div class="kicker">The Registry</div>
+    <h1>Every scholar signs the ledger.</h1>
+    <p class="deck">One account keeps your notes, decks and podcasts together — filed, searchable, and waiting on any desk you open. Signing takes a moment; the record keeps.</p>
+
+    <div class="entries">
+      <div class="rule"></div>
+      <div class="entry"><span class="num">№ 1</span><span class="t">Upload anything — PDFs, slides, videos, recordings.<small>Your library, cross-referenced.</small></span></div>
+      <div class="entry"><span class="num">№ 2</span><span class="t">Inkwell drafts the notes, decks and podcasts for you.<small>Set in type while you read.</small></span></div>
+      <div class="entry"><span class="num">№ 3</span><span class="t">Return on any device — the desk is exactly as you left it.<small>Sessions, streaks and all.</small></span></div>
+    </div>
+    <p class="fine" style="text-align:left;margin-top:22px">※ PROTOTYPE — NOT WIRED TO THE REGISTRY</p>
+  </section>
+
+  <section class="rhs">
+    <div class="form-col">
+      <div class="form-kicker">Sign the ledger</div>
+      <div class="ways">
+        <button class="way" id="g-way" onclick="googleFlow()">
+          <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+            <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+          </svg>
+          <span id="g-label">Continue with Google</span>
+          <span class="arrow" id="g-arrow">→</span>
+        </button>
+      </div>
+      <div class="note" id="g-note"></div>
+
+      <p class="fine">GOOGLE OAUTH · SESSION COOKIE<br>NO PASSWORDS ARE KEPT IN THIS HOUSE</p>
+    </div>
+  </section>
+</main>
+
+<script>
+function toggleTheme(){document.documentElement.classList.toggle('light')}
+let gBusy=false;
+function googleFlow(){
+  if(gBusy)return;gBusy=true;
+  const way=document.getElementById('g-way'),label=document.getElementById('g-label'),arrow=document.getElementById('g-arrow'),note=document.getElementById('g-note');
+  way.disabled=true;arrow.style.display='none';
+  label.innerHTML='<span class="spin" style="display:inline-block;vertical-align:-2px"></span>';
+  note.textContent='';
+  setTimeout(()=>{
+    way.disabled=false;arrow.style.display='';
+    label.textContent='Continue with Google';
+    note.textContent='※ SKETCH ONLY — OAUTH ENDS AT GOOGLE’S DOOR';
+    gBusy=false;
+  },1400);
+}
+</script>
+</body>
+</html>

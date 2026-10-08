@@ -13,6 +13,10 @@ import SignInPage from './pages/SignInPage';
 import SharedDocPage from './pages/SharedDocPage';
 import SelectionTTS from './components/shared/SelectionTTS';
 import { HOME } from './config/home';
+import { initTracker } from './lib/tracker';
+
+// Observation pipeline: start capturing before first paint of any page.
+initTracker();
 
 // Lazy-load non-critical pages for better initial load
 const TextbookPage = lazy(() => import('./pages/TextbookPage'));
@@ -69,7 +73,6 @@ export default function App() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const { loadDocuments } = useDocuments();
   const { user, authEnabled, loading, load } = useAuthStore();
-  const ensureSession = useAuthStore((s) => s.ensureSession);
 
   useEffect(() => {
     document.documentElement.className = theme;
@@ -79,11 +82,6 @@ export default function App() {
   useEffect(() => {
     load();
   }, [load]);
-
-  // E8 anonymous-first: no session + auth on → silently create an anon user.
-  useEffect(() => {
-    if (!loading && !user && authEnabled) void ensureSession();
-  }, [loading, user, authEnabled, ensureSession]);
 
   // Hydrate documents from IndexedDB on app start so pages that list
   // documents show the correct count immediately.

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { PiArrowsClockwiseDuotone, PiCheckCircleDuotone } from 'react-icons/pi';
 import Spinner from '../components/shared/Spinner';
 import { useFlashcardDeck, useFlashcardGeneration } from '../hooks/useFlashcards';
@@ -89,13 +89,12 @@ export default function FlashcardDetailPage() {
       {/* Breadcrumb + regenerate */}
       <div className="flex items-center justify-between" style={{ gap: 'var(--space-4)' }}>
         <div className="card-kicker whitespace-nowrap" style={{ fontSize: 12 }}>
-          <a
-            className="cursor-pointer"
+          <Link
+            to="/flashcards"
             style={{ color: 'var(--color-accent)' }}
-            onClick={() => navigate('/flashcards')}
           >
             ← Flashcards
-          </a>{' '}
+          </Link>{' '}
           · {deck.title}
         </div>
         <button

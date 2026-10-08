@@ -8,6 +8,8 @@ export interface ActivityRunnerProps {
   step: StepDetail;
   /** Called with the server's grading/outcome once the activity is submitted. */
   onComplete: (result: SubmitResponse) => void;
-  /** The learner backed out without finishing (the page abandons the activity). */
+  /** The learner is discarding a broken activity (empty content) — delete it. */
   onAbandon: () => void;
+  /** The learner is leaving a generated activity — keep it saved for Resume. */
+  onLeave: () => void;
 }

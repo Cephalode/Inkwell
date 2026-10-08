@@ -5,7 +5,8 @@ import { parseJSON } from './subsectionDetector.js';
 
 export interface GLMMessage {
   role: string;
-  content: string;
+  /** A string, or multimodal parts ({type:'text'} / {type:'image_url'}) for vision calls. */
+  content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
 }
 
 export interface CallGLMOptions {
@@ -15,6 +16,10 @@ export interface CallGLMOptions {
   maxTokens?: number;
   /** Fall back to reasoning_content when content is empty — JSON callers only, never display text. */
   withReasoning?: boolean;
+  /** Ask GLM to skip chain-of-thought entirely — short structured outputs
+   *  (e.g. SVG diagram JSON) where verbose coordinate-planning reasoning
+   *  burned the token budget before any JSON was emitted. */
+  thinkingDisabled?: boolean;
   /** Model name. Defaults to 'glm-5.3-flash'. */
   model?: string;
 }
@@ -39,6 +44,7 @@ export async function callGLM(
     temperature = 0.4,
     maxTokens = 4096,
     withReasoning = false,
+    thinkingDisabled = false,
     model = DEFAULT_MODEL,
   } = options;
 
@@ -54,7 +60,14 @@ export async function callGLM(
       max_tokens: maxTokens,
       stream: false,
       messages,
+      // Omitted when unset — the API rejects nothing either way, but the
+      // default (thinking on) is what the reasoning-dependent callers expect.
+      ...(thinkingDisabled ? { thinking: { type: 'disabled' } } : {}),
     }),
+    // ponytail: flat 5-min cap — a stalled upstream must not hang a whole
+    // generation past the pipeline's 10-min reaper window. callGLMJson's
+    // retry covers transient stalls; 5 min fits even 8k-token syntheses.
+    signal: AbortSignal.timeout(300_000),
   });
 
   if (!resp.ok) {
@@ -88,7 +101,15 @@ export async function callGLMJson<T>(
 ): Promise<T | null> {
   const run = async (msgs: GLMMessage[]): Promise<T | null> => {
     const raw = await callGLM(msgs, { ...options, withReasoning: true });
-    return parseJSON<T>(raw);
+    const parsed = parseJSON<T>(raw);
+    if (parsed === null) {
+      // Unparseable output must never be silent — head/tail shows truncation
+      // (cut mid-JSON, usually max_tokens) vs prose (no JSON at all).
+      console.warn(
+        `callGLMJson: unparseable response (${raw.length} chars) head=${JSON.stringify(raw.slice(0, 150))} tail=${JSON.stringify(raw.slice(-150))}`,
+      );
+    }
+    return parsed;
   };
   // Retry once on a thrown transport failure too (timeouts, socket drops) —
   // an activity-start 502 is worse than a slow start.
@@ -101,7 +122,9 @@ export async function callGLMJson<T>(
   // Retry: nudge the model to respond with clean JSON.
   const retryMessages: GLMMessage[] = messages.map((m, i) => {
     if (i === messages.length - 1 && m.role === 'user') {
-      return { ...m, content: `${m.content}\n\nRespond with ONLY valid JSON.` };
+      if (typeof m.content === 'string') return { ...m, content: `${m.content}\n\nRespond with ONLY valid JSON.` };
+      // Multimodal content: append the nudge as another text part (string concat would garble it).
+      return { ...m, content: [...m.content, { type: 'text' as const, text: 'Respond with ONLY valid JSON.' }] };
     }
     return m;
   });

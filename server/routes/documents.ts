@@ -773,6 +773,7 @@ router.get('/:id/podcast', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Length', String(buf.length));
     res.setHeader('Accept-Ranges', 'none'); // ponytail: no range requests, add if seeking matters
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // ponytail: audio bytes immutable per key, browser-cached 24h
     res.end(buf);
   } catch (err: unknown) {
     console.error('Error streaming podcast:', err);

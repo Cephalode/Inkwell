@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { HiCheck, HiOutlineClock, HiOutlinePlay, HiOutlineSparkles } from 'react-icons/hi2';
 import { formatDuration, type RankedVideo } from '../../types/videos';
 
@@ -77,13 +77,11 @@ export default function VideoCard({
   compact?: boolean;
   rank?: number;
 }) {
-  const navigate = useNavigate();
   const multi = video.unlearnedMilestones >= 2;
   const minutes = Math.round(video.durationSeconds / 60);
   return (
-    <button
-      type="button"
-      onClick={() => navigate(`/learn/videos/${video.id}`)}
+    <Link
+      to={`/learn/videos/${video.id}`}
       className="card group flex w-full gap-3 text-left transition-colors hover:border-[var(--color-accent)]"
       style={{ padding: compact ? 10 : 14, alignItems: 'flex-start', cursor: 'pointer' }}
     >
@@ -160,6 +158,6 @@ export default function VideoCard({
           </p>
         )}
       </div>
-    </button>
+    </Link>
   );
 }
