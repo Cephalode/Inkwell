@@ -153,6 +153,25 @@ export async function updateStatus(
   }
 }
 
+/**
+ * Refresh a generation row's `updated_at` WITHOUT changing status.
+ *
+ * Long MAP phases (many materials × 35-90s LLM calls each) can legitimately
+ * outlive GENERATION_TIMEOUT_MS. The 60s reaper flips `generating` rows whose
+ * `updated_at` is older than that window to `error` — which would reap
+ * healthy in-flight work, especially now that generation continues after the
+ * client disconnects. Called once per completed material to keep the row
+ * looking alive. Fire-and-forget semantics (never throws).
+ */
+export async function touchRow(table: string, id: string): Promise<void> {
+  if (!VALID_TABLES.has(table)) return;
+  try {
+    await pool.query(`UPDATE ${table} SET updated_at = now() WHERE id = $1`, [id]);
+  } catch (err) {
+    console.error(`touchRow: failed to touch ${table} ${id}:`, err);
+  }
+}
+
 // ── Staleness helper ────────────────────────────────────────────────────────
 
 /**
@@ -199,6 +218,10 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
 
   // Track client disconnects (studyGuides' pattern; works across Express
   // versions, unlike the `req.closed` shortcut used by flashcards/tests).
+  //
+  // Disconnect changes NOTHING about the generation work — it only stops SSE
+  // writes. The pipeline keeps running, marks the row done, and the client's
+  // next status poll picks up the finished row (mobile "Keep in background").
   let closed = false;
   req.on('close', () => {
     closed = true;
@@ -207,13 +230,16 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
   // Keepalive: long LLM phases (roadmap synthesis is a single 5+ minute call)
   // emit no events, and Cloudflare kills idle tunnel streams (~100s). A spec
   // comment line every 15s keeps the stream alive; clients ignore it.
+  // No-ops once the client has disconnected.
   const pingTimer = setInterval(() => {
-    if (!closed) ping(res);
+    if (!closed && !res.writableEnded) ping(res);
   }, 15_000);
   pingTimer.unref();
 
-  // Build the emit helper bound to this response.
+  // Build the emit helper bound to this response. After disconnect (or any
+  // dead-socket state) writes are skipped — never throw into the pipeline.
   const emit: EmitFn = (type, data) => {
+    if (closed || res.writableEnded || res.destroyed) return;
     if (data !== undefined) {
       send(res, { type, ...data });
     } else {
@@ -241,7 +267,7 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
     let nextIndex = 0;
 
     const worker = async () => {
-      while (!closed) {
+      while (true) {
         const i = nextIndex++;
         if (i >= materials.length) return;
         const material = materials[i];
@@ -261,6 +287,11 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
           total: materials.length,
           material: { id: material.documentId },
         });
+
+        // Keep `updated_at` fresh so the 60s reaper (and the GET-staleness
+        // guards) don't kill a legitimately-running long generation that
+        // outlives GENERATION_TIMEOUT_MS after its client vanished.
+        await touchRow(table, id);
       }
     };
 

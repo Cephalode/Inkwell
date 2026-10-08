@@ -147,6 +147,37 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 
     const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
     res.status(201).json(rowToDoc(rows[0] as DocRow));
+
+    // Media with a supported audio format: transcribe → PATCH parsed_text →
+    // classify (joins the normal AI chain). Fire-and-forget — the upload
+    // response must not wait on STT. Video containers (mp4/mov) and images
+    // still skip (no STT support; images keep the old skip path).
+    if (type === 'audio' && file.buffer?.length) {
+      void (async () => {
+        try {
+          const { transcribeAudio } = await import('../src/stt.js');
+          const format = ext === 'oga' ? 'ogg' : ext;
+          const result = await transcribeAudio(file.buffer, format);
+          if (!result.text) throw new Error('empty transcript');
+          await pool.query('UPDATE documents SET parsed_text = $1 WHERE id = $2', [result.text, id]);
+          await fetch(`http://localhost:${process.env.PORT || 3002}/api/documents/${id}/classify`, { method: 'POST' })
+            .catch((err: unknown) => console.error(`[stt] classify trigger failed for ${id}:`, err));
+          console.log(`[stt] transcribed ${id} (${name}): ${result.text.length} chars`);
+        } catch (err: unknown) {
+          // Settle the chain so the UI doesn't poll forever.
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[stt] transcription failed for ${id}: ${message}`);
+          await pool.query(
+            `UPDATE documents SET
+               classify_status = 'skipped',
+               summary_status = CASE WHEN summary_status = 'pending' THEN 'skipped' ELSE summary_status END,
+               podcast_status = CASE WHEN podcast_status = 'pending' THEN 'skipped' ELSE podcast_status END
+             WHERE id = $1`,
+            [id],
+          ).catch(() => {});
+        }
+      })();
+    }
   } catch (err: unknown) {
     console.error('Error inserting document:', err);
     res.status(500).json({ error: 'Failed to create document' });
