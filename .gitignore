@@ -32,3 +32,6 @@ server/data/files/
 
 # Syncthing conflict copies
 *sync-conflict*
+
+# pi-observer runtime output
+/briefs/
