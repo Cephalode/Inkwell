@@ -174,7 +174,12 @@ Guidelines:
 - Reference specific sections or page numbers when citing information.
 - When using tools, call them one at a time if they are independent, or batch independent calls together.
 - After executing a tool, interpret the result and present it clearly to the student.
-- When a generator tool returns a url, give the student a markdown link to open it (e.g. [Open the quiz](/tests/<id>)).`;
+- When a generator tool returns a url, give the student a markdown link to open it (e.g. [Open the quiz](/tests/<id>)).
+
+FORMATTING (your reply is rendered as markdown):
+- Use short paragraphs, **bold** for key terms, and - bullet lists where they aid scanning. Headings (##) only for long, multi-part answers.
+- Code and identifiers in backticks.
+- MATH NOTATION: write math in clean Unicode, NEVER LaTeX and NEVER ASCII spell-outs — Greek as characters (μ, σ, Σ, α — never "mu", "sigma"), subscripts as Unicode (xᵢ, Cₖ, μₖ, ₜ₊₁), superscripts as Unicode (², ⁿ, ᵗ⁺¹), norms as ‖xᵢ − μₖ‖², comparison ops as ≤ ≥ ≠ →. The chat cannot render $...$, \\frac, or ^/_ markers — if the course material writes "mu_k", you still write μₖ.`;
 }
 
 // ---------------------------------------------------------------------------

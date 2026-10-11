@@ -3,6 +3,7 @@ import { useLocation, useParams } from 'react-router-dom';
 import { HiPaperAirplane, HiX, HiChatAlt2, HiPlus, HiChevronDown, HiClock, HiChevronLeft, HiChevronRight, HiBookOpen, HiDocumentText, HiOutlineSparkles } from 'react-icons/hi';
 import { HiOutlineEye } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
+import { normalizeMathText } from '../../utils/asciiMath';
 import { useChatStore } from '../../store/chatStore';
 import { useDocumentStore } from '../../store/documentStore';
 import { useCourseStore } from '../../store/courseStore';
@@ -757,7 +758,7 @@ export default function GlobalChat() {
                       : undefined
                   }
                 >
-                  {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
+                  {msg.role === 'user' ? msg.content : <Markdown content={normalizeMathText(msg.content)} />}
                 </div>
               </div>
             ))}
@@ -1010,7 +1011,7 @@ export default function GlobalChat() {
                   : undefined
               }
             >
-              {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
+              {msg.role === 'user' ? msg.content : <Markdown content={normalizeMathText(msg.content)} />}
             </div>
           </div>
         ))}

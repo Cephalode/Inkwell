@@ -6,7 +6,8 @@
  * Usage (from server/):  npx tsx scripts/backfill-ascii-math.ts [--dry]
  */
 import { Pool } from 'pg';
-import { normalizeMathText, normalizeSvgMath } from '../src/asciiMath.js';
+import { normalizeMathText, normalizeSvgMath } from '../../src/utils/asciiMath.js';
+import { repairArrowheads } from '../src/svgArrows.js';
 
 const dry = process.argv.includes('--dry');
 
@@ -35,12 +36,12 @@ function normSubject(s: FlowSubjectRaw): { changed: boolean; out: FlowSubjectRaw
   out.explanation = normStr(s.explanation);
   out.example = normStr(s.example);
   if (typeof s.diagram === 'string') {
-    const n = normalizeSvgMath(s.diagram);
+    const n = repairArrowheads(normalizeSvgMath(s.diagram)).svg;
     if (n !== s.diagram) changed = true;
     out.diagram = n;
   }
   if (typeof s.exampleDiagram === 'string') {
-    const n = normalizeSvgMath(s.exampleDiagram);
+    const n = repairArrowheads(normalizeSvgMath(s.exampleDiagram)).svg;
     if (n !== s.exampleDiagram) changed = true;
     out.exampleDiagram = n;
   }

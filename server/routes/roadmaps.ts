@@ -530,6 +530,7 @@ Build the roadmap:
 - Merge duplicate/overlapping extracted topics into one step each. Aim for 6-16 steps; never more than 20.
 - Order from foundations to advanced. Each step lists the titles of earlier steps it depends on (empty for foundations). No cycles.
 - Each step: title (2-6 words, the concept), description (1-2 sentences), 3-5 objectives, 4-7 keyPoints merged from the sources, sources = the extracted-topic indices it merges, estimatedMinutes (10-45).
+- MATH NOTATION (titles, descriptions, objectives, keyPoints): write math in clean Unicode, NEVER ASCII spell-outs — Greek as characters (μ, σ, Σ — never "mu", "sigma"), subscripts as Unicode (xᵢ, Cₖ, μₖ), superscripts as Unicode (², ⁿ, ᵗ⁺¹), norms as ‖xᵢ − μₖ‖², ops as ≤ ≥ ≠ →. No LaTeX, no ^ or _ markers.
 
 Respond with ONLY JSON: {"title": "...", "overview": "3-4 sentence overview of the path", "steps": [{"title": "...", "description": "...", "objectives": ["..."], "keyPoints": ["..."], "dependsOn": ["earlier step title"], "sources": [0, 3], "estimatedMinutes": 20}]}`,
           },

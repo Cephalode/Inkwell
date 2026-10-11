@@ -10,7 +10,8 @@
 
 import { callGLMJson } from './llm.js';
 import { svgOverlapProblems } from './svgOverlap.js';
-import { normalizeMathText, normalizeSvgMath } from './asciiMath.js';
+import { normalizeMathText, normalizeSvgMath } from '../../src/utils/asciiMath.js';
+import { repairArrowheads } from './svgArrows.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -577,7 +578,7 @@ export function sanitizeSvg(raw: unknown): string | undefined {
 
 /** Shared teaching-SVG rules for every generator that asks the model for
  *  diagrams. Kept minimal so small per-diagram calls stay small. */
-const SVG_RULES = `ONE self-contained <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"> element, no width/height, font-family sans-serif, font-size 20-28, arrowheads via small polygons. FIRST element: a full-canvas background rect (<rect x="0" y="0" width="800" height="400" fill="#26262c" rx="12"/>) — the diagram must carry its own dark background. Text fill #e8e4dd, shape stroke #a8a29a, accents #d97757. No <image>, <foreignObject>, <use>, scripts, CSS, or external references. Every meaningful shape gets a short label. Keep the SVG under 30 elements. NO title text inside the SVG — the page already shows the subject title. Keep every text and shape inside x 40-760, y 30-370 (leave margins) and NEVER overlap text with shapes, lines, or other text — axis/caption labels sit fully clear of every line, offset perpendicular to it. SEMANTICS: markers a label references must exist and sit where the label claims (a centroid/mean marker sits at the visual center of its group); annotation arrows must END at the element they describe; never state a count of drawn elements (no "150 points" next to 20 dots) — use generic wording like "points" or "sample points".`;
+const SVG_RULES = `ONE self-contained <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"> element, no width/height, font-family sans-serif, font-size 20-28. FIRST element: a full-canvas background rect (<rect x="0" y="0" width="800" height="400" fill="#26262c" rx="12"/>) — the diagram must carry its own dark background. Text fill #e8e4dd, shape stroke #a8a29a, accents #d97757. No <image>, <foreignObject>, <use>, scripts, CSS, or external references. Every meaningful shape gets a short label. Keep the SVG under 30 elements. NO title text inside the SVG — the page already shows the subject title. Keep every text and shape inside x 40-760, y 30-370 (leave margins) and NEVER overlap text with shapes, lines, or other text — axis/caption labels sit fully clear of every line, offset perpendicular to it. ARROWS: draw each arrow as a <line> plus ONE triangle <polygon> (exactly 3 points) whose tip sits EXACTLY on the line's endpoint, base perpendicular to the line, about 14px long and 9px wide (smaller triangles are invisible when the diagram is scaled down), fill matching the line's stroke. Point the triangle along the direction the arrow should point — never backwards, never floating near the line. SEMANTICS: markers a label references must exist and sit where the label claims (a centroid/mean marker sits at the visual center of its group); annotation arrows must END at the element they describe; never state a count of drawn elements (no "150 points" next to 20 dots) — use generic wording like "points" or "sample points".`;
 
 const SLIDES_PROMPT = `You create study slide decks. Turn the study material into a slideshow that explains the topic: title slides, bullet slides, and diagram slides.
 
@@ -1050,8 +1051,13 @@ Respond with ONLY JSON: {"diagram": "<svg ...>...</svg>", "example_diagram": "<s
       // ASCII math in <text> labels (mu_1, x_i, ||a-b||) is normalized to
       // Unicode BEFORE sanitize: the overlap checker measures real text
       // widths, and Unicode math (‖xᵢ−μₖ‖²) is what ships to the DOM.
-      s.diagram = sanitizeSvg(normalizeSvgMath(String(out?.diagram ?? '')));
-      s.exampleDiagram = sanitizeSvg(normalizeSvgMath(String(out?.example_diagram ?? '')));
+      // Arrowheads are rebuilt deterministically right after: GLM's hand-
+      // plotted triangles are routinely detached/flipped/sub-5px (invisible
+      // at display scale — "arrows not rendered" bug) or missing entirely.
+      const normDiag = normalizeSvgMath(String(out?.diagram ?? ''));
+      const normEx = normalizeSvgMath(String(out?.example_diagram ?? ''));
+      s.diagram = sanitizeSvg(repairArrowheads(normDiag).svg);
+      s.exampleDiagram = sanitizeSvg(repairArrowheads(normEx).svg);
     }),
   );
 
@@ -1184,9 +1190,9 @@ async function visionReviewSvg(step: StepContext, subjectTitle: string, svg: str
     if (problems.length === 0) break;
     const fixed = await visionRepair(step, subjectTitle, current, problems);
     if (!fixed) break;
-    // Repairs rewrite <text> labels — normalize any ASCII math the model
-    // reintroduced so shipped diagrams stay Unicode.
-    current = normalizeSvgMath(fixed);
+    // Repairs rewrite <text> labels AND redraw arrows — normalize math and
+    // rebuild arrowheads so shipped diagrams stay canonical.
+    current = repairArrowheads(normalizeSvgMath(fixed)).svg;
   }
   return current === svg ? undefined : current;
 }
