@@ -11,7 +11,7 @@ interface UploadZoneProps {
 
 const YOUTUBE_URL_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/)|youtu\.be\/).+/i;
 
-export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: UploadZoneProps) {
+export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading, destinationLabel }: UploadZoneProps & { destinationLabel?: string }) {
   const [isDragging, setIsDragging] = useState(false);
   const [mode, setMode] = useState<'file' | 'url'>('file');
   const [url, setUrl] = useState('');
@@ -71,21 +71,33 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
       <div className="flex items-center gap-2 justify-center">
         <button
           onClick={() => { setMode('file'); setUrlError(null); }}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
+          style={
             mode === 'file'
-              ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/30'
-              : 'text-slate-400 hover:text-slate-200 border border-transparent'
-          }`}
+              ? {
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  color: 'var(--color-accent-700)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)',
+                  borderRadius: 'var(--radius-md)',
+                }
+              : { opacity: 0.6, border: '1px solid transparent', borderRadius: 'var(--radius-md)' }
+          }
         >
           📁 Files
         </button>
         <button
           onClick={() => { setMode('url'); setUrlError(null); }}
-          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors"
+          style={
             mode === 'url'
-              ? 'bg-red-600/20 text-red-300 border border-red-500/30'
-              : 'text-slate-400 hover:text-slate-200 border border-transparent'
-          }`}
+              ? {
+                  background: 'color-mix(in srgb, var(--color-danger) 12%, transparent)',
+                  color: 'var(--color-danger)',
+                  border: '1px solid color-mix(in srgb, var(--color-danger) 35%, transparent)',
+                  borderRadius: 'var(--radius-md)',
+                }
+              : { opacity: 0.6, border: '1px solid transparent', borderRadius: 'var(--radius-md)' }
+          }
         >
           ▶️ YouTube URL
         </button>
@@ -96,18 +108,29 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center transition-all duration-300 ${
-            isDragging
-              ? 'border-cyan-400 bg-cyan-500/10 scale-[1.02]'
-              : 'border-slate-600 hover:border-slate-500 bg-slate-800/30'
+          className={`relative border-2 border-dashed p-6 sm:p-12 text-center transition-all duration-300 ${
+            isDragging ? 'scale-[1.02]' : 'hover:border-[var(--color-neutral-600)]'
           }`}
+          style={
+            isDragging
+              ? {
+                  borderColor: 'var(--color-accent)',
+                  background: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+                  borderRadius: 'var(--radius-lg)',
+                }
+              : { borderColor: 'var(--color-neutral-500)', borderRadius: 'var(--radius-lg)' }
+          }
         >
-          <HiCloudUpload className={`w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 ${isDragging ? 'text-cyan-400' : 'text-slate-500'}`} />
-          <h3 className="text-lg font-semibold text-slate-200 mb-2">
+          <HiCloudUpload
+            className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4"
+            style={isDragging ? { color: 'var(--color-accent)' } : { opacity: 0.4 }}
+          />
+          <h3 className="text-lg mb-2">
             {isDragging ? 'Drop your files here!' : 'Upload Study Materials'}
           </h3>
-          <p className="text-sm text-slate-400 mb-4 sm:mb-6">
-            Drag & drop files here, or click to browse. Supports PDF, DOCX, PPTX, images, audio, EPUB, XLSX, CSV, and more.
+          <p className="text-sm mb-4 sm:mb-6" style={{ opacity: 0.6 }}>
+            Drag & drop files here, or click to browse. Supports PDF, DOCX, PPTX, images, audio, video, EPUB, XLSX, CSV, and more.
+            {destinationLabel ? ` Uploads go to: ${destinationLabel}.` : ''}
           </p>
           <input
             type="file"
@@ -123,14 +146,23 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
           </Button>
         </div>
       ) : (
-        <div className="border-2 border-dashed border-red-500/30 bg-slate-800/30 rounded-2xl p-6 sm:p-10 text-center">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 flex items-center justify-center rounded-full bg-red-500/10">
+        <div
+          className="border-2 border-dashed p-6 sm:p-10 text-center"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--color-danger) 35%, transparent)',
+            borderRadius: 'var(--radius-lg)',
+          }}
+        >
+          <div
+            className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 flex items-center justify-center rounded-full"
+            style={{ background: 'color-mix(in srgb, var(--color-danger) 10%, transparent)' }}
+          >
             <span className="text-3xl sm:text-4xl">▶️</span>
           </div>
-          <h3 className="text-lg font-semibold text-slate-200 mb-2">
+          <h3 className="text-lg mb-2">
             Add a YouTube Video
           </h3>
-          <p className="text-sm text-slate-400 mb-4 sm:mb-6">
+          <p className="text-sm mb-4 sm:mb-6" style={{ opacity: 0.6 }}>
             Paste a YouTube link to auto-fetch the transcript and generate an AI summary.
           </p>
           <form onSubmit={handleUrlSubmit} className="max-w-lg mx-auto flex flex-col sm:flex-row gap-2">
@@ -139,7 +171,7 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
               value={url}
               onChange={(e) => { setUrl(e.target.value); setUrlError(null); }}
               placeholder="https://www.youtube.com/watch?v=…"
-              className="flex-1 px-4 py-2.5 rounded-lg bg-slate-900/70 border border-slate-600 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              className="input flex-1"
               autoFocus
               disabled={isLoading}
             />
@@ -148,7 +180,7 @@ export default function UploadZone({ onFilesSelected, onUrlSubmit, isLoading }: 
             </Button>
           </form>
           {urlError && (
-            <p className="mt-3 text-sm text-red-400">{urlError}</p>
+            <p className="mt-3 text-sm" style={{ color: 'var(--color-danger)' }}>{urlError}</p>
           )}
         </div>
       )}

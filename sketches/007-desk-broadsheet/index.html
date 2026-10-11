@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Desk Broadsheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-700:#83c9e6; --accent-200:#0f3c4e;
+  --pink:#ff7fa9; --success:#2f9e57; --warning:#f59e0b;
+  --serif:"Source Serif 4",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-700:#006786; --accent-200:#cbeeff;
+  --pink:#aa0b56;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.sheet{max-width:1160px;margin:0 auto;padding:0 32px 64px}
+
+/* ---------- masthead ---------- */
+.mast{padding:18px 0 0}
+.mast-row{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--n600);border-top:1px solid var(--divider);border-bottom:1px solid var(--divider);padding:6px 2px}
+.mast-title{display:flex;align-items:baseline;justify-content:center;gap:18px;padding:26px 0 18px}
+.mast-title h1{font-size:clamp(30px,7vw,58px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;line-height:1;white-space:nowrap}
+.fleuron{color:var(--accent);font-size:22px;transform:translateY(-6px)}
+.mast-sub{display:flex;justify-content:center;gap:28px;font-family:var(--mono);font-size:11.5px;color:var(--n600);padding-bottom:14px}
+.mast-sub b{color:var(--text);font-weight:500}
+.mast-sub .up{color:var(--accent)}
+.theme-btn{position:fixed;top:12px;right:14px;z-index:9;font-family:var(--mono);font-size:11px;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:4px 9px;cursor:pointer}
+.theme-btn:hover{color:var(--text);border-color:var(--n500)}
+.double{border-top:3px double var(--text);opacity:.85}
+
+/* ---------- section nav ---------- */
+.sectnav{display:flex;justify-content:center;gap:0;flex-wrap:wrap;border-bottom:1px solid var(--divider);margin-bottom:26px}
+.sectnav a{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--n600);text-decoration:none;padding:8px 16px;border-right:1px solid var(--divider);cursor:pointer}
+.sectnav a:first-child{border-left:1px solid var(--divider)}
+.sectnav a:hover,.sectnav a.on{color:var(--text)}
+.sectnav a.on{box-shadow:inset 0 -2px 0 var(--accent)}
+
+/* ---------- front page grid ---------- */
+.front,.wire>*{min-width:0}
+.front{display:grid;grid-template-columns:1fr 1fr 300px;gap:0 30px}
+.front .lead{grid-column:1 / 3;border-right:1px solid var(--divider);padding-right:30px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.lead h2{font-size:34px;font-weight:700;line-height:1.14;margin-bottom:12px;transition:opacity .25s}
+.lead .deck{font-size:16px;line-height:1.55;color:var(--n700);max-width:56ch;text-align:justify;hyphens:auto;margin-bottom:18px;transition:opacity .25s}
+.fading{opacity:0}
+.lead .meta-line{font-family:var(--mono);font-size:11.5px;color:var(--n600);margin-bottom:8px}
+.prog{height:3px;background:var(--divider);border-radius:1px;max-width:420px;margin-bottom:20px}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:1px}
+.btn{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;background:var(--accent);color:var(--bg);border:none;border-radius:2px;padding:11px 22px;cursor:pointer}
+.btn:hover{filter:brightness(1.12)}
+.btn.ghost{background:none;color:var(--accent-700);border:1px solid var(--divider)}
+.btn.ghost:hover{border-color:var(--n500);filter:none}
+
+/* briefs column */
+.briefs{padding-bottom:8px}
+.briefs-head{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--text);padding-bottom:6px;margin-bottom:4px}
+.briefs-head h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:500}
+.briefs-head button{font-family:var(--mono);font-size:10px;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:2px 8px;cursor:pointer}
+.briefs-head button.on{color:var(--bg);background:var(--text);border-color:var(--text)}
+.brief{padding:12px 0;border-bottom:1px solid var(--divider);cursor:pointer}
+.brief:hover .b-t{color:var(--accent-700)}
+.b-k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--n500);margin-bottom:3px}
+.b-t{font-size:15px;font-weight:600;line-height:1.3;transition:color .15s}
+.b-m{font-family:var(--mono);font-size:11px;color:var(--n600);margin-top:3px}
+.flag{color:var(--pink)}
+
+/* ---------- section heads ---------- */
+.sect-head{display:flex;align-items:center;gap:14px;margin:34px 0 16px}
+.sect-head h3{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;font-weight:500;white-space:nowrap}
+.sect-head::before,.sect-head::after{content:"";height:1px;background:var(--divider);flex:1}
+
+/* courses */
+.courses{display:grid;grid-template-columns:repeat(3,1fr);gap:0 30px}
+.course{border-top:2px solid var(--text);padding:12px 0 16px;cursor:pointer}
+.course:hover h4{color:var(--accent-700)}
+.course h4{font-size:17px;font-weight:700;margin-bottom:2px;transition:color .15s}
+.course .c-next{font-size:13px;color:var(--n700);font-style:italic;margin-bottom:10px;min-height:38px}
+.c-bar{height:3px;background:var(--divider);border-radius:1px;margin-bottom:6px}
+.c-bar i{display:block;height:100%;background:var(--accent);border-radius:1px}
+.c-m{font-family:var(--mono);font-size:10.5px;color:var(--n600)}
+
+/* classifieds */
+.wire{display:grid;grid-template-columns:1fr 1fr 300px;gap:0 30px}
+.doclist .row{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--divider);cursor:pointer}
+.doclist .row:hover .d-n{color:var(--accent-700);text-decoration:underline}
+.d-n{font-size:14.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.d-m{font-family:var(--mono);font-size:10.5px;color:var(--n500);white-space:nowrap}
+.notices .note{padding:10px 0;border-bottom:1px solid var(--divider)}
+.notices .b-t{font-size:14px}
+.margin-q{border-left:2px solid var(--accent);padding-left:16px}
+.margin-q p{font-style:italic;font-size:15px;line-height:1.6;color:var(--n700);margin-bottom:8px}
+.margin-q .b-k{margin-bottom:8px}
+footer{margin-top:44px;border-top:3px double var(--text);padding-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--n500)}
+@media(max-width:960px){.front,.wire{grid-template-columns:1fr}.front .lead{grid-column:auto;border-right:none;padding-right:0}.courses{grid-template-columns:1fr}.lead h2{font-size:26px}.mast-sub{flex-wrap:wrap;gap:10px 18px;justify-content:center}}
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="toggleTheme()">☀ light</button>
+<div class="sheet">
+
+  <header class="mast">
+    <div class="mast-row"><span>VOL. II · NO. 42</span><span>THE STUDENT'S DAILY</span><span>EST. MMXXVI</span></div>
+    <div class="mast-title"><h1>Inkwell</h1><span class="fleuron">❦</span></div>
+    <div class="mast-sub">
+      <span><b>Saturday</b>, September 19, 2026</span>
+      <span>🔥 <b>12-day</b> streak</span>
+      <span><b class="up">45</b> / 80 XP today</span>
+      <span><b class="up">14</b> cards due</span>
+    </div>
+    <div class="double"></div>
+    <nav class="sectnav">
+      <a class="on">Front page</a><a>Courses</a><a>Library</a><a>Learn</a><a>Tests</a><a>The Margin</a>
+    </nav>
+  </header>
+
+  <section class="front">
+    <article class="lead" id="lead">
+      <div class="kicker" id="l-k">Continue reading</div>
+      <h2 id="l-h">Trees &amp; Forests: ISLR, Chapter 8</h2>
+      <p class="deck" id="l-d">Where random forests prune the variance problem and boosting turns weak learners strong. You left off midway through the bagging discussion — the algorithm box on page 214 is the natural place to re-enter.</p>
+      <div class="meta-line" id="l-m">PAGE 214 OF 330 · 65% · LAST OPENED THU</div>
+      <div class="prog"><i id="l-p" style="width:65%"></i></div>
+      <button class="btn" onclick="nextStory()">Begin reading →</button>
+      <button class="btn ghost" style="margin-left:10px" onclick="nextStory()">Not this — next ↻</button>
+    </article>
+
+    <aside class="briefs">
+      <div class="briefs-head">
+        <h3>Briefs</h3>
+        <span><button class="on" id="tb-today" onclick="setRange('today')">Today</button> <button id="tb-week" onclick="setRange('week')">Week</button></span>
+      </div>
+      <div id="briefs"></div>
+    </aside>
+  </section>
+
+  <div class="sect-head"><h3>Courses</h3></div>
+  <section class="courses">
+    <div class="course"><h4>Seismology 341</h4><p class="c-next">Next: Moment-tensor inversion, depth phases</p><div class="c-bar"><i style="width:72%"></i></div><div class="c-m">8 OF 11 TOPICS · EXAM FRI OCT 2</div></div>
+    <div class="course"><h4>Linear Algebra</h4><p class="c-next">Next: Singular value decomposition, §7.4</p><div class="c-bar"><i style="width:41%"></i></div><div class="c-m">5 OF 12 TOPICS · 3 LECTURES BEHIND</div></div>
+    <div class="course"><h4>Statistical Learning</h4><p class="c-next">Next: Problem set 4 — trees, SVMs</p><div class="c-bar"><i style="width:58%"></i></div><div class="c-m">7 OF 12 TOPICS · PS4 DUE WED</div></div>
+  </section>
+
+  <div class="sect-head"><h3>Recent Acquisitions</h3></div>
+  <section class="wire">
+    <div class="doclist">
+      <div class="row"><span class="d-n">Convex Optimization — Boyd &amp; Vandenberghe</span><span class="d-m">TEXTBOOK · THU</span></div>
+      <div class="row"><span class="d-n">PS4 — trees, SVMs (handout).pdf</span><span class="d-m">WORKSHEET · THU</span></div>
+      <div class="row"><span class="d-n">Lecture 12 — moment tensors (slides)</span><span class="d-m">SLIDES · WED</span></div>
+      <div class="row"><span class="d-n">Think Stats, 2nd ed.</span><span class="d-m">TEXTBOOK · TUE</span></div>
+      <div class="row"><span class="d-n">Gradient boosting, explained — video notes</span><span class="d-m">NOTES · MON</span></div>
+    </div>
+    <div class="doclist">
+      <div class="row"><span class="d-n">ISLR — Ch. 8, Trees &amp; Forests</span><span class="d-m">CHAPTER · 65%</span></div>
+      <div class="row"><span class="d-n">Deck: Trees &amp; Forests — 42 cards</span><span class="d-m">FLASHCARDS</span></div>
+      <div class="row"><span class="d-n">Deck: SVD identities — 18 cards</span><span class="d-m">FLASHCARDS</span></div>
+      <div class="row"><span class="d-n">Practice test: Midterm 2, 2025 (seismology)</span><span class="d-m">EXAM · 8 Q</span></div>
+      <div class="row"><span class="d-n">Syllabus — Stat Learning, Fall</span><span class="d-m">SYLLABUS</span></div>
+    </div>
+    <aside class="notices">
+      <div class="kicker" style="margin-bottom:2px">Notices</div>
+      <div class="note"><div class="b-t">PS4 due Wednesday</div><div class="b-m">STAT LEARNING · <span class="flag">4 DAYS</span></div></div>
+      <div class="note"><div class="b-t">Midterm 2 — Seismology</div><div class="b-m">FRI OCT 2 · 13 DAYS</div></div>
+      <div class="note"><div class="b-t">2 uploads still classifying</div><div class="b-m">IN PROGRESS</div></div>
+    </aside>
+  </section>
+
+  <div class="sect-head"><h3>The Margin</h3></div>
+  <section class="wire">
+    <aside class="margin-q">
+      <div class="kicker">From your highlights</div>
+      <p>“Boosting is a way of fitting an additive expansion in a simple set of basis functions” — Friedman</p>
+      <div class="b-m">ISLR §8.2 · HIGHLIGHTED THU · ASK INKWELL ABOUT THIS →</div>
+    </aside>
+    <div></div>
+    <div></div>
+  </section>
+
+  <footer><span>SET IN SOURCE SERIF · INKWELL STUDY DESK</span><span>“READ DILIGENTLY.”</span></footer>
+</div>
+
+<script>
+const params=new URLSearchParams(location.search);
+if(params.get('mode')==='light')document.documentElement.classList.add('light');
+function toggleTheme(){document.documentElement.classList.toggle('light')}
+
+const stories=[
+ {k:'Continue reading',h:'Trees & Forests: ISLR, Chapter 8',
+  d:'Where random forests prune the variance problem and boosting turns weak learners strong. You left off midway through the bagging discussion — the algorithm box on page 214 is the natural place to re-enter.',
+  m:'PAGE 214 OF 330 · 65% · LAST OPENED THU',p:65},
+ {k:'Review due cards',h:'Deck: Trees & Forests — 14 cards due',
+  d:'Mostly schedule-2 mode and why boosting is fit forward, stagewise. Ten minutes, and the streak holds. The hard card — “why does bagging reduce variance but not bias?” — is up for its fourth review.',
+  m:'14 DUE · ≈ 10 MIN · LAST REVIEWED WED',p:30},
+ {k:'Continue course',h:'Seismology 341: Moment-tensor inversion',
+  d:'Next step in your roadmap: depth phases and how the moment tensor separates source from path. The step bundles one video, a short reading, and five checkpoint questions — about 25 minutes end to end.',
+  m:'STEP 8 OF 11 · ≈ 25 MIN · EXAM OCT 2',p:72},
+];
+let si=0;
+function renderStory(){
+  const s=stories[si],lead=document.getElementById('lead');
+  lead.querySelectorAll('#l-h,#l-d,#l-m').forEach(e=>e.classList.add('fading'));
+  setTimeout(()=>{
+    document.getElementById('l-k').textContent=s.k;
+    document.getElementById('l-h').innerHTML=s.h;
+    document.getElementById('l-d').textContent=s.d;
+    document.getElementById('l-m').textContent=s.m;
+    document.getElementById('l-p').style.width=s.p+'%';
+    lead.querySelectorAll('#l-h,#l-d,#l-m').forEach(e=>e.classList.remove('fading'));
+  },220);
+}
+function nextStory(){si=(si+1)%stories.length;renderStory()}
+
+const briefs={
+ today:[
+  {k:'Flashcards',t:'Trees & Forests — 14 cards due',m:'≈ 10 MIN · STREAK 12D',f:0},
+  {k:'Classifying',t:'2 uploads still processing',m:'IN PROGRESS · VIEW',f:1},
+  {k:'Watch',t:'“Gradient boosting, explained”',m:'18 MIN · 3 MILESTONES COVER IT',f:0},
+ ],
+ week:[
+  {k:'Deadline',t:'PS4 — trees & SVMs due Wednesday',m:'STAT LEARNING · <span class="flag">4 DAYS</span>',f:1},
+  {k:'Exam',t:'Midterm 2 — Seismology 341',m:'FRI OCT 2 · PRACTICE TEST READY',f:0},
+  {k:'Reading',t:'Convex Optimization — ch. 3, convex functions',m:'SET FOR MON · 40 PAGES',f:0},
+  {k:'Checkpoint',t:'Roadmap: 3 course checkpoints this week',m:'LINALG ×2 · SEIS ×1',f:0},
+ ]};
+let range='today';
+function setRange(r){range=r;
+  document.getElementById('tb-today').classList.toggle('on',r==='today');
+  document.getElementById('tb-week').classList.toggle('on',r==='week');
+  renderBriefs();}
+function renderBriefs(){
+  document.getElementById('briefs').innerHTML=briefs[range].map(b=>
+   `<div class="brief"><div class="b-k">${b.k}</div><div class="b-t">${b.t}</div><div class="b-m">${b.m}${b.f?' · <span class="flag">ATTENTION</span>':''}</div></div>`).join('');}
+renderBriefs();
+</script>
+</body>
+</html>

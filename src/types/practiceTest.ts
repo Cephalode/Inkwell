@@ -9,6 +9,8 @@ export interface TestQuestion {
   options?: string[];
   correct_answer?: string | boolean;
   explanation?: string;
+  hint?: string;
+  topic?: string;
 }
 
 /** Question shape in take mode — correct_answer and explanation are omitted. */
@@ -17,6 +19,7 @@ export type TestQuestionForTaking = Omit<TestQuestion, 'correct_answer' | 'expla
 export interface TestConfig {
   numQuestions?: number;
   types?: QuestionType[];
+  instructions?: string;
 }
 
 export interface PracticeTest {

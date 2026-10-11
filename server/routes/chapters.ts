@@ -1,25 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
-import path from 'path';
-import { unlinkSync, renameSync } from 'fs';
 import pool from '../db.js';
+import { storageUpload, storageDelete } from '../src/storage.js';
 
 const router = Router();
 
-const __dirname = path.join(new URL('.', import.meta.url).pathname, '..', 'data', 'files');
-
-// ── Multer disk storage ────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, __dirname);
-  },
-  filename: (_req, file, cb) => {
-    // Use temp prefix; renamed after we have the chapter ID
-    cb(null, `tmp_ch_${Date.now()}_${file.originalname}`);
-  },
-});
-
-const upload = multer({ storage });
+// ── Multer memory storage (files go to Supabase Storage) ───────────────────
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ── Helper: snake_case → camelCase ─────────────────────────────────────────
 interface ChapterRow {
@@ -108,9 +95,9 @@ router.post('/documents/:parentId/chapters', upload.array('files', 100), async (
       const meta = metadata[i] || {};
       const id = `${parentId}_ch${meta.chapterIndex ?? i}`;
 
-      // Rename from temp name to final name
-      const finalPath = path.join(__dirname, `${id}_${file.originalname}`);
-      renameSync(file.path, finalPath);
+      // Storage key mirrors the old on-disk name: {id}_{originalName}
+      const finalPath = `${id}_${file.originalname}`;
+      await storageUpload(finalPath, file.buffer, file.mimetype || 'application/octet-stream');
 
       await pool.query(
         `INSERT INTO chapters (id, parent_id, chapter_title, chapter_index, start_page, end_page, parsed_text, tags, file_path)
@@ -150,12 +137,12 @@ router.delete('/documents/:parentId/chapters', async (req: Request, res: Respons
 
     await pool.query('DELETE FROM chapters WHERE parent_id = $1', [req.params.parentId]);
 
-    // Remove files from disk
+    // Remove files from Storage
     for (const row of rows) {
       const filePath = (row as { file_path: string | null }).file_path;
       if (filePath) {
         try {
-          unlinkSync(filePath);
+          await storageDelete(filePath);
         } catch {
           // File may already be deleted
         }

@@ -53,12 +53,13 @@ export default function ConfirmDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.1s_ease-out]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-[fadeIn_0.1s_ease-out]"
       onClick={onCancel}
       role="presentation"
     >
       <div
-        className="w-full max-w-sm bg-slate-800 border border-slate-700 rounded-xl shadow-2xl p-5 space-y-4"
+        className="card w-full max-w-sm p-5 space-y-4"
+        style={{ boxShadow: 'var(--shadow-lg)' }}
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
@@ -66,27 +67,18 @@ export default function ConfirmDialog({
         aria-describedby="confirm-dialog-message"
       >
         <div className="space-y-1.5">
-          <h2 id="confirm-dialog-title" className="text-base font-semibold text-white">
+          <h2 id="confirm-dialog-title" style={{ fontSize: 16 }}>
             {title}
           </h2>
-          <p id="confirm-dialog-message" className="text-sm text-slate-400">
+          <p id="confirm-dialog-message" style={{ fontSize: 14, opacity: 0.65 }}>
             {message}
           </p>
         </div>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 bg-slate-700/60 hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-500"
-            autoFocus
-          >
+          <button type="button" onClick={onCancel} className="btn btn-secondary" autoFocus>
             {cancelLabel}
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-500 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
+          <button type="button" onClick={onConfirm} className="btn btn-danger">
             {confirmLabel}
           </button>
         </div>

@@ -21,5 +21,4 @@ Answer questions ONLY based on the content from the selected pages. Do not use o
 export const SUMMARY_PROMPTS = {
   tldr: (text: string) => `${SYSTEM_PROMPT}\n\nProvide a very brief TL;DR summary (2-3 sentences) of the following:\n\n---\n${text}`,
   keypoints: (text: string) => `${SYSTEM_PROMPT}\n\nExtract the key points from the following material as a bulleted list. Focus on the most important concepts, definitions, and takeaways.\n\n---\n${text}`,
-  detailed: (text: string) => `${SYSTEM_PROMPT}\n\nProvide a detailed, comprehensive summary of the following material. Organize by topic and include all important details.\n\n---\n${text}`,
 };

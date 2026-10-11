@@ -4,6 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { API_KEY, UPSTREAM } from './config.js';
 import pool from './db.js';
+import cookieParser from 'cookie-parser';
+import authRouter, { attachUser, requireUser } from './src/auth.js';
+import sharesRouter from './routes/shares.js';
 import { GENERATION_TIMEOUT_MS } from './src/generationPipeline.js';
 import { runMigrations } from './migrations/run.js';
 import documentsRouter from './routes/documents.js';
@@ -18,6 +21,17 @@ import studyGuidesRouter from './routes/studyGuides.js';
 import flashcardsRouter from './routes/flashcards.js';
 import practiceTestsRouter from './routes/practiceTests.js';
 import courseraRouter from './routes/coursera.js';
+import integrationsRouter from './routes/integrations.js';
+import roadmapsRouter from './routes/roadmaps.js';
+import learningRouter from './routes/learning.js';
+import videosRouter from './routes/videos.js';
+import ttsRouter from './routes/tts.js';
+import flagsRouter from './routes/flags.js';
+import foldersRouter from './routes/folders.js';
+import zipExtractRouter from './routes/zipExtract.js';
+import lessonsRouter from './routes/lessons.js';
+import mcpRouter from './mcp.js';
+import eventsRouter from './routes/events.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 interface ChatMessage {
@@ -43,7 +57,7 @@ interface ChatPayload {
   tools?: unknown[];
 }
 
-const MODEL = 'glm-5.3';
+const MODEL = 'glm-5.3-flash';
 const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
 const app = express();
@@ -72,11 +86,21 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(cookieParser());
 
-// ── Health check ────────────────────────────────────────────────────────────
+// ── Auth: session attach + OAuth routes, then the global sign-in gate ───────
+app.use(attachUser);
+app.use('/api/auth', authRouter);
 app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', model: MODEL });
 });
+// Public share endpoints mount BEFORE the auth gate — the token is the capability.
+app.use('/api/public', sharesRouter);
+// Event ingest also mounts pre-gate: pre-auth friction is a signal (sign-in loops).
+// Attach runs first so user_id still resolves from the session cookie when present.
+app.use('/api', eventsRouter);
+// Everything under /api requires a signed-in user (when OAuth is configured).
+app.use('/api', requireUser);
 
 // ── Document & Chapter CRUD ────────────────────────────────────────────────
 app.use('/api/documents', documentsRouter);
@@ -91,6 +115,16 @@ app.use('/api/study-guides', studyGuidesRouter);
 app.use('/api/flashcard-decks', flashcardsRouter);
 app.use('/api/practice-tests', practiceTestsRouter);
 app.use('/api/coursera', courseraRouter);
+app.use('/api/integrations', integrationsRouter);
+app.use('/api', roadmapsRouter);
+app.use('/api', learningRouter);
+app.use('/api', videosRouter);
+app.use('/api', ttsRouter);
+app.use('/api', flagsRouter);
+app.use('/api/folders', foldersRouter);
+app.use('/api/folders', zipExtractRouter);
+app.use('/api/lessons', lessonsRouter);
+app.use('/', mcpRouter);
 
 // ── POST /api/chat ──────────────────────────────────────────────────────────
 app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRequestBody>, res: Response) => {
@@ -173,7 +207,7 @@ app.post('/api/chat', async (req: Request<Record<string, never>, unknown, ChatRe
 //
 // Allow-listed table names (cannot be parameterised in SQL) — these match the
 // `VALID_TABLES` set in generationPipeline.ts and the schema in schema.sql.
-const REAPABLE_TABLES = ['study_guides', 'flashcard_decks', 'practice_tests'] as const;
+const REAPABLE_TABLES = ['study_guides', 'flashcard_decks', 'practice_tests', 'roadmaps'] as const;
 const REAPER_INTERVAL_MS = 60_000;
 
 async function reapStuckGenerations(): Promise<void> {
@@ -195,6 +229,24 @@ async function reapStuckGenerations(): Promise<void> {
       // A transient DB error must not kill the interval.
       console.error(`[reaper] Failed to reap ${table}:`, err);
     }
+  }
+  // skills.video_search_status: a search that dies without reaching its catch
+  // (429 + DB blip mid-flight, process restart) sticks at 'searching' forever
+  // and the step page spins on it. Unstick so the UI can offer a retry.
+  try {
+    const result = await pool.query(
+      `UPDATE skills
+       SET video_search_status = 'error', video_search_error = 'Search timed out', updated_at = NOW()
+       WHERE video_search_status = 'searching'
+         AND updated_at < NOW() - ($1 || ' milliseconds')::interval
+       RETURNING id`,
+      [GENERATION_TIMEOUT_MS],
+    );
+    if (result.rows.length > 0) {
+      console.log(`[reaper] Unstuck ${result.rows.length} skill video searches: ${result.rows.map((r: { id: string }) => r.id).join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[reaper] Failed to reap skill video searches:', err);
   }
 }
 

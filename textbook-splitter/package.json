@@ -1,0 +1,16 @@
+{
+  "name": "textbook-splitter",
+  "version": "1.0.0",
+  "description": "CLI: detect chapters in a textbook PDF (outline → TOC → font-size heuristic) and split it into per-chapter PDFs",
+  "type": "module",
+  "bin": {
+    "textbook-splitter": "cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.7.284"
+  }
+}

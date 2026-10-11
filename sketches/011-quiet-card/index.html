@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Auth Sketch: 011 Quiet Card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-700:#83c9e6;
+  --serif:"Source Serif 4",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-700:#006786;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+
+.stage{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;gap:26px}
+.logo-row{display:flex;align-items:center;gap:12px}
+.logo-row svg{color:var(--accent)}
+.logo-row .word{font-size:30px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+
+.card{width:100%;max-width:400px;background:var(--surface);border:1px solid var(--divider);border-radius:4px;box-shadow:0 12px 32px rgba(0,0,0,.55);padding:30px 28px 24px}
+.card-kicker{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);text-align:center}
+.card h2{font-size:24px;font-weight:700;text-align:center;margin:8px 0 6px}
+.card .sub{font-size:14px;color:var(--n700);text-align:center;max-width:34ch;margin:0 auto 22px}
+
+.btn-google{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 14px;background:var(--bg);border:1px solid var(--divider);border-radius:3px;color:var(--text);font-family:var(--serif);font-size:15px;cursor:pointer;transition:border-color .15s}
+.btn-google:hover{border-color:var(--accent)}
+.btn-google:active{transform:translateY(1px)}
+.btn-google[disabled]{opacity:.65;cursor:default}
+.spin{width:14px;height:14px;border:2px solid var(--divider);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{display:flex;align-items:center;justify-content:center;gap:7px;font-family:var(--mono);font-size:11px;color:#f59e0b;margin-top:12px;min-height:17px}
+
+.foot{font-family:var(--mono);font-size:10.5px;color:var(--n500);text-align:center;letter-spacing:.04em}
+
+.theme-btn{position:fixed;top:12px;right:14px;z-index:9;font-family:var(--mono);font-size:11px;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:4px 9px;cursor:pointer}
+.theme-btn:hover{color:var(--text);border-color:var(--n500)}
+
+@media (max-width:430px){.card{padding:24px 20px 20px}}
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="toggleTheme()">☀ light</button>
+<main class="stage">
+
+  <div class="logo-row">
+    <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M24 8 L40 8 L40 14 Q40 17 44 19 Q50 22 50 30 L50 48 Q50 54 44 54 L20 54 Q14 54 14 48 L14 30 Q14 22 20 19 Q24 17 24 14 Z" fill="currentColor"/>
+      <g transform="translate(41 28) scale(1.22) translate(-41 -28)">
+        <path d="M40.8 27.5 C39.9 22.0 40.4 16.5 41.2 13.6 C41.6 12.2 42.3 10.4 44.0 8.9 C44.5 8.5 44.9 8.2 45.1 8.1 C45.2 8.4 45.2 9.1 45.1 10.0 C44.9 13.0 44.0 17.4 42.7 21.6 C42.0 23.9 41.3 26.0 40.8 27.5 Z M40.9 28.3 C41.5 26.6 42.3 24.4 43.0 21.9 C44.4 17.6 45.3 13.1 45.5 10.0 C45.6 8.8 45.6 7.9 45.4 7.4 C45.3 7.1 45.1 6.9 44.8 7.1 C44.5 7.3 44.0 7.8 43.4 8.4 C41.6 10.1 40.8 12.1 40.4 13.6 C39.6 16.6 39.1 22.3 40.0 28.0 C40.2 29.3 40.5 30.2 40.7 30.2 C40.8 30.2 40.9 29.4 40.9 28.3 Z" fill="currentColor" fill-rule="evenodd"/>
+      </g>
+    </svg>
+    <span class="word">Inkwell</span>
+  </div>
+
+  <section class="card">
+    <div class="card-kicker">Study companion</div>
+    <h2>Welcome</h2>
+    <p class="sub">Notes, decks and podcasts — from anything you upload.</p>
+
+    <button class="btn-google" id="g-btn" onclick="googleFlow()">
+      <svg id="g-icon" width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+        <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+        <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+        <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+        <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+      </svg>
+      <span id="g-label">Continue with Google</span>
+    </button>
+    <div class="err" id="g-err"></div>
+  </section>
+
+  <p class="foot">※ PROTOTYPE — NOT WIRED TO THE REGISTRY</p>
+</main>
+
+<script>
+function toggleTheme(){document.documentElement.classList.toggle('light')}
+let gBusy=false;
+function googleFlow(){
+  if(gBusy)return;gBusy=true;
+  const btn=document.getElementById('g-btn'),label=document.getElementById('g-label'),icon=document.getElementById('g-icon'),err=document.getElementById('g-err');
+  btn.disabled=true;icon.style.display='none';
+  label.innerHTML='<span class="spin" style="display:inline-block;vertical-align:-2px"></span>';
+  err.textContent='';
+  setTimeout(()=>{
+    btn.disabled=false;icon.style.display='';
+    label.textContent='Continue with Google';
+    err.textContent='⚠ SKETCH ONLY — OAUTH ENDS AT GOOGLE’S DOOR';
+    gBusy=false;
+  },1400);
+}
+</script>
+</body>
+</html>

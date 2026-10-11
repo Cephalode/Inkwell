@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C — Immersive stage · Inkwell</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #141312; --surface: #1d1b1a; --surface-2: #262322;
+    --text: #ebe7e5; --divider: rgba(235,231,229,0.13);
+    --accent: #38a6cf; --accent-dim: rgba(56,166,207,0.14); --accent-bd: rgba(56,166,207,0.32);
+    --success: #4ade80; --warning: #fbbf24;
+    --radius: 14px;
+  }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text); line-height: 1.5;
+  }
+  .app { display: grid; grid-template-columns: 60px 1fr; height: 100vh; }
+
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 14px 0; border-right: 1px solid var(--divider); background: #171615;
+  }
+  .rail a { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: rgba(235,231,229,0.45); text-decoration: none; transition: all .15s; }
+  .rail a:hover { background: var(--surface-2); color: var(--text); }
+  .rail a.active { background: var(--accent-dim); color: var(--accent); }
+  .rail .dot { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--divider); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: rgba(235,231,229,0.55); cursor: pointer; }
+  .rail .spacer { flex: 1; }
+  .rail svg { width: 20px; height: 20px; }
+
+  /* Three-zone stage: header bar / live session / bottom dock */
+  .stage { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; min-width: 0; }
+
+  /* ── top bar: single omnibar ── */
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 20px; border-bottom: 1px solid var(--divider);
+    background: rgba(29,27,26,0.7);
+  }
+  .crumb { font-size: 12px; color: rgba(235,231,229,0.45); white-space: nowrap; }
+  h1 { font-size: 16px; font-weight: 650; white-space: nowrap; }
+  .sep { width: 4px; height: 4px; border-radius: 50%; background: rgba(235,231,229,0.25); }
+  .ghostbtn { font-size: 12.5px; color: rgba(235,231,229,0.6); background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 8px; white-space: nowrap; }
+  .ghostbtn:hover { background: var(--surface-2); color: var(--text); }
+  .pill { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-bd); white-space: nowrap; }
+  .bar { width: 80px; height: 5px; border-radius: 999px; background: rgba(235,231,229,0.12); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 71%; border-radius: 999px; background: var(--accent); }
+  .pct { font-size: 12px; font-weight: 600; }
+  .grow { flex: 1; min-width: 0; }
+  .kicker { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+  /* ── session area: chat center-stage, context hugging the sides ── */
+  .session { min-height: 0; display: flex; align-items: stretch; justify-content: center; gap: 10px; padding: 12px 18px; }
+
+  .wing {
+    width: 230px; flex: none; display: flex; flex-direction: column; justify-content: flex-end;
+    gap: 10px; padding-bottom: 2px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: rgba(235,231,229,0.15) transparent;
+  }
+  .wing.left { border-right: 1px solid var(--divider); padding-right: 12px; }
+  .wing.right { border-left: 1px solid var(--divider); padding-left: 12px; }
+  .wing .card {
+    border: 1px solid var(--divider); border-radius: var(--radius);
+    background: var(--surface); padding: 11px 13px; width: 100%;
+    transform: scale(0.97); transition: all .15s; cursor: pointer;
+  }
+  .wing .card:hover { transform: scale(1); border-color: rgba(235,231,229,0.3); }
+  .wing h4 { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: rgba(235,231,229,0.4); margin-bottom: 6px; }
+  .wing.left h4 { display: flex; justify-content: flex-end; }
+  .objline { display: flex; gap: 7px; font-size: 12px; color: rgba(235,231,229,0.8); margin-bottom: 4px; align-items: flex-start; }
+  .wing.left .objline { flex-direction: row-reverse; }
+  .objline svg { flex: none; width: 13px; height: 13px; margin-top: 2.5px; color: var(--success); }
+  .objline.todo svg { color: rgba(235,231,229,0.35); }
+  .kpline { font-size: 11.5px; color: rgba(235,231,229,0.55); margin-bottom: 3px; }
+
+  /* center chat */
+  .chatcol { width: min(700px, 100%); flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 14px; }
+  .turnmeta { display: none; }
+  .dim { color: rgba(235,231,229,0.5); }
+  .transcript {
+    flex: 1; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px; padding: 10px 6px 6px;
+    scrollbar-width: thin; scrollbar-color: rgba(235,231,229,0.15) transparent;
+    mask-image: linear-gradient(to bottom, transparent 0, black 18px, black 100%);
+  }
+  .msg { display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .msg .col { max-width: 80%; display: flex; flex-direction: column; gap: 3px; }
+  .msg .who { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(235,231,229,0.38); }
+  .msg.user .who { text-align: right; }
+  .bubble { padding: 10px 14px; font-size: 14px; line-height: 1.6; border-radius: 16px; background: var(--surface); border: 1px solid var(--divider); white-space: pre-wrap; }
+  .msg.user .bubble { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-color: var(--accent-bd); border-bottom-right-radius: 5px; }
+  .msg:not(.user) .bubble { border-bottom-left-radius: 5px; }
+  .assess { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--divider); font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; }
+  .assess .row { display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px; background: rgba(56,166,207,0.16); color: var(--accent); }
+  .cov b { color: var(--success); font-weight: 600; }
+  .gap b { color: var(--warning); font-weight: 600; }
+
+  /* ── bottom dock: composer + strategy strip ── */
+  .dock {
+    border-top: 1px solid var(--divider); background: rgba(29,27,26,0.7);
+    padding: 10px 18px 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .composer { display: flex; align-items: flex-end; gap: 8px; }
+  .composer textarea {
+    flex: 1; resize: none; background: var(--surface); border: 1px solid var(--divider);
+    border-radius: var(--radius); color: var(--text); font: inherit; font-size: 14px;
+    padding: 12px 14px; min-height: 46px; max-height: 130px; outline: none;
+  }
+  .composer textarea:focus { border-color: var(--accent-bd); }
+  .composer textarea::placeholder { color: rgba(235,231,229,0.35); }
+  .send { height: 46px; padding: 0 20px; border-radius: var(--radius); border: none; cursor: pointer; background: var(--accent); color: #08222e; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 7px; }
+  .send:hover { filter: brightness(1.1); }
+
+  .strategy-strip { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .strategy-strip .lbl { font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; color: rgba(235,231,229,0.4); white-space: nowrap; margin-right: 2px; }
+  .chip {
+    flex: none; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: rgba(235,231,229,0.75);
+    border: 1px solid var(--divider); border-radius: 999px; background: none;
+    padding: 4px 12px; cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--accent-bd); color: var(--accent); }
+  .chip.active { background: var(--accent-dim); border-color: var(--accent-bd); color: var(--accent); font-weight: 600; }
+  .chip .xp { font-size: 10.5px; color: rgba(235,231,229,0.4); }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <a href="#" title="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5"/></svg></a>
+    <a href="#" title="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></a>
+    <a href="#" title="Topic map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M7.5 8 11 15.5M16.5 8 13 15.5M8.5 6h7"/></svg></a>
+    <a href="#" class="active" title="Learn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3c3 2.5 4.5 6 4.5 9.5L14 15h-4l-2.5-2.5C7.5 9 9 5.5 12 3Z"/><circle cx="12" cy="9.5" r="1.4"/></svg></a>
+    <a href="#" title="Chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 10h8M8 14h5"/><path d="M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12Z"/></svg></a>
+    <div style="height:8px"></div>
+    <div class="dot">MS</div><div class="dot">DL</div><div class="dot">MU</div><div class="dot">+</div>
+    <div class="spacer"></div>
+    <a href="#" title="Documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg></a>
+    <a href="#" title="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg></a>
+    <a href="#" title="Theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.4 1.4M17.6 17.6 19 19M19 5l-1.4 1.4M6.4 17.6 5 19"/></svg></a>
+  </nav>
+
+  <div class="stage">
+    <!-- omnibar -->
+    <header class="topbar">
+      <span class="crumb">ISLP · Step 5</span>
+      <h1>Linear regression</h1>
+      <span class="sep"></span>
+      <span class="kicker">Talk it through</span>
+      <span class="dim" style="font-size:12.5px">Turn 7 of 8</span>
+      <div class="grow"></div>
+      <span class="pill">In progress</span>
+      <div class="bar"><i></i></div>
+      <span class="pct">71%</span>
+      <button class="ghostbtn">I already know this</button>
+      <span class="sep"></span>
+      <button class="ghostbtn">End session</button>
+    </header>
+
+    <!-- stage -->
+    <div class="session">
+      <aside class="wing left">        <div class="card">
+          <h4>Objectives</h4>
+          <div class="objline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>Explain linear regression in plain words</div>
+          <div class="objline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 13 4 4L19 7"/></svg>Apply linear regression to a small example</div>
+          <div class="objline todo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>Recognise when linear regression is appropriate</div>
+        </div>
+        <div class="card">
+          <h4>Also taught in</h4>
+          <div style="font-size:12px; color:rgba(235,231,229,0.7);">Intro to ML: Supervised Learning →</div>
+          <div style="font-size:11px; color:rgba(235,231,229,0.45); margin-top:2px;">Mastering here completes it there too.</div>
+        </div>
+      </aside>
+
+      <section class="chatcol">
+        <div class="turnmeta">
+          <span style="font-size:12px" class="dim">+30 XP on completion</span>
+        </div>
+        <div class="transcript">
+          <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">1) sales = 7 + 0.05*100 = 7 + 5 = 12
+2) the 0.05 is for every 20 dollars we put in, we get one more sale (at least that's our prediction)</div></div></div>
+
+          <div class="msg"><div class="col"><div class="who">Tutor</div><div class="bubble">Both correct! 12 is right, and your "20 dollars → one extra sale" is a perfectly equivalent way to read the 0.05 slope.
+
+One nuance before the last objective: this is an <i>association</i>, not proof of causation — the model just predicts, it doesn't promise. With that in mind: what are two red flags that would make you distrust predictions from this line? Think about (a) the shape of the relationship and (b) predicting far outside the data we trained on.
+<div class="assess">
+  <div class="row"><span class="badge">Progressing</span><span class="dim">65% confident</span></div>
+  <div class="cov dim"><b>Covered:</b> Explain linear regression in plain words · Apply linear regression to a small example</div>
+  <div class="gap dim"><b>Still to show:</b> Recognise when linear regression is appropriate · Common pitfalls (extrapolation, non-linearity)</div>
+</div></div></div></div>
+
+          <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">First this is assuming this model is linear, if it's quadratic for example, then maybe the first of predicted results would be correct but the further we go, the more the data and predictions diverge.</div></div></div>
+
+          <div class="msg"><div class="col"><div class="who">Tutor</div><div class="bubble">Could you say a bit more about that?
+<div class="assess"><div class="row"><span class="badge">Progressing</span><span class="dim">40% confident</span></div></div></div></div></div>
+
+          <div class="msg user"><div class="col"><div class="who">You</div><div class="bubble">I guess the next thing is that whether our model is too simple? We only used one parameter, TV budget</div></div></div>
+        </div>
+      </section>
+
+      <aside class="wing right">
+        <div class="card">
+          <h4>Key points</h4>
+          <div class="kpline">Least squares minimises squared residuals</div>
+          <div class="kpline">Slope β̂₁ = Δy per unit Δx</div>
+          <div class="kpline">Intercept β̂₀ = predicted y at x = 0</div>
+          <div class="kpline">Check linearity before extrapolating</div>
+        </div>
+        <div class="card">
+          <h4>Session · Turn 7/8</h4>
+          <div style="font-size:12px; color:rgba(235,231,229,0.75); line-height:1.6;">
+            2 of 3 objectives covered<br>
+            <span style="color:var(--accent); font-weight:600;">65%</span> confidence
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- dock -->
+    <footer class="dock">
+      <div class="composer">
+        <textarea placeholder="Answer the tutor in your own words… (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button class="send"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 11 18-8-8 18-2.5-7.5L3 11Z"/></svg>Send</button>
+      </div>
+      <div class="strategy-strip">
+        <span class="lbl">Switch strategy</span>
+        <button class="chip active">💬 Talk it through <span class="xp">+30</span></button>
+        <button class="chip">📖 Lesson <span class="xp">+10</span></button>
+        <button class="chip">🃏 Flashcards <span class="xp">+10</span></button>
+        <button class="chip">📝 Quiz <span class="xp">+30</span></button>
+        <button class="chip">🧠 Recall <span class="xp">+30</span></button>
+      </div>
+    </footer>
+  </div>
+</div>
+<script>
+  // Auto-scroll transcript to latest message, like the real app
+  const t = document.querySelector('.transcript');
+  if (t) t.scrollTop = t.scrollHeight;
+</script>
+</body>
+</html>

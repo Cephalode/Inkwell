@@ -29,3 +29,13 @@ export function setSSEHeaders(res: Response): void {
 export function send(res: Response, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
+
+/**
+ * Write an SSE comment line — the spec-defined keepalive. Clients (including
+ * our `data:`-prefix parser) ignore it, but bytes stay flowing so Cloudflare /
+ * proxies don't kill an idle stream during long LLM phases that emit no
+ * events (e.g. roadmap synthesis: one call, 5+ minutes, zero events).
+ */
+export function ping(res: Response): void {
+  res.write(': ping\n\n');
+}

@@ -36,13 +36,13 @@ export default function ChapterSelector({
   onSaveAllChapters,
 }: ChapterSelectorProps) {
   return (
-    <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-3 sm:p-5">
+    <div className="card p-3 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h4 className="text-sm font-semibold text-slate-200">Chapters</h4>
+        <h4 className="section-label">Chapters</h4>
         {chapters.length > 0 && (
           <button
             onClick={onClearChapters}
-            className="text-xs text-slate-500 hover:text-red-400 transition-colors"
+            className="text-xs opacity-50 hover:opacity-100 hover:text-[var(--color-danger)] transition-colors"
           >
             Clear
           </button>
@@ -52,11 +52,11 @@ export default function ChapterSelector({
       {isExtracting ? (
         <div className="flex flex-col items-center gap-3 py-8">
           <Spinner size="md" />
-          <span className="text-sm text-slate-400">Analyzing chapters…</span>
+          <span className="text-sm" style={{ opacity: 0.6 }}>Analyzing chapters…</span>
         </div>
       ) : error ? (
         <div className="text-center py-6">
-          <p className="text-sm text-red-400 mb-3">{error}</p>
+          <p className="text-sm mb-3" style={{ color: 'var(--color-danger)' }}>{error}</p>
           <Button onClick={onExtractChapters} variant="secondary" size="sm">
             Retry
           </Button>
@@ -71,7 +71,8 @@ export default function ChapterSelector({
               return (
                 <li key={i}>
                   <div
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors bg-slate-700/30 border border-transparent hover:bg-slate-700/60 text-slate-300 hover:text-slate-200"
+                    className="flex items-center gap-2 px-3 py-2 text-sm transition-colors bg-[var(--color-neutral-100)] hover:bg-[var(--color-neutral-200)]"
+                    style={{ borderRadius: 'var(--radius-md)', border: '1px solid transparent' }}
                   >
                     <button
                       onClick={() => onSelectChapter(ch)}
@@ -87,12 +88,13 @@ export default function ChapterSelector({
                       onClick={() => onSaveChapter(i)}
                       disabled={isSaving}
                       title={isSaved ? 'Saved' : 'Save chapter'}
-                      className="shrink-0 p-1 rounded hover:bg-slate-600/50 transition-colors disabled:opacity-50"
+                      className="shrink-0 p-1 hover:bg-[color-mix(in_srgb,var(--color-text)_10%,transparent)] transition-colors disabled:opacity-50"
+                      style={{ borderRadius: 'var(--radius-md)' }}
                     >
                       {isSavingThis ? (
                         <Spinner size="sm" />
                       ) : isSaved ? (
-                        <HiCheck className="w-4 h-4 text-green-400" />
+                        <HiCheck className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
                       ) : (
                         <HiDownload className="w-4 h-4 opacity-50 hover:opacity-100" />
                       )}
@@ -102,7 +104,7 @@ export default function ChapterSelector({
               );
             })}
           </ul>
-          <div className="mt-3 pt-3 border-t border-slate-700/50">
+          <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-divider)' }}>
             <Button
               onClick={onSaveAllChapters}
               disabled={isSaving || savedCount === chapters.length}
@@ -112,7 +114,7 @@ export default function ChapterSelector({
             >
               {savedCount === chapters.length ? (
                 <>
-                  <HiCheck className="w-4 h-4 text-green-400" />
+                  <HiCheck className="w-4 h-4" style={{ color: 'var(--color-success)' }} />
                   All {chapters.length} chapters saved
                 </>
               ) : isSaving ? (
@@ -136,7 +138,7 @@ export default function ChapterSelector({
         </>
       ) : (
         <div className="text-center py-6">
-          <p className="text-sm text-slate-500 mb-3">
+          <p className="text-sm mb-3" style={{ opacity: 0.5 }}>
             Detect chapter headings and page numbers from this PDF.
           </p>
           <Button onClick={onExtractChapters}>

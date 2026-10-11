@@ -26,3 +26,12 @@ dist/
 
 # Server runtime data
 server/data/files/
+
+# Secrets
+.env
+
+# Syncthing conflict copies
+*sync-conflict*
+
+# pi-observer runtime output
+/briefs/

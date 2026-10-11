@@ -190,8 +190,17 @@ function extractCaptionTracks(html: string): CaptionTrack[] | null {
 
 /** Strip XML/HTML tags, decode entities, and collapse whitespace. */
 function cleanCaptionXml(xml: string): string {
+  // ponytail: keep cue starts as [m:ss] markers — the video judge needs them
+  // to place milestones in time; upgrade to a structured transcript if anything
+  // else ever needs cue-level data.
+  const stamp = (sec: number) => {
+    const s = Math.max(0, Math.round(sec));
+    return ` [${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}]`;
+  };
   return decodeEntities(
     xml
+      .replace(/<p\b[^>]*\bt="(\d+)"[^>]*>/gi, (_m, ms) => stamp(Number(ms) / 1000))
+      .replace(/<text\b[^>]*\bstart="([^"]+)"[^>]*>/gi, (_m, st) => stamp(parseFloat(st)))
       .replace(/<[^>]+>/g, ' ')
       .replace(/&amp;/g, '&')
       .replace(/\s+/g, ' ')

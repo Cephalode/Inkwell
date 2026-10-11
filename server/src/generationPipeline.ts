@@ -22,7 +22,7 @@
 
 import type { Request, Response } from 'express';
 import pool from '../db.js';
-import { send, setSSEHeaders } from './sse.js';
+import { ping, send, setSSEHeaders } from './sse.js';
 import type { MaterialUnit } from './materials.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -47,6 +47,7 @@ const VALID_TABLES = new Set([
   'study_guides',
   'flashcard_decks',
   'practice_tests',
+  'roadmaps',
 ]);
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -109,6 +110,14 @@ export interface GenerationOptions {
    * The pipeline emits `synthesizing` immediately before calling this.
    */
   finalize?: (items: Material[], emit: EmitFn) => Promise<void>;
+
+  /**
+   * How many materials to process in parallel (default 1 = sequential,
+   * matching the original behaviour). Each slot is still one LLM call —
+   * don't set this above what the provider rate-limits. Roadmaps pass 4
+   * (15 serial GLM calls ≈ 2-4 min → ~4 parallel batches).
+   */
+  concurrency?: number;
 }
 
 // ── Status helper ───────────────────────────────────────────────────────────
@@ -141,6 +150,25 @@ export async function updateStatus(
     );
   } catch (err) {
     console.error(`updateStatus: failed to update ${table} ${id} -> ${status}:`, err);
+  }
+}
+
+/**
+ * Refresh a generation row's `updated_at` WITHOUT changing status.
+ *
+ * Long MAP phases (many materials × 35-90s LLM calls each) can legitimately
+ * outlive GENERATION_TIMEOUT_MS. The 60s reaper flips `generating` rows whose
+ * `updated_at` is older than that window to `error` — which would reap
+ * healthy in-flight work, especially now that generation continues after the
+ * client disconnects. Called once per completed material to keep the row
+ * looking alive. Fire-and-forget semantics (never throws).
+ */
+export async function touchRow(table: string, id: string): Promise<void> {
+  if (!VALID_TABLES.has(table)) return;
+  try {
+    await pool.query(`UPDATE ${table} SET updated_at = now() WHERE id = $1`, [id]);
+  } catch (err) {
+    console.error(`touchRow: failed to touch ${table} ${id}:`, err);
   }
 }
 
@@ -183,19 +211,35 @@ export function checkStale(row: { updated_at: Date | string }): boolean {
  */
 export async function runGeneration(options: GenerationOptions): Promise<void> {
   const { table, id, res, req, collectMaterials, processMaterial, finalize } = options;
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 1, 8));
 
   // 1. SSE headers — flush immediately so the client starts receiving.
   setSSEHeaders(res);
 
   // Track client disconnects (studyGuides' pattern; works across Express
   // versions, unlike the `req.closed` shortcut used by flashcards/tests).
+  //
+  // Disconnect changes NOTHING about the generation work — it only stops SSE
+  // writes. The pipeline keeps running, marks the row done, and the client's
+  // next status poll picks up the finished row (mobile "Keep in background").
   let closed = false;
   req.on('close', () => {
     closed = true;
   });
 
-  // Build the emit helper bound to this response.
+  // Keepalive: long LLM phases (roadmap synthesis is a single 5+ minute call)
+  // emit no events, and Cloudflare kills idle tunnel streams (~100s). A spec
+  // comment line every 15s keeps the stream alive; clients ignore it.
+  // No-ops once the client has disconnected.
+  const pingTimer = setInterval(() => {
+    if (!closed && !res.writableEnded) ping(res);
+  }, 15_000);
+  pingTimer.unref();
+
+  // Build the emit helper bound to this response. After disconnect (or any
+  // dead-socket state) writes are skipped — never throw into the pipeline.
   const emit: EmitFn = (type, data) => {
+    if (closed || res.writableEnded || res.destroyed) return;
     if (data !== undefined) {
       send(res, { type, ...data });
     } else {
@@ -216,31 +260,42 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
 
     emit('materials_collected', { count: materials.length });
 
-    // 4. MAP phase — process each material unit.
+    // 4. MAP phase — process materials `concurrency` at a time (worker pool).
+    //    Events fire per material as it starts/finishes; the frontend reducer
+    //    only cares that counts go up, so out-of-order results are fine.
     let totalProduced = 0;
+    let nextIndex = 0;
 
-    for (let i = 0; i < materials.length; i++) {
-      if (closed) break;
+    const worker = async () => {
+      while (true) {
+        const i = nextIndex++;
+        if (i >= materials.length) return;
+        const material = materials[i];
 
-      const material = materials[i];
+        emit('material_start', {
+          index: i,
+          total: materials.length,
+          material: { id: material.documentId, title: material.title },
+        });
 
-      emit('material_start', {
-        index: i,
-        total: materials.length,
-        material: { id: material.documentId, title: material.title },
-      });
+        const count = await processMaterial(material, emit);
+        totalProduced += count;
 
-      const count = await processMaterial(material, emit);
-      totalProduced += count;
+        emit('material_result', {
+          index: i,
+          count,
+          total: materials.length,
+          material: { id: material.documentId },
+        });
 
-      emit('material_result', {
-        index: i,
-        count,
-        material: { id: material.documentId },
-      });
+        // Keep `updated_at` fresh so the 60s reaper (and the GET-staleness
+        // guards) don't kill a legitimately-running long generation that
+        // outlives GENERATION_TIMEOUT_MS after its client vanished.
+        await touchRow(table, id);
+      }
+    };
 
-      if (closed) break;
-    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, materials.length) }, worker));
 
     // 5. REDUCE phase — synthesise (optional).
     emit('synthesizing');
@@ -253,8 +308,10 @@ export async function runGeneration(options: GenerationOptions): Promise<void> {
 
     // 7. Emit done and close the stream.
     emit('done', { count: totalProduced });
+    clearInterval(pingTimer);
     res.end();
   } catch (err: unknown) {
+    clearInterval(pingTimer);
     console.error(`Generation pipeline error for ${table}:${id}:`, err);
     const message = err instanceof Error ? err.message : String(err);
 

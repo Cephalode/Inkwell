@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Tutor Layout Variants</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #191817; color: #ebe7e5;
+    display: grid; place-items: center; min-height: 100vh; padding: 24px;
+  }
+  .menu { max-width: 620px; width: 100%; }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  p.sub { font-size: 13.5px; color: rgba(235,231,229,0.55); margin-bottom: 18px; }
+  a.card {
+    display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit;
+    border: 1px solid rgba(235,231,229,0.14); border-radius: 14px; background: #22201f;
+    padding: 16px 18px; margin-bottom: 10px; transition: all .15s;
+  }
+  a.card:hover { border-color: rgba(56,166,207,0.4); transform: translateY(-1px); }
+  .badge { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: rgba(56,166,207,0.14); color: #38a6cf; font-size: 15px; }
+  .t { font-weight: 600; font-size: 14.5px; }
+  .d { font-size: 12.5px; color: rgba(235,231,229,0.55); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="menu">
+    <h1>Tutor screen — layout options</h1>
+    <p class="sub">Goal: everything fits the viewport without scrolling the page — only the chat transcript scrolls. Click a card to open that variant.</p>
+    <a class="card" href="../004-tutor-focus/index.html">
+      <div class="badge">A</div>
+      <div><div class="t">Focused session</div><div class="d">Context collapsed into one slim strip + slide-out drawer. Maximum chat room, minimum chrome.</div></div>
+    </a>
+    <a class="card" href="../005-tutor-twopane/index.html">
+      <div class="badge">B</div>
+      <div><div class="t">Two-pane study</div><div class="d">Chat left, context cards right (mastery / objectives / session stats / video). Everything visible at once, no scrolling needed.</div></div>
+    </a>
+    <a class="card" href="../006-tutor-stage/index.html">
+      <div class="badge">C</div>
+      <div><div class="t">Immersive stage</div><div class="d">Chat center-stage, context in quiet side wings, strategy switcher in a bottom dock. Feels like a focused lesson space.</div></div>
+    </a>
+  </div>
+</body>
+</html>

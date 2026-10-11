@@ -34,8 +34,8 @@ function SliderRow({ config, value, onChange }: {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-400">{config.label}</span>
-        <span className="text-xs font-mono text-teal-400 tabular-nums w-12 text-right">
+        <span className="text-xs" style={{ opacity: 0.6 }}>{config.label}</span>
+        <span className="text-xs font-mono tabular-nums w-12 text-right" style={{ color: 'var(--color-accent)' }}>
           {config.step < 1 ? value.toFixed(2) : value}
         </span>
       </div>
@@ -46,21 +46,20 @@ function SliderRow({ config, value, onChange }: {
         step={config.step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 bg-slate-700 rounded-full appearance-none cursor-pointer
+        className="w-full h-1.5 bg-[var(--color-neutral-300)] rounded-full appearance-none cursor-pointer
           [&::-webkit-slider-thumb]:appearance-none
           [&::-webkit-slider-thumb]:w-3
           [&::-webkit-slider-thumb]:h-3
           [&::-webkit-slider-thumb]:rounded-full
-          [&::-webkit-slider-thumb]:bg-teal-500
-          [&::-webkit-slider-thumb]:hover:bg-teal-400
+          [&::-webkit-slider-thumb]:bg-[var(--color-accent)]
+          [&::-webkit-slider-thumb]:hover:bg-[var(--color-accent-600)]
           [&::-webkit-slider-thumb]:transition-colors
-          [&::-webkit-slider-thumb]:shadow-md
           [&::-moz-range-thumb]:w-3
           [&::-moz-range-thumb]:h-3
           [&::-moz-range-thumb]:rounded-full
-          [&::-moz-range-thumb]:bg-teal-500
+          [&::-moz-range-thumb]:bg-[var(--color-accent)]
           [&::-moz-range-thumb]:border-0
-          [&::-moz-range-thumb]:hover:bg-teal-400"
+          [&::-moz-range-thumb]:hover:bg-[var(--color-accent-600)]"
       />
     </div>
   );
@@ -69,10 +68,10 @@ function SliderRow({ config, value, onChange }: {
 function SectionHeader({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-2 pt-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ opacity: 0.55 }}>
         {title}
       </span>
-      <div className="flex-1 border-t border-slate-700/50" />
+      <div className="flex-1 border-t" style={{ borderColor: 'var(--color-divider)' }} />
     </div>
   );
 }
@@ -87,20 +86,26 @@ export function GraphControls() {
 
   return (
     <div className="absolute bottom-14 left-4 z-10 w-56">
-      <div className="bg-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl shadow-xl overflow-hidden">
+      <div
+        className="card overflow-hidden"
+        style={{
+          background: 'color-mix(in srgb, var(--color-surface) 88%, transparent)',
+          boxShadow: 'var(--shadow-md)',
+        }}
+      >
         {/* Header */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-between px-3 py-2.5 text-slate-100 hover:bg-slate-700/30 transition-colors"
+          className="w-full flex items-center justify-between px-3 py-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--color-text)_7%,transparent)]"
         >
           <div className="flex items-center gap-2">
-            <HiOutlineCog6Tooth className="w-4 h-4 text-teal-500" />
+            <HiOutlineCog6Tooth className="w-4 h-4" style={{ color: 'var(--color-accent)' }} />
             <span className="text-sm font-medium">Physics</span>
           </div>
           {expanded ? (
-            <HiChevronUp className="w-4 h-4 text-slate-400" />
+            <HiChevronUp className="w-4 h-4" style={{ opacity: 0.6 }} />
           ) : (
-            <HiChevronDown className="w-4 h-4 text-slate-400" />
+            <HiChevronDown className="w-4 h-4" style={{ opacity: 0.6 }} />
           )}
         </button>
 
@@ -132,7 +137,7 @@ export function GraphControls() {
               ))}
               {/* Boolean toggle for nodeSizeByConnections */}
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">Size by Degree</span>
+                <span className="text-xs" style={{ opacity: 0.6 }}>Size by Degree</span>
                 <button
                   role="switch"
                   aria-checked={simulationControls.nodeSizeByConnections}
@@ -141,14 +146,18 @@ export function GraphControls() {
                       nodeSizeByConnections: !simulationControls.nodeSizeByConnections,
                     })
                   }
-                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-teal-500/50 ${
-                    simulationControls.nodeSizeByConnections ? 'bg-teal-500' : 'bg-slate-600'
-                  }`}
+                  className="relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
+                  style={{
+                    background: simulationControls.nodeSizeByConnections
+                      ? 'var(--color-accent)'
+                      : 'var(--color-neutral-400)',
+                  }}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    className={`pointer-events-none inline-block h-3 w-3 transform rounded-full transition duration-200 ease-in-out ${
                       simulationControls.nodeSizeByConnections ? 'translate-x-3' : 'translate-x-0'
                     }`}
+                    style={{ background: 'var(--color-neutral-900)', boxShadow: 'var(--shadow-sm)' }}
                   />
                 </button>
               </div>

@@ -1,4 +1,4 @@
-export interface CourseraCourse { id: string; slug: string; name: string; status: 'completed' | 'enrolled' | 'unenrolled' }
+export interface CourseraCourse { id: string; slug: string; name: string; status: 'completed' | 'enrolled' | 'unenrolled'; imported?: boolean }
 export interface CourseraItem { id: string; name: string; slug: string; type: string; locked: boolean; url: string }
 export interface CourseraLesson { id: string; name: string; slug: string; items: CourseraItem[] }
 export interface CourseraModule { id: string; name: string; slug: string; lessons: CourseraLesson[] }
@@ -17,3 +17,9 @@ export const linkCoursera = (cauth: string) =>
 export const unlinkCoursera = () => fetch(`${API}/link`, { method: 'DELETE' }).then((r) => json<{ linked: boolean }>(r));
 export const listCourseraCourses = () => fetch(`${API}/courses`).then((r) => json<CourseraCourse[]>(r));
 export const getCourseOutline = (slug: string) => fetch(`${API}/courses/${slug}/outline`).then((r) => json<CourseraModule[]>(r));
+export const importCourseraCourse = (slug: string, name: string) =>
+  fetch(`${API}/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug, name }) })
+    .then((r) => json<Record<string, unknown> & { id: string }>(r));
+export const importCourseraTextbooks = (slug: string) =>
+  fetch(`${API}/import-textbooks/${slug}`, { method: 'POST' })
+    .then((r) => json<{ slug: string; assetCount: number; results: string[] }>(r));

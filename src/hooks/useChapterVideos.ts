@@ -34,12 +34,11 @@ export function useChapterVideos(chapterId: string | null, enabled: boolean): Us
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setStatus('loading');
-    setVideos(null);
-    setError(null);
-
     (async () => {
       try {
+        setStatus('loading');
+        setVideos(null);
+        setError(null);
         const cached = await getChapterVideos(chapterId);
         if (controller.signal.aborted) return;
         if (cached) {

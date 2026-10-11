@@ -1,4 +1,4 @@
-export type KGNodeType = 'document' | 'doctype' | 'tag' | 'course' | 'subject' | 'chat' | 'chapter';
+export type KGNodeType = 'document' | 'doctype' | 'tag' | 'course' | 'subject' | 'chat' | 'chapter' | 'topic' | 'guide' | 'deck';
 
 export interface KGNode {
   id: string;           // prefixed: "doc:<id>", "type:pdf", "tag:seismology", "course:<id>", "subject:Physics"
@@ -6,9 +6,13 @@ export interface KGNode {
   type: KGNodeType;     // determines color, icon, size
   parentId?: string;    // for document nodes: link back to original entity ID
   val?: number;         // node weight (affects force sim — higher = bigger)
+  mastery?: 0 | 1 | 2 | 3; // topic nodes: 0 not started · 1 in progress · 2 learned · 3 foundation
+  stepId?: string;      // topic nodes: roadmap step teaching the topic (→ /learn/steps/:stepId)
+  courseId?: string;    // topic nodes: primary course (map hue lookup)
+  courseIds?: string[]; // topic nodes: every course teaching this concept (shared-node pies)
 }
 
-export type KGEdgeType = 'is-type' | 'has-tag' | 'in-course' | 'has-subject' | 'related-chat' | 'is-chapter-of';
+export type KGEdgeType = 'is-type' | 'has-tag' | 'in-course' | 'has-subject' | 'related-chat' | 'is-chapter-of' | 'next-topic' | 'builds-on' | 'has-guide' | 'has-deck';
 
 export interface KGEdge {
   source: string;
@@ -30,6 +34,9 @@ export interface KGFilters {
   showSubjects: boolean;
   showChats: boolean;
   showChapters: boolean;
+  showTopics: boolean;
+  showGuides: boolean;
+  showDecks: boolean;
   searchQuery: string;
   /** When set, only nodes belonging to these courses are shown (undefined = all courses). */
   courseIds?: string[];

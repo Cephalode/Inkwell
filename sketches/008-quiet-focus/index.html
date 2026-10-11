@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Quiet Focus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-700:#83c9e6;
+  --serif:"Source Serif 4",Georgia,serif;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-700:#006786;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:flex;justify-content:center;min-height:100vh}
+.wrap{width:100%;max-width:760px;padding:16vh 28px 80px;position:relative}
+.theme-btn{position:fixed;top:14px;right:16px;font-family:inherit;font-size:12px;color:var(--n600);background:none;border:none;cursor:pointer;opacity:.7}
+.theme-btn:hover{opacity:1;color:var(--text)}
+
+.kicker{font-size:13px;color:var(--n600);letter-spacing:.02em;margin-bottom:22px}
+.kicker b{color:var(--text);font-weight:600}
+h1{font-size:clamp(38px,6vw,58px);font-weight:700;line-height:1.08;letter-spacing:-.01em;margin-bottom:16px;transition:opacity .28s}
+.sub{font-size:17px;font-style:italic;color:var(--n700);margin-bottom:36px;transition:opacity .28s}
+.fading{opacity:0}
+
+.actions{display:flex;align-items:center;gap:22px;margin-bottom:14px}
+.begin{font-family:inherit;font-size:16px;font-weight:600;background:var(--accent);color:var(--bg);border:none;border-radius:2px;padding:14px 34px;cursor:pointer;letter-spacing:.01em}
+.begin:hover{filter:brightness(1.1)}
+.else{background:none;border:none;color:var(--n600);font-family:inherit;font-size:14px;font-style:italic;cursor:pointer;padding:6px 2px}
+.else:hover{color:var(--accent-700)}
+
+.after{margin-top:64px}
+.after-label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--n500);margin-bottom:6px}
+.task{display:flex;gap:14px;align-items:baseline;padding:15px 2px;border-bottom:1px solid var(--divider);cursor:pointer;transition:opacity .3s}
+.task:hover .t-t{color:var(--accent-700)}
+.task .ring{flex-shrink:0;width:16px;height:16px;border:1.5px solid var(--n500);border-radius:50%;transform:translateY(2px);transition:all .2s}
+.task:hover .ring{border-color:var(--accent)}
+.task .t-t{font-size:17px;font-weight:600;transition:color .15s}
+.task .t-m{font-size:13px;color:var(--n500);font-style:italic;margin-left:auto;white-space:nowrap}
+.task.done{opacity:.35}
+.task.done .ring{background:var(--accent);border-color:var(--accent)}
+.task.done .t-t{text-decoration:line-through}
+
+.foot{margin-top:72px;display:flex;gap:26px;font-size:13px;color:var(--n500)}
+.foot b{color:var(--n600);font-weight:600}
+.foot .dot{color:var(--accent)}
+a.plain{color:var(--n600);text-decoration:none;border-bottom:1px solid var(--divider);cursor:pointer}
+a.plain:hover{color:var(--accent-700)}
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.documentElement.classList.toggle('light')">light</button>
+<div class="wrap">
+  <div class="kicker"><b>Saturday, September 19.</b> 12-day streak · 45 of 80 XP today.</div>
+
+  <h1 id="q-h">Pick up <em>ISLR</em>, chapter 8.</h1>
+  <p class="sub" id="q-s">You stopped at page 214, midway through bagging. Twenty minutes should land the section.</p>
+
+  <div class="actions">
+    <button class="begin" onclick="advance()">Begin</button>
+    <button class="else" onclick="advance()">not this — something else →</button>
+  </div>
+
+  <div class="after">
+    <div class="after-label">After that</div>
+    <div class="task" onclick="this.classList.toggle('done')"><span class="ring"></span><span class="t-t">Review 14 due cards — Trees &amp; Forests</span><span class="t-m">≈ 10 min</span></div>
+    <div class="task" onclick="this.classList.toggle('done')"><span class="ring"></span><span class="t-t">Moment-tensor inversion — Seismology 341</span><span class="t-m">next step · 25 min</span></div>
+    <div class="task" onclick="this.classList.toggle('done')"><span class="ring"></span><span class="t-t">Watch “Gradient boosting, explained”</span><span class="t-m">18 min</span></div>
+  </div>
+
+  <div class="foot">
+    <span><b>14</b> cards due</span><span class="dot">·</span>
+    <span>PS4 due <b>Wednesday</b></span><span class="dot">·</span>
+    <span>Midterm <b>Fri Oct 2</b></span><span class="dot">·</span>
+    <a class="plain">ask Inkwell anything</a>
+  </div>
+</div>
+
+<script>
+const params=new URLSearchParams(location.search);
+if(params.get('mode')==='light')document.documentElement.classList.add('light');
+const items=[
+ {h:'Pick up <em>ISLR</em>, chapter 8.',s:'You stopped at page 214, midway through bagging. Twenty minutes should land the section.'},
+ {h:'Clear the <em>14 due cards</em>.',s:'Trees & Forests deck — ten minutes, and the streak holds into a thirteenth day.'},
+ {h:'Continue <em>moment-tensor inversion</em>.',s:'Step 8 of 11 in Seismology 341 — a video, a short reading, five checkpoint questions.'},
+ {h:'Watch <em>“Gradient boosting, explained.”</em>',s:'Eighteen minutes, and it covers three exam milestones at once.'},
+];
+let i=0;
+function advance(){
+  i=(i+1)%items.length;
+  const h=document.getElementById('q-h'),s=document.getElementById('q-s');
+  h.classList.add('fading');s.classList.add('fading');
+  setTimeout(()=>{h.innerHTML=items[i].h;s.textContent=items[i].s;h.classList.remove('fading');s.classList.remove('fading')},260);
+}
+</script>
+</body>
+</html>

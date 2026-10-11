@@ -20,6 +20,7 @@ export interface FlashcardDeck {
   title: string;
   description: string;
   course_id?: string;
+  config?: { count?: number; instructions?: string };
   source: {
     type: 'course' | 'document' | 'chapter';
     ids: string[];

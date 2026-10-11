@@ -20,6 +20,9 @@ const defaultFilters: KGFilters = {
   showSubjects: true,
   showChats: false,
   showChapters: true,
+  showTopics: true,
+  showGuides: true,
+  showDecks: true,
   searchQuery: '',
 };
 

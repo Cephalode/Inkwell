@@ -56,13 +56,18 @@ function extractJSON(text: string, marker: string): unknown {
 function collectVideoRenderers(node: unknown, out: VideoCandidate[]): void {
   if (!node || typeof node !== 'object') return;
   const obj = node as Record<string, unknown>;
-  const vr = obj.videoRenderer as Record<string, any> | undefined;
+  const vr = obj.videoRenderer as Record<string, unknown> | undefined;
   if (vr && typeof vr.videoId === 'string') {
+    const nested = (v: unknown) => v as { runs?: Array<{ text?: string }> } | undefined;
+    const title = nested(vr.title)?.runs?.[0]?.text ?? '';
+    const owner = nested(vr.ownerText)?.runs?.[0]?.text
+      ?? nested(vr.longBylineText)?.runs?.[0]?.text ?? '';
+    const duration = (vr.lengthText as Record<string, unknown> | undefined)?.simpleText;
     const candidate: VideoCandidate = {
       videoId: vr.videoId,
-      title: vr.title?.runs?.[0]?.text ?? '',
-      channel: vr.ownerText?.runs?.[0]?.text ?? vr.longBylineText?.runs?.[0]?.text ?? '',
-      duration: vr.lengthText?.simpleText ?? '',
+      title,
+      channel: owner,
+      duration: typeof duration === 'string' ? duration : '',
     };
     if (candidate.title && candidate.duration) out.push(candidate);
   }

@@ -1,5 +1,6 @@
 import pool from '../db.js';
-import { extractTextWithFonts, pagesToText } from './pdfExtractor.js';
+import { extractTextWithFontsFromBuffer, pagesToText } from './pdfExtractor.js';
+import { storageDownload, isStorageKey } from './storage.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -214,20 +215,39 @@ export async function collectMaterials(opts: {
     }
 
     // 4. Document parsed_text (transcript, uploaded text, etc.).
+    // Long chapterless docs (e.g. lecture-transcript compilations) get chunked
+    // into multiple units so the MAP phase sees the whole file instead of the
+    // first 12k chars. Chaptered docs are unaffected (handled above).
     if (doc.parsed_text && doc.parsed_text.trim()) {
-      units.push({
-        documentId: docId,
-        title: doc.name,
-        text: truncate(doc.parsed_text),
-        source: 'document-text',
-      });
+      const CHUNK = 120_000;
+      const text = doc.parsed_text.trim();
+      if (text.length <= CHUNK) {
+        units.push({
+          documentId: docId,
+          title: doc.name,
+          text: truncate(text),
+          source: 'document-text',
+        });
+      } else {
+        const parts = Math.ceil(text.length / CHUNK);
+        for (let i = 0; i < parts; i++) {
+          units.push({
+            documentId: docId,
+            title: parts > 1 ? `${doc.name} (part ${i + 1}/${parts})` : doc.name,
+            text: truncate(text.slice(i * CHUNK, (i + 1) * CHUNK)),
+            source: 'document-text',
+          });
+        }
+      }
       continue;
     }
 
-    // 5. PDF extraction fallback.
-    if (doc.file_path) {
+    // 5. PDF extraction fallback (Supabase Storage).
+    if (doc.file_path && isStorageKey(doc.file_path)) {
       try {
-        const pages = await extractTextWithFonts(doc.file_path, 1, 500);
+        const pages = await extractTextWithFontsFromBuffer(
+          new Uint8Array(await storageDownload(doc.file_path)), 1, 500,
+        );
         const text = pagesToText(pages);
         if (text.trim()) {
           units.push({

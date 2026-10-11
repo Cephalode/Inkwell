@@ -44,7 +44,16 @@ interface DocumentRow {
   tags?: string[] | null;
   classifyStatus?: ClassifyStatus | null;
   videoSummary?: VideoSummary | null;
+  summary?: string | null;
+  summaryStatus?: string | null;
+  podcastStatus?: string | null;
+  podcastSections?: DocumentFile['podcastSections'];
   filePath?: string | null;
+  folderId?: string | null;
+  startPage?: number | null;
+  endPage?: number | null;
+  chapterIndex?: number | null;
+  chapterTitle?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,7 +88,10 @@ interface CourseRow {
   name: string;
   description?: string | null;
   color?: string | null;
+  courseraSlug?: string | null;
+  isCurrent?: boolean | null;
   documentIds?: string[] | null;
+  folderId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -122,7 +134,16 @@ function mapDocument(r: DocumentRow): DocumentFile {
     tags: r.tags ?? [],
     classifyStatus: r.classifyStatus ?? undefined,
     videoSummary: r.videoSummary ?? undefined,
+    summary: r.summary ?? undefined,
+    summaryStatus: r.summaryStatus ?? undefined,
+    podcastStatus: r.podcastStatus ?? undefined,
+    podcastSections: r.podcastSections ?? undefined,
     filePath: r.filePath ?? undefined,
+    folderId: r.folderId ?? null,
+    startPage: r.startPage ?? null,
+    endPage: r.endPage ?? null,
+    chapterIndex: r.chapterIndex ?? null,
+    chapterTitle: r.chapterTitle ?? null,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };
@@ -149,9 +170,10 @@ function mapChapter(r: ChapterRow): ChapterDocument {
 // Document API
 // ---------------------------------------------------------------------------
 
-export async function uploadDocument(file: File): Promise<DocumentFile> {
+export async function uploadDocument(file: File, folderId?: string | null): Promise<DocumentFile> {
   const form = new FormData();
   form.append('file', file);
+  if (folderId) form.append('folderId', folderId);
 
   const res = await fetch(`${API_BASE}/documents`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -188,13 +210,127 @@ export async function updateDocumentTags(id: string, tags: string[]): Promise<vo
   if (!res.ok) throw new Error(`Failed to update tags: ${res.status}`);
 }
 
-export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string | null; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string }): Promise<void> {
+export async function updateDocument(id: string, updates: { parsedText?: string; thumbnail?: string | null; chapterMarkers?: Array<{ title: string; page: number }>; tags?: string[]; name?: string; folderId?: string | null }): Promise<void> {
   const res = await fetch(`${API_BASE}/documents/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
   if (!res.ok) throw new Error(`Failed to update document: ${res.status}`);
+}
+
+/** Mark a document as opened right now (drives dashboard "Jump back in"). */
+export function markDocumentOpened(id: string): void {
+  fetch(`${API_BASE}/documents/${id}/opened`, { method: 'POST' }).catch(() => {});
+}
+
+// ── Folders (E1 → Drive-style tree) ──────────────────────────────────────────
+export interface Folder {
+  id: string;
+  name: string;
+  color: string | null;
+  parentId: string | null;
+  createdAt: number;
+  /** Set when this folder is a course's auto-created folder (id of the course). */
+  courseId?: string;
+}
+
+/** Folder augmented with computed tree data from GET /folders/tree. */
+export interface FolderTreeNode extends Folder {
+  docCount: number;
+  hasChildren: boolean;
+  /** ancestorId -> true; used to grey out illegal move targets. */
+  isDescendantOf: Record<string, boolean>;
+}
+
+export async function listFolders(): Promise<Folder[]> {
+  const res = await fetch(`${API_BASE}/folders`);
+  if (!res.ok) throw new Error(`Failed to list folders: ${res.status}`);
+  return await res.json();
+}
+
+export async function listFolderTree(): Promise<FolderTreeNode[]> {
+  const res = await fetch(`${API_BASE}/folders/tree`);
+  if (!res.ok) throw new Error(`Failed to list folder tree: ${res.status}`);
+  return await res.json();
+}
+
+export async function createFolder(name: string, color?: string, parentId?: string | null): Promise<Folder> {
+  const res = await fetch(`${API_BASE}/folders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, color, parentId: parentId ?? null }),
+  });
+  if (!res.ok) throw new Error(`Failed to create folder: ${res.status}`);
+  return await res.json();
+}
+
+export async function updateFolder(id: string, updates: { name?: string; color?: string; parentId?: string | null }): Promise<Folder> {
+  const res = await fetch(`${API_BASE}/folders/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update folder: ${res.status}`);
+  return await res.json();
+}
+
+/** Documents visible inside a folder: physical residents + soft-copy links. */
+export interface FolderDocumentRef {
+  id: string;
+  isLink: boolean;
+}
+
+export async function listFolderDocuments(folderId: string): Promise<FolderDocumentRef[]> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/documents`);
+  if (!res.ok) throw new Error(`Failed to list folder documents: ${res.status}`);
+  return await res.json();
+}
+
+/** Soft-link a document into a folder it doesn't physically live in. */
+export async function linkDocumentToFolder(folderId: string, documentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentId }),
+  });
+  if (!res.ok) throw new Error(`Failed to link document to folder: ${res.status}`);
+}
+
+/** Remove a soft-copy link (the document itself is untouched). */
+export async function unlinkDocumentFromFolder(folderId: string, documentId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${folderId}/links/${documentId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to unlink document from folder: ${res.status}`);
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/folders/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to delete folder: ${res.status}`);
+}
+
+/** Result of extracting an uploaded zip into the folder tree. */
+export interface ZipExtractResult {
+  folder: Folder;
+  foldersCreated: number;
+  documentsCreated: number;
+  totalBytes: number;
+}
+
+/**
+ * Upload a .zip and have the server extract it into a new subfolder of
+ * `folderId` (pass null/'root' for the top level). The returned folder is the
+ * newly created archive root, ready to navigate into.
+ */
+export async function extractZipArchive(file: File, folderId: string | null): Promise<ZipExtractResult> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${API_BASE}/folders/${folderId ?? 'root'}/unzip`, { method: 'POST', body: form });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = (json as { error?: string } | null)?.error;
+    throw new Error(message || `Zip extraction failed: ${res.status}`);
+  }
+  return json as ZipExtractResult;
 }
 
 export async function deleteDocument(id: string): Promise<void> {
@@ -208,15 +344,30 @@ export async function classifyDocument(id: string): Promise<{ label: string; sub
   return await res.json();
 }
 
+/** (Re)generate the auto-summary. Normally fires automatically after classify. */
+export async function generateSummary(id: string): Promise<{ summary: string; status: string }> {
+  const res = await fetch(`${API_BASE}/documents/${id}/summary`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to generate summary: ${res.status}`);
+  return await res.json();
+}
+
+/** (Re)generate the podcast audio overview. Normally fires automatically after the summary. */
+export async function generatePodcast(id: string): Promise<{ status: string }> {
+  const res = await fetch(`${API_BASE}/documents/${id}/podcast`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to generate podcast: ${res.status}`);
+  return await res.json();
+}
+
 /**
- * Create a document from a video URL (YouTube etc.). The backend fetches the
- * transcript, creates the document, and triggers background classification.
+ * Create a document from a URL (YouTube etc.). The backend fetches the
+ * transcript for YouTube videos; any other link is saved as a 'link'
+ * document. Optionally lands the new document in `folderId`.
  */
-export async function createDocumentFromUrl(url: string): Promise<DocumentFile> {
+export async function createDocumentFromUrl(url: string, folderId?: string | null): Promise<DocumentFile> {
   const res = await fetch(`${API_BASE}/documents/from-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, folderId: folderId ?? undefined }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -418,7 +569,10 @@ function mapCourse(r: CourseRow): Course {
     name: r.name,
     description: r.description ?? '',
     color: r.color ?? '',
+    courseraSlug: r.courseraSlug ?? undefined,
+    isCurrent: r.isCurrent ?? false,
     documentIds: r.documentIds ?? [],
+    folderId: r.folderId ?? undefined,
     createdAt: toEpoch(r.createdAt),
     updatedAt: toEpoch(r.updatedAt),
   };
@@ -455,12 +609,14 @@ export async function createCourse(course: { name: string; description?: string;
   return mapCourse(data);
 }
 
-export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds'>>): Promise<Course> {
+export async function updateCourse(id: string, updates: Partial<Pick<Course, 'name' | 'description' | 'color' | 'documentIds' | 'courseraSlug' | 'isCurrent'>>): Promise<Course> {
   const body: Record<string, unknown> = {};
   if (updates.name !== undefined) body.name = updates.name;
   if (updates.description !== undefined) body.description = updates.description;
   if (updates.color !== undefined) body.color = updates.color;
   if (updates.documentIds !== undefined) body.documentIds = updates.documentIds;
+  if (updates.courseraSlug !== undefined) body.courseraSlug = updates.courseraSlug;
+  if (updates.isCurrent !== undefined) body.isCurrent = updates.isCurrent;
   const res = await fetch(`${API_BASE}/courses/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -670,6 +826,7 @@ function mapFlashcardDeck(r: Nullable<FlashcardDeck, 'description' | 'course_id'
     description: r.description ?? '',
     course_id: r.course_id ?? undefined,
     source: r.source,
+    config: r.config,
     status: r.status ?? 'pending',
     error: r.error ?? undefined,
     created_at: r.created_at,
@@ -708,6 +865,7 @@ export async function createFlashcardDeck(params: {
   description?: string;
   course_id?: string;
   source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
+  config?: { count?: number; instructions?: string };
 }): Promise<FlashcardDeck> {
   const res = await fetch(`${API_BASE}/flashcard-decks`, {
     method: 'POST',
@@ -789,7 +947,7 @@ export async function createPracticeTest(params: {
   description?: string;
   course_id?: string;
   source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
-  config: { numQuestions?: number; types?: string[] };
+  config: { numQuestions?: number; types?: string[]; instructions?: string };
 }): Promise<PracticeTest> {
   const res = await fetch(`${API_BASE}/practice-tests`, {
     method: 'POST',

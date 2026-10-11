@@ -37,6 +37,34 @@ export interface SystemMessageContext {
   currentPage: string;
   currentDocumentName?: string;
   currentDocumentId?: string;
+  /** Chapter the student currently has open in the textbook viewer. */
+  currentChapter?: { id: string; title: string; parentId: string } | null;
+  currentChapterId?: string | null;
+  /** Parsed text of the currently open chapter, when available. Included
+   *  directly in the system prompt so the agent can read what's on screen
+   *  without a tool call (Cursor-style proactive context). */
+  currentChapterText?: string | null;
+  /** Current page within the open chapter (1-indexed). */
+  viewerPage?: number;
+  /** Files explicitly @-referenced by the student in their message. */
+  attachedFileRefs?: { id: string; name: string; type: string }[];
+  /** The learning step page the student is on (Cursor-style page reference):
+   * step metadata + the active activity's full content ride along so the AI
+   * sees the whole "file", not just what was highlighted. */
+  learningPage?: {
+    stepId: string;
+    title: string;
+    courseName: string;
+    objectives: string[];
+    keyPoints: string[];
+    activityKind?: string | null;
+    activityLabel?: string | null;
+    activityText?: string | null;
+  } | null;
+  /** What the student highlighted on that page — a focus pointer, not the payload. */
+  focusExcerpt?: string | null;
+  /** "@ Current page" reference — a text snapshot of the screen at send time. */
+  pageRef?: { path: string; title: string; text: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,13 +84,84 @@ export function buildSystemMessage(context: SystemMessageContext): string {
       }`
     : 'No specific document is currently open.';
 
+  // Chapter context — the exact chapter the student has open in the viewer.
+  let chapterInfo = '';
+  if (context.currentChapter) {
+    const parentLabel = context.currentDocumentName ?? context.currentChapter.parentId;
+    chapterInfo = `\nThe user currently has open: Chapter "${context.currentChapter.title}" (ID: ${context.currentChapter.id}) from document "${parentLabel}".`;
+    if (typeof context.viewerPage === 'number' && context.viewerPage > 0) {
+      chapterInfo += `\nCurrent page in chapter: ${context.viewerPage}.`;
+    }
+  }
+
+  // Proactive chapter content — include the parsed text of the open chapter so
+  // the agent can answer questions about what's on screen WITHOUT a tool call.
+  // (Note: for converted textbooks the chapter id is a document UUID, so the
+  //  get_chapter tool would 404 — providing the text here sidesteps that.)
+  let chapterContent = '';
+  const chapterText = context.currentChapterText;
+  if (chapterText && chapterText.trim().length > 0) {
+    const MAX_EXCERPT = 4000;
+    const excerpt = chapterText.length > MAX_EXCERPT
+      ? chapterText.slice(0, MAX_EXCERPT) + `\n... [truncated; ${chapterText.length} total chars available]`
+      : chapterText;
+    const totalChars = chapterText.length;
+    chapterContent = `\n--- BEGIN CONTENT OF THE OPEN CHAPTER ("${context.currentChapter?.title ?? ''}", ${totalChars} chars total) ---\n${excerpt}\n--- END CHAPTER CONTENT ---\nYou already have this chapter's content above — answer questions about it directly. For content beyond this excerpt, use the get_chapter / get_document tools (the chapter ID ${context.currentChapter?.id ?? ''} resolves via the documents endpoint).`;
+  }
+
+  // Explicitly @-referenced files — the agent should prefer reading these.
+  let attachedInfo = '';
+  if (context.attachedFileRefs && context.attachedFileRefs.length > 0) {
+    const list = context.attachedFileRefs
+      .map((r) => `- "${r.name}" (id: ${r.id}, type: ${r.type})`)
+      .join('\n');
+    attachedInfo = `\nThe user explicitly referenced the following files. Use get_document / get_chapter / list_chapters to read their content before answering:\n${list}`;
+  }
+
+  // Learning step page — the whole "file" behind a Send-to-AI reference.
+  let learningInfo = '';
+  const lp = context.learningPage;
+  if (lp) {
+    learningInfo = `\n--- BEGIN LEARNING PAGE REFERENCE ---
+The student is on the learning step "${lp.title}" (step id: ${lp.stepId}) in the course "${lp.courseName}".`;
+    if (lp.objectives.length > 0) {
+      learningInfo += `\nWhat they'll be able to do:\n${lp.objectives.map((o) => `- ${o}`).join('\n')}`;
+    }
+    if (lp.keyPoints.length > 0) {
+      learningInfo += `\nKey points:\n${lp.keyPoints.map((k) => `- ${k}`).join('\n')}`;
+    }
+    if (lp.activityText) {
+      learningInfo += `\n\nContent of the open activity (${lp.activityLabel ?? lp.activityKind}):\n${lp.activityText}`;
+    }
+    learningInfo += `\n--- END LEARNING PAGE REFERENCE ---
+Treat the above as the file the student has open: answer from it directly, cite the step or activity by name, and only reach for tools for things it doesn't cover.`;
+  }
+
+  // Highlighted text = focus, not payload.
+  let focusInfo = '';
+  if (context.focusExcerpt) {
+    focusInfo = `\nThe student highlighted this passage on the page — it signals what they want to focus on, not the full context (the whole page is above):\n"${context.focusExcerpt}"`;
+  }
+
+  // "@ Current page" — everything visible on the screen, snapped at send time.
+  let pageInfo = '';
+  const pr = context.pageRef;
+  if (pr) {
+    const MAX_PAGE_TEXT = 12000;
+    const text = pr.text.length > MAX_PAGE_TEXT
+      ? pr.text.slice(0, MAX_PAGE_TEXT) + '… [truncated]'
+      : pr.text;
+    pageInfo = `\n--- BEGIN CURRENT PAGE ("${pr.title}", ${pr.path}) ---\n${text || '(no readable content)'}\n--- END CURRENT PAGE ---\nThe student explicitly referenced this page with @: answer questions about what's on it directly from the snapshot above.`;
+  }
+
   const toolDescriptions = toolDefinitions
     .map((t) => `- ${t.function.name}: ${t.function.description}`)
     .join('\n');
 
   return `You are Inkwell AI, an expert study assistant integrated into the Inkwell application. You help students understand their course materials, create study aids, and answer questions based on the provided content. Always cite specific parts of the source material when answering.
 
-${docInfo}. The student is currently on page "${context.currentPage}".
+${docInfo}.${chapterInfo}${chapterContent}${attachedInfo}${learningInfo}${focusInfo}${pageInfo}
+The student is currently on page "${context.currentPage}".
 
 You have access to the following tools. Use them when the student asks you to perform actions that are better handled programmatically (e.g., searching documents, summarizing pages). Only call a tool when it directly helps answer the user's request.
 
@@ -74,7 +173,8 @@ Guidelines:
 - If the answer is not in the materials, say so honestly.
 - Reference specific sections or page numbers when citing information.
 - When using tools, call them one at a time if they are independent, or batch independent calls together.
-- After executing a tool, interpret the result and present it clearly to the student.`;
+- After executing a tool, interpret the result and present it clearly to the student.
+- When a generator tool returns a url, give the student a markdown link to open it (e.g. [Open the quiz](/tests/<id>)).`;
 }
 
 // ---------------------------------------------------------------------------

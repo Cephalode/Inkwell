@@ -1,4 +1,3 @@
-import { readFileSync } from 'fs';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createRequire } from 'module';
 
@@ -33,22 +32,21 @@ export interface PageContent {
   lines: Line[];
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+// ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Extract text items (with font metadata) for a page range of a PDF file.
- * Items are also grouped into visual lines by y-position proximity.
+ * Extract text items (with font metadata) for a page range of a PDF, from a
+ * buffer (Supabase Storage download). Items are also grouped into visual
+ * lines by y-position proximity.
  *
- * @param filePath  Absolute path to the PDF on disk.
  * @param startPage 1-indexed inclusive start page.
  * @param endPage   1-indexed inclusive end page.
  */
-export async function extractTextWithFonts(
-  filePath: string,
+export async function extractTextWithFontsFromBuffer(
+  data: Uint8Array,
   startPage: number,
   endPage: number,
 ): Promise<PageContent[]> {
-  const data = new Uint8Array(readFileSync(filePath));
   const pdf = await getDocument({ data }).promise;
 
   const totalPages = pdf.numPages;

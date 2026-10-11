@@ -29,7 +29,7 @@ const sectionVariants = {
 export default function StudyGuideDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentGuide, isLoading, loadGuide, deleteGuide } = useStudyGuides();
+  const { currentGuide, isLoading, error, loadGuide, deleteGuide } = useStudyGuides();
   const { progress, isGenerating, generate } = useStudyGuideGeneration(id);
 
   useEffect(() => {
@@ -52,11 +52,14 @@ export default function StudyGuideDetailPage() {
   };
 
   // ── Loading ──────────────────────────────────────────────────────────────
-  if (isLoading && !currentGuide) {
+  // Show a spinner while we have an id but no guide yet and the request is
+  // either in-flight or hasn't errored. This avoids a flash of "not found"
+  // on a hard refresh before loadGuide() resolves.
+  if (id && !currentGuide && (isLoading || !error)) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <Spinner />
-        <p className="mt-4 text-sm text-slate-400">Loading study guide…</p>
+        <p className="mt-4 text-sm" style={{ opacity: 0.6 }}>Loading study guide…</p>
       </div>
     );
   }
@@ -64,8 +67,8 @@ export default function StudyGuideDetailPage() {
   if (!currentGuide || !id) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <HiAcademicCap className="w-12 h-12 text-slate-600 mb-3" />
-        <p className="text-slate-400">Study guide not found.</p>
+        <HiAcademicCap className="w-12 h-12 mb-3" style={{ opacity: 0.4 }} />
+        <p style={{ opacity: 0.6 }}>Study guide not found.</p>
         <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/study-guides')}>
           ← Back to Study Guides
         </Button>
@@ -77,7 +80,7 @@ export default function StudyGuideDetailPage() {
   const hasContent = guide.status === 'done' && guide.content;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6" style={{ maxWidth: 860 }}>
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-start sm:items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => navigate('/study-guides')}>
@@ -85,8 +88,11 @@ export default function StudyGuideDetailPage() {
           <span className="hidden sm:inline">Back</span>
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg sm:text-2xl font-bold text-white truncate flex items-center gap-2">
-            <HiAcademicCap className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400 shrink-0" />
+          <h1 className="text-lg sm:text-2xl truncate flex items-center gap-2">
+            <HiAcademicCap
+              className="w-5 h-5 sm:w-6 sm:h-6 shrink-0"
+              style={{ color: 'var(--color-accent)' }}
+            />
             <span className="truncate">{guide.title}</span>
           </h1>
           <div className="flex gap-2 mt-1.5 flex-wrap">
@@ -172,24 +178,31 @@ function GenerationPanel({
     >
       <Card>
         <div className="flex flex-col items-center justify-center text-center py-10 px-4">
-          <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-5">
+          <div
+            className="flex items-center justify-center w-16 h-16 mb-5"
+            style={{
+              borderRadius: 'var(--radius-lg)',
+              background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+            }}
+          >
             {status === 'error' ? (
-              <HiTrash className="w-7 h-7 text-red-400" />
+              <HiTrash className="w-7 h-7" style={{ color: 'var(--color-danger)' }} />
             ) : active ? (
               <Spinner size="lg" />
             ) : (
-              <HiSparkles className="w-7 h-7 text-cyan-400" />
+              <HiSparkles className="w-7 h-7" style={{ color: 'var(--color-accent)' }} />
             )}
           </div>
 
-          <h3 className="text-lg font-semibold text-slate-200 mb-1.5">
+          <h3 className="text-lg mb-1.5">
             {status === 'error'
               ? 'Generation failed'
               : active
                 ? 'Generating your study guide'
                 : 'Ready to generate'}
           </h3>
-          <p className="text-sm text-slate-400 max-w-md">
+          <p className="text-sm max-w-md" style={{ opacity: 0.6 }}>
             {status === 'error' && error
               ? error
               : message ||
@@ -199,29 +212,35 @@ function GenerationPanel({
           {/* Progress bar */}
           {active && progress && progress.total > 0 && (
             <div className="w-full max-w-md mt-6">
-              <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+              <div className="flex items-center justify-between text-xs mb-1.5" style={{ opacity: 0.7 }}>
                 <span>{progress.status === 'synthesizing' ? 'Synthesizing' : 'Analyzing materials'}</span>
-                <span className="text-cyan-400">
+                <span style={{ color: 'var(--color-accent-700)' }}>
                   {progress.current}/{progress.total}
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-slate-700/60 overflow-hidden">
+              <div
+                className="h-2 w-full overflow-hidden"
+                style={{ background: 'var(--color-neutral-300)', borderRadius: 'var(--radius-sm)' }}
+              >
                 <motion.div
-                  className="h-full bg-gradient-to-r from-cyan-500 to-teal-400"
+                  className="h-full"
+                  style={{ background: 'var(--color-accent)' }}
                   initial={{ width: 0 }}
                   animate={{ width: `${pct}%` }}
                   transition={{ duration: 0.4, ease: 'easeOut' }}
                 />
               </div>
               {progress.currentTitle && (
-                <p className="mt-2 text-xs text-slate-500 truncate">{progress.currentTitle}</p>
+                <p className="mt-2 text-xs truncate" style={{ opacity: 0.5 }}>{progress.currentTitle}</p>
               )}
             </div>
           )}
 
           {/* Spinner-only state (collecting, no total yet) */}
           {active && progress && progress.total === 0 && progress.message && (
-            <p className="mt-4 text-xs text-cyan-400 animate-pulse">{progress.message}</p>
+            <p className="mt-4 text-xs animate-pulse" style={{ color: 'var(--color-accent-700)' }}>
+              {progress.message}
+            </p>
           )}
         </div>
       </Card>
@@ -240,7 +259,9 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
     >
       {/* Overview */}
       <Section icon={<HiBookmark className="w-4 h-4" />} title="Overview">
-        <p className="text-sm leading-relaxed text-slate-300 whitespace-pre-wrap">{content.overview}</p>
+        <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ opacity: 0.85 }}>
+          {content.overview}
+        </p>
       </Section>
 
       {/* Prerequisites */}
@@ -248,8 +269,11 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
         <Section icon={<HiClipboardDocumentList className="w-4 h-4" />} title="Prerequisites">
           <ul className="space-y-2">
             {content.prerequisites.map((p, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-slate-300">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+              <li key={i} className="flex items-start gap-2.5 text-sm" style={{ opacity: 0.85 }}>
+                <span
+                  className="mt-1.5 w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: 'var(--color-accent)' }}
+                />
                 <span>{p}</span>
               </li>
             ))}
@@ -264,22 +288,40 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
             {content.conceptRoadmap.map((item, i) => (
               <div
                 key={i}
-                className="rounded-lg bg-slate-900/40 border border-slate-700/40 p-3"
+                className="p-3"
+                style={{
+                  background: 'var(--color-neutral-100)',
+                  border: '1px solid var(--color-neutral-300)',
+                  borderRadius: 'var(--radius-md)',
+                }}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cyan-600/20 text-cyan-400 text-xs font-bold shrink-0">
+                  <span
+                    className="flex items-center justify-center w-6 h-6 text-xs font-semibold shrink-0"
+                    style={{
+                      borderRadius: 'var(--radius-md)',
+                      background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                      color: 'var(--color-accent-700)',
+                    }}
+                  >
                     {i + 1}
                   </span>
-                  <h4 className="text-sm font-semibold text-slate-200">{item.concept}</h4>
+                  <h4 className="text-sm">{item.concept}</h4>
                 </div>
-                <p className="text-sm text-slate-400 ml-8">{item.description}</p>
+                <p className="text-sm ml-8" style={{ opacity: 0.7 }}>{item.description}</p>
                 {item.dependsOn.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap mt-2 ml-8">
-                    <span className="text-xs text-slate-500">Depends on:</span>
+                    <span className="text-xs" style={{ opacity: 0.5 }}>Depends on:</span>
                     {item.dependsOn.map((dep, j) => (
                       <span
                         key={j}
-                        className="text-xs px-2 py-0.5 rounded-full bg-slate-700/50 text-slate-300 border border-slate-600/50"
+                        className="text-xs px-2 py-0.5"
+                        style={{
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--color-neutral-200)',
+                          border: '1px solid var(--color-neutral-300)',
+                          opacity: 0.85,
+                        }}
                       >
                         {dep}
                       </span>
@@ -299,10 +341,17 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
             {content.perMaterial.map((mat, i) => (
               <div
                 key={`${mat.documentId}-${i}`}
-                className="rounded-lg bg-slate-900/40 border border-slate-700/40 p-4"
+                className="p-4"
+                style={{
+                  background: 'var(--color-neutral-100)',
+                  border: '1px solid var(--color-neutral-300)',
+                  borderRadius: 'var(--radius-md)',
+                }}
               >
-                <h4 className="text-sm font-semibold text-cyan-300 mb-2">{mat.title}</h4>
-                <p className="text-sm text-slate-400 mb-3">{mat.summary}</p>
+                <h4 className="text-sm mb-2" style={{ color: 'var(--color-accent-700)' }}>
+                  {mat.title}
+                </h4>
+                <p className="text-sm mb-3" style={{ opacity: 0.7 }}>{mat.summary}</p>
 
                 {mat.keyPoints.length > 0 && (
                   <DigestList label="Key Points" items={mat.keyPoints} />
@@ -327,7 +376,12 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
               {content.keyFormulas.map((f, i) => (
                 <li
                   key={i}
-                  className="text-sm font-mono text-teal-300 bg-slate-900/50 border border-slate-700/40 rounded-md px-3 py-2 break-words"
+                  className="text-sm font-mono px-3 py-2 break-words"
+                  style={{
+                    background: 'var(--color-neutral-100)',
+                    border: '1px solid var(--color-neutral-300)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
                 >
                   {f}
                 </li>
@@ -340,7 +394,7 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
           <Section icon={<HiBookmark className="w-4 h-4" />} title="Key Definitions">
             <dl className="space-y-2.5">
               {content.keyDefinitions.map((d, i) => (
-                <div key={i} className="text-sm text-slate-300">
+                <div key={i} className="text-sm" style={{ opacity: 0.85 }}>
                   <p className="leading-relaxed">{d}</p>
                 </div>
               ))}
@@ -355,12 +409,21 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
           <ol className="space-y-2.5">
             {content.suggestedOrder.map((item, i) => (
               <li key={i} className="flex items-start gap-3">
-                <span className="flex items-center justify-center w-6 h-6 rounded-md bg-cyan-600/20 text-cyan-400 text-xs font-bold shrink-0 mt-0.5">
+                <span
+                  className="flex items-center justify-center w-6 h-6 text-xs font-semibold shrink-0 mt-0.5"
+                  style={{
+                    borderRadius: 'var(--radius-md)',
+                    background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)',
+                    color: 'var(--color-accent-700)',
+                  }}
+                >
                   {i + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-200">{item.title}</p>
-                  {item.reason && <p className="text-xs text-slate-500 mt-0.5">{item.reason}</p>}
+                  <p className="text-sm font-medium">{item.title}</p>
+                  {item.reason && (
+                    <p className="text-xs mt-0.5" style={{ opacity: 0.5 }}>{item.reason}</p>
+                  )}
                 </div>
               </li>
             ))}
@@ -369,7 +432,7 @@ function GuideContent({ content }: { content: StudyGuideContent }) {
       )}
 
       {content.generatedAt && (
-        <p className="text-xs text-slate-600 text-center pt-2">
+        <p className="text-xs text-center pt-2" style={{ opacity: 0.4 }}>
           Generated {new Date(content.generatedAt).toLocaleString()}
         </p>
       )}
@@ -391,8 +454,8 @@ function Section({
     <motion.div variants={sectionVariants} transition={{ duration: 0.3 }}>
       <Card>
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-cyan-400">{icon}</span>
-          <h3 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">{title}</h3>
+          <span style={{ color: 'var(--color-accent)' }}>{icon}</span>
+          <h3 className="section-label" style={{ margin: 0 }}>{title}</h3>
         </div>
         {children}
       </Card>
@@ -404,14 +467,18 @@ function Section({
 function DigestList({ label, items, mono }: { label: string; items: string[]; mono?: boolean }) {
   return (
     <div className="mt-2">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</p>
+      <p className="text-xs uppercase tracking-wide mb-1.5" style={{ opacity: 0.5 }}>{label}</p>
       <ul className="space-y-1">
         {items.map((item, i) => (
           <li
             key={i}
-            className={`text-sm text-slate-300 flex items-start gap-2 ${mono ? 'font-mono' : ''}`}
+            className={`text-sm flex items-start gap-2 ${mono ? 'font-mono' : ''}`}
+            style={{ opacity: 0.85 }}
           >
-            <span className="mt-1.5 w-1 h-1 rounded-full bg-teal-400 shrink-0" />
+            <span
+              className="mt-1.5 w-1 h-1 rounded-full shrink-0"
+              style={{ background: 'var(--color-accent)' }}
+            />
             <span>{item}</span>
           </li>
         ))}

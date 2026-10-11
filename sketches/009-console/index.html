@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n400:#504c4b; --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-300:#0f4f66; --accent-700:#83c9e6;
+  --pink:#ff7fa9; --ok:#3fbf6e; --warn:#f5a623;
+  --serif:"Source Serif 4",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n400:#bab6b6; --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-300:#99e0ff; --accent-700:#006786;
+  --pink:#aa0b56; --ok:#2f9e57;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12.5px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.sheet{max-width:1200px;margin:0 auto;padding:0 22px 60px}
+a{color:inherit;text-decoration:none}
+.up{color:var(--accent)}
+.flag{color:var(--pink)}
+.ok{color:var(--ok)}
+.warn{color:var(--warn)}
+.theme-btn{position:fixed;top:10px;right:12px;z-index:9;font-family:var(--mono);font-size:10.5px;color:var(--n600);background:none;border:1px solid var(--divider);padding:3px 8px;cursor:pointer}
+.theme-btn:hover{color:var(--text)}
+
+/* ---------- status bar ---------- */
+.status{display:flex;align-items:center;gap:0;flex-wrap:wrap;border:1px solid var(--divider);border-top:none;border-left:none;border-right:none;padding:7px 0;font-size:11.5px}
+.status .seg{padding:0 14px;border-right:1px solid var(--divider);white-space:nowrap}
+.status .seg:first-child{padding-left:2px;font-weight:600}
+.status .seg:last-child{border-right:none;margin-left:auto;padding-right:2px}
+.status .grow{flex:1;min-width:20px}
+.status .brand{font-family:var(--serif);font-size:15px;font-weight:700;letter-spacing:.06em}
+.dotp{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:1px}
+.pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-right:6px;vertical-align:1px;animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+kbd{border:1px solid var(--divider);padding:0 5px;font-size:10px;color:var(--n600);margin-left:8px}
+
+/* ---------- grid ---------- */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;margin-top:14px}
+.panel,.grid>*{min-width:0}
+.panel{border:1px solid var(--divider);background:var(--surface);display:flex;flex-direction:column;min-height:150px}
+.p-head{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--divider);padding:7px 12px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--n600)}
+.p-head>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-head .tool{cursor:pointer;color:var(--n500);flex-shrink:0}
+.p-head .tool:hover{color:var(--accent)}
+.p-body{padding:10px 12px;flex:1;overflow-x:auto}
+.c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c6{grid-column:span 6}.c8{grid-column:span 6}.c5{grid-column:span 3}.c7{grid-column:span 6}
+@media(max-width:960px){.c8,.c7,.c6,.c5,.c4{grid-column:span 6}.c3{grid-column:span 3}.c2{grid-column:span 2}}
+
+/* next action */
+.next .p-body{display:flex;flex-direction:column;gap:6px}
+.next h2{font-family:var(--serif);font-size:24px;font-weight:700;line-height:1.15}
+.next .why{color:var(--n600);font-size:11.5px}
+.btnrow{margin-top:auto;display:flex;gap:8px}
+.btn{font-family:var(--mono);font-size:11.5px;background:var(--accent);color:var(--bg);border:none;padding:8px 16px;cursor:pointer}
+.btn:hover{filter:brightness(1.12)}
+.btn.ghost{background:none;color:var(--accent-700);border:1px solid var(--divider)}
+.btn.ghost:hover{border-color:var(--n500);filter:none}
+.prog{height:4px;background:var(--divider);margin:4px 0 2px}
+.prog i{display:block;height:100%;background:var(--accent)}
+
+/* stats */
+.bignum{font-family:var(--serif);font-size:40px;font-weight:700;line-height:1}
+.bignum small{font-size:16px;color:var(--n500);font-weight:400}
+.submetric{margin-top:8px;font-size:11px;color:var(--n600)}
+.bars{display:flex;align-items:flex-end;gap:3px;height:44px;margin-top:10px}
+.bars i{flex:1;background:var(--accent-300);min-height:2px}
+.bars i.hot{background:var(--accent)}
+.axis{display:flex;justify-content:space-between;font-size:9px;color:var(--n500);margin-top:4px}
+.heatmap{display:grid;grid-template-columns:repeat(18,1fr);gap:3px;margin-top:8px}
+.heatmap i{aspect-ratio:1;background:var(--divider)}
+.heatmap i.l1{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+.heatmap i.l2{background:color-mix(in srgb,var(--accent) 60%,transparent)}
+.heatmap i.l3{background:var(--accent)}
+
+/* queue */
+.q-item{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--divider);font-size:12px;cursor:pointer}
+.q-item:last-child{border-bottom:none}
+.q-item:hover .q-t{color:var(--accent-700)}
+.q-item .q-due{width:34px;text-align:right;flex-shrink:0;font-weight:600}
+.q-item.over .q-due{color:var(--pink)}
+.q-item.soon .q-due{color:var(--warn)}
+.q-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q-sub{font-size:10.5px;color:var(--n500)}
+.sr-btn{border:1px solid var(--divider);background:none;color:var(--n600);font-family:var(--mono);font-size:10px;padding:1px 8px;cursor:pointer;flex-shrink:0}
+.sr-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* courses table */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-weight:500;text-align:left;color:var(--n600);font-size:10px;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--divider);padding:2px 6px 5px 0}
+td{border-bottom:1px solid var(--divider);padding:7px 6px 7px 0;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.cname{font-family:var(--serif);font-size:14px;font-weight:600;white-space:nowrap}
+.mini{height:4px;background:var(--divider);width:100%;max-width:130px}
+.mini i{display:block;height:100%;background:var(--accent)}
+
+/* ingest + log */
+.ingest{border:1px dashed var(--n500);padding:14px;text-align:center;color:var(--n600);font-size:11.5px;cursor:pointer;transition:border-color .15s}
+.ingest:hover{border-color:var(--accent);color:var(--accent-700)}
+.log{font-size:11px;color:var(--n600);max-height:150px;overflow:hidden}
+.log div{padding:2.5px 0;border-bottom:1px solid var(--divider);display:flex;gap:8px}
+.log .t{color:var(--n500);flex-shrink:0}
+.log .hl{color:var(--accent-700);cursor:pointer}
+.okc{color:var(--ok)}
+.warnc{color:var(--warn)}
+</style>
+</head>
+<body>
+<button class="theme-btn" onclick="document.documentElement.classList.toggle('light')">light</button>
+<div class="sheet">
+
+  <div class="status">
+    <span class="seg brand">INKWELL</span>
+    <span class="seg">SAT 2026-09-19</span>
+    <span class="seg"><span class="dotp"></span>STREAK 12D</span>
+    <span class="seg">XP <span class="up">45/80</span></span>
+    <span class="seg"><span class="pulse"></span>CLASSIFYING 2</span>
+    <span class="grow"></span>
+    <span class="seg">⌘K COMMANDS<kbd>⌘K</kbd></span>
+  </div>
+
+  <div class="grid">
+    <!-- NEXT ACTION -->
+    <section class="panel c8 next">
+      <div class="p-head"><span>Next action</span><span id="nx-i">1 / 4</span></div>
+      <div class="p-body">
+        <div class="kicker" style="font-size:10.5px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase" id="nx-k">Reading · resume</div>
+        <h2 id="nx-h">ISLR ch. 8 — Trees &amp; Forests, p. 214</h2>
+        <div class="why" id="nx-why">You stopped mid-bagging on Thursday; §8.2.2 finishes the algorithm box. Est. 20 min.</div>
+        <div class="prog"><i id="nx-p" style="width:65%"></i></div>
+        <div class="btnrow">
+          <button class="btn" onclick="cycle()">Start now ▸</button>
+          <button class="btn ghost" onclick="cycle()">Skip ↻</button>
+          <button class="btn ghost">Ask Inkwell</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STREAK -->
+    <section class="panel c2">
+      <div class="p-head"><span>Streak</span><span class="tool">↗</span></div>
+      <div class="p-body">
+        <div class="bignum">12<small>d</small></div>
+        <div class="submetric">BEST 21D · HOLDING</div>
+        <div class="bars">
+          <i style="height:30%"></i><i style="height:55%" class="hot"></i><i style="height:40%"></i><i style="height:70%" class="hot"></i><i style="height:62%" class="hot"></i><i style="height:85%" class="hot"></i><i style="height:56%" class="hot"></i>
+        </div>
+        <div class="axis"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+      </div>
+    </section>
+
+    <!-- XP TODAY -->
+    <section class="panel c2">
+      <div class="p-head"><span>XP today</span><span class="tool">↗</span></div>
+      <div class="p-body">
+        <div class="bignum">45<small>/80</small></div>
+        <div class="prog" style="margin-top:8px"><i style="width:56%"></i></div>
+        <div class="submetric"><span class="warn">35 XP TO GOAL</span><br>READING ×2 · CARDS ×1</div>
+      </div>
+    </section>
+
+    <!-- DUE -->
+    <section class="panel c2">
+      <div class="p-head"><span>Due</span><span class="tool">↗</span></div>
+      <div class="p-body">
+        <div class="bignum">14</div>
+        <div class="submetric">CARDS · ≈10 MIN</div>
+        <div class="heatmap" id="hm"></div>
+        <div class="axis"><span>RETENTION 91%</span></div>
+      </div>
+    </section>
+
+    <!-- COURSES TABLE -->
+    <section class="panel c6">
+      <div class="p-head"><span>Courses</span><span class="tool">+ NEW</span></div>
+      <div class="p-body">
+        <table>
+          <thead><tr><th>Course</th><th>Progress</th><th>Next</th><th>Next deadline</th></tr></thead>
+          <tbody>
+            <tr><td class="cname">Seismology 341</td><td style="width:130px"><div class="mini"><i style="width:72%"></i></div><span class="q-sub">8/11</span></td><td class="q-t">Moment-tensor inversion</td><td class="soon">EXAM OCT 2</td></tr>
+            <tr><td class="cname">Linear Algebra</td><td><div class="mini"><i style="width:41%"></i></div><span class="q-sub">5/12</span></td><td class="q-t">SVD, §7.4</td><td>—</td></tr>
+            <tr><td class="cname">Statistical Learning</td><td><div class="mini"><i style="width:58%"></i></div><span class="q-sub">7/12</span></td><td class="q-t">PS4 — trees, SVMs</td><td class="over">PS4 WED</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DEADLINE QUEUE -->
+    <section class="panel c3">
+      <div class="p-head"><span>Deadline queue</span><span class="tool">ALL</span></div>
+      <div class="p-body">
+        <div class="q-item over"><span class="q-due">4d</span><span class="q-t">PS4 — trees &amp; SVMs<br><span class="q-sub">STAT LEARNING</span></span></div>
+        <div class="q-item soon"><span class="q-due">13d</span><span class="q-t">Midterm 2<br><span class="q-sub">SEISMOLOGY · PRACTICE READY</span></span></div>
+        <div class="q-item"><span class="q-due">18d</span><span class="q-t">Convex Opt — ch. 3 reading<br><span class="q-sub">SET FOR MON · 40 PP</span></span></div>
+        <div class="q-item"><span class="q-due">25d</span><span class="q-t">Roadmap checkpoint ×3<br><span class="q-sub">LINALG ×2 · SEIS ×1</span></span></div>
+      </div>
+    </section>
+
+    <!-- SRS -->
+    <section class="panel c3">
+      <div class="p-head"><span>SRS — review scheduler</span><span class="tool">CONFIG</span></div>
+      <div class="p-body">
+        <div class="q-item"><span class="q-due up">14</span><span class="q-t">Trees &amp; Forests<br><span class="q-sub">DUE NOW · ≈10 MIN</span></span><button class="sr-btn">REVIEW</button></div>
+        <div class="q-item"><span class="q-due">18</span><span class="q-t">SVD identities<br><span class="q-sub">DUE TOMORROW</span></span><button class="sr-btn">PREVIEW</button></div>
+        <div class="q-item"><span class="q-due">96</span><span class="q-t">Moment tensors<br><span class="q-sub">MATURE · 94% RET</span></span><button class="sr-btn">—</button></div>
+        <div class="q-sub" style="margin-top:8px">FORECAST: <span class="warn">32 DUE TOMORROW</span> · 21 SAT · 9 SUN</div>
+      </div>
+    </section>
+
+    <!-- INGEST -->
+    <section class="panel c4">
+      <div class="p-head"><span>Ingest</span><span class="tool">URL / FILE</span></div>
+      <div class="p-body">
+        <div class="ingest">⇪ DROP PDF · SLIDES · SYLLABUS — OR CLICK TO BROWSE<br><span class="q-sub">AUTO-CLASSIFIED ON ARRIVAL</span></div>
+      </div>
+    </section>
+
+    <!-- EVENT LOG -->
+    <section class="panel c4">
+      <div class="p-head"><span>Event log</span><span class="tool">FULL LOG</span></div>
+      <div class="p-body log">
+        <div><span class="t">14:02</span><span><span class="okc">✓</span> CLASSIFIED “PS4 — TREES, SVMS” → WORKSHEET · STATISTICS</span></div>
+        <div><span class="t">13:47</span><span><span class="okc">✓</span> SUMMARY BUILT — <span class="hl">“LECTURE 12 — MOMENT TENSORS”</span></span></div>
+        <div><span class="t">11:20</span><span><span class="warnc">◷</span> 2 UPLOADS QUEUED FOR CLASSIFICATION</span></div>
+        <div><span class="t">09:15</span><span><span class="okc">✓</span> CHAPTERS DETECTED — CONVEX OPT (16 CH, VIA OUTLINES)</span></div>
+        <div><span class="t">YDAY</span><span><span class="okc">✓</span> PRACTICE TEST “MIDTERM 2, 2025” — 8 QUESTIONS</span></div>
+      </div>
+    </section>
+
+    <!-- ACTIVITY -->
+    <section class="panel c4">
+      <div class="p-head"><span>Activity — 18 weeks</span><span class="tool">YEAR</span></div>
+      <div class="p-body">
+        <div class="heatmap" style="grid-template-columns:repeat(18,1fr)" id="act"></div>
+        <div class="axis"><span>JUN</span><span>JUL</span><span>AUG</span><span>SEP</span></div>
+        <div class="submetric">126 SESSIONS · 41H 12M TOTAL · AVG 34 MIN</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const params=new URLSearchParams(location.search);
+if(params.get('mode')==='light')document.documentElement.classList.add('light');
+
+// deterministic pseudo-random heatmaps (no flicker between renders)
+function mulberry(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function fillHeat(id,n,seed){const r=mulberry(seed),el=document.getElementById(id);let h='';for(let i=0;i<n;i++){const v=r();h+=`<i class="${v>.8?'l3':v>.55?'l2':v>.3?'l1':''}"></i>`}el.innerHTML=h}
+fillHeat('hm',18,7);
+fillHeat('act',126,21);
+
+// next-action cycler
+const actions=[
+ {k:'READING · RESUME',h:'ISLR ch. 8 — Trees & Forests, p. 214',w:'You stopped mid-bagging on Thursday; §8.2.2 finishes the algorithm box. Est. 20 min.',p:65},
+ {k:'SRS · REVIEW',h:'Trees & Forests — 14 cards due',w:'Mostly schedule-2 cards; the bagging-variance “why” card is up for its fourth review. Est. 10 min.',p:30},
+ {k:'COURSE · NEXT STEP',h:'Seismology 341 — moment-tensor inversion',w:'Step 8 of 11: video + short reading + five checkpoint questions. Exam Oct 2. Est. 25 min.',p:72},
+ {k:'WATCH · MILESTONES',h:'“Gradient boosting, explained” — 18 min',w:'Covers three exam milestones in one sitting; notes land in the Stat Learning course.',p:0},
+];
+let i=0;
+function cycle(){i=(i+1)%actions.length;const a=actions[i];
+  document.getElementById('nx-i').textContent=(i+1)+' / '+actions.length;
+  document.getElementById('nx-k').textContent=a.k;
+  document.getElementById('nx-h').textContent=a.h;
+  document.getElementById('nx-why').textContent=a.w;
+  document.getElementById('nx-p').style.width=a.p+'%';}
+</script>
+</body>
+</html>

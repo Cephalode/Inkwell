@@ -23,6 +23,7 @@ interface FlashcardState {
     description?: string;
     course_id?: string;
     source: { type: 'course' | 'document' | 'chapter'; ids: string[] };
+    config?: { count?: number; instructions?: string };
   }) => Promise<FlashcardDeck>;
   generateDeck: (deckId: string, signal?: AbortSignal) => Promise<void>;
   reviewCard: (cardId: string, correct: boolean) => Promise<void>;

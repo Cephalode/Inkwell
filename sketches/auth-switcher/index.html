@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — Auth Switcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n600:#918d8c;
+  --accent:#38a6cf;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n600:#7d7979;
+  --accent:#0088b0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);-webkit-font-smoothing:antialiased}
+
+.bar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;justify-content:center;align-items:center;gap:6px;padding:8px;background:var(--surface);border-bottom:1px solid var(--divider);box-shadow:0 3px 10px rgba(0,0,0,.45)}
+.bar button{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:5px 12px;cursor:pointer}
+.bar button:hover{color:var(--text);border-color:var(--n600)}
+.bar button.on{color:var(--text);border-color:var(--accent);box-shadow:inset 0 -2px 0 var(--accent)}
+#frame{position:fixed;inset:37px 0 0 0;width:100%;border:none;background:var(--bg)}
+</style>
+</head>
+<body>
+<nav class="bar">
+  <button id="b-010" class="on" onclick="show('010')">010 · Ink &amp; Editorial</button>
+  <button id="b-011" onclick="show('011')">011 · Quiet Card</button>
+  <button id="b-012" onclick="show('012')">012 · Big Ledger</button>
+</nav>
+<iframe id="frame" src="../010-ink-editorial/index.html"></iframe>
+<script>
+const NAMES={'010':'ink-editorial','011':'quiet-card','012':'big-ledger'};
+function show(n){
+  document.getElementById('frame').src='../'+n+'-'+NAMES[n]+'/index.html';
+  for(const k of ['010','011','012']) document.getElementById('b-'+k).classList.toggle('on',k===n);
+}
+</script>
+</body>
+</html>

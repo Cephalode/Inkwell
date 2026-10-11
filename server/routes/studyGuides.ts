@@ -3,8 +3,17 @@ import pool from '../db.js';
 import { callGLMJson } from '../src/llm.js';
 import { collectMaterials } from '../src/materials.js';
 import { runGeneration, updateStatus, checkStale } from '../src/generationPipeline.js';
+import { fetchCourseOutline } from '../src/coursera.js';
 
 const router = Router();
+
+// LLM may return definitions as "term" strings or {term, definition} objects — accept both.
+const defToString = (d: unknown): string =>
+  typeof d === 'string'
+    ? d
+    : d && typeof d === 'object'
+      ? `${(d as { term?: string }).term ?? ''}: ${(d as { definition?: string }).definition ?? ''}`.replace(/^:\s*/, '').trim()
+      : '';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,6 +203,11 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
   // REDUCE/synthesis step in `finalize`.
   const digests: MaterialDigest[] = [];
 
+  // Coursera module/lesson names for course guides, fetched once in
+  // collectMaterials so finalize can scope the concept roadmap to the syllabus.
+  let syllabusHint = '';
+  let courseName = '';
+
   await runGeneration({
     table: 'study_guides',
     id,
@@ -205,6 +219,25 @@ router.post('/:id/generate', async (req: Request, res: Response) => {
       const { rows } = await pool.query('SELECT * FROM study_guides WHERE id = $1', [id]);
       if (rows.length === 0) throw new Error('Study guide not found');
       const guide = rows[0] as StudyGuideRow;
+      if (guide.course_id) {
+        const { rows: courseRows } = await pool.query('SELECT name, coursera_slug FROM courses WHERE id = $1', [guide.course_id]);
+        const course = courseRows[0] as { name?: string; coursera_slug?: string } | undefined;
+        courseName = course?.name ?? '';
+        const slug = course?.coursera_slug;
+        const cauth = (
+          await pool.query('SELECT cauth FROM coursera_account WHERE id = 1')
+        ).rows[0]?.cauth ?? null;
+        if (slug && cauth) {
+          try {
+            const outline = await fetchCourseOutline(cauth, slug);
+            syllabusHint = outline
+              .map((m) => `- ${m.name}${m.lessons.length ? `: ${m.lessons.map((l) => l.name).join('; ')}` : ''}`)
+              .join('\n');
+          } catch {
+            // ponytail: no syllabus → prompt falls back to materials-only
+          }
+        }
+      }
       return collectMaterials({
         courseId: guide.course_id ?? undefined,
         documentIds: guide.document_id ? [guide.document_id] : undefined,
@@ -265,7 +298,7 @@ ${unit.text}`,
           keyPoints: Array.isArray(analysis?.keyPoints) ? analysis!.keyPoints.map(String) : [],
           formulas: Array.isArray(analysis?.formulas) ? analysis!.formulas.map(String) : [],
           definitions: Array.isArray(analysis?.definitions)
-            ? analysis!.definitions.map(String)
+            ? analysis!.definitions.map(defToString).filter(Boolean)
             : [],
         };
       }
@@ -301,7 +334,12 @@ ${unit.text}`,
 - keyFormulas: array of the most important formulas across all materials
 - keyDefinitions: array of the most important definitions across all materials
 - suggestedOrder: array of {title, documentId (if applicable), chapterId (if applicable), reason} suggesting the optimal study order
+${syllabusHint ? `
+This study guide covers the course "${courseName || 'the course'}". Its official syllabus (modules and lessons) is:
+${syllabusHint}
 
+The conceptRoadmap MUST cover exactly the syllabus topics, in syllabus order — one concept per lesson. ONLY include concepts the course teaches. Materials may include supplementary content (interviews, podcasts, history, career advice): EXCLUDE anything that is not a syllabus topic from the conceptRoadmap (it may still appear in the overview or perMaterial notes).
+` : ''}
 Respond with ONLY a JSON object, no markdown fences.
 
 Material analyses:
@@ -331,7 +369,7 @@ ${JSON.stringify(digestsInput)}`,
         perMaterial: digests,
         keyFormulas: Array.isArray(synthesis?.keyFormulas) ? synthesis!.keyFormulas.map(String) : [],
         keyDefinitions: Array.isArray(synthesis?.keyDefinitions)
-          ? synthesis!.keyDefinitions.map(String)
+          ? synthesis!.keyDefinitions.map(defToString).filter(Boolean)
           : [],
         suggestedOrder: Array.isArray(synthesis?.suggestedOrder)
           ? synthesis!.suggestedOrder

@@ -182,7 +182,7 @@ async function detectByAI(
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'glm-5.3',
+      model: 'glm-5.3-flash',
       temperature: 0.2,
       max_tokens: 4096,
       stream: false,
@@ -273,6 +273,15 @@ export function parseJSON<T>(raw: string): T | null {
   try {
     return JSON.parse(s) as T;
   } catch {
-    return null;
+    // Reasoning-model fallback: chains of thought have prose before the JSON —
+    // parse the outermost {...} / [...] slice instead.
+    const start = s.search(/[{[]/);
+    const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+    if (start === -1 || end <= start) return null;
+    try {
+      return JSON.parse(s.slice(start, end + 1)) as T;
+    } catch {
+      return null;
+    }
   }
 }
