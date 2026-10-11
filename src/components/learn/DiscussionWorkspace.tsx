@@ -270,7 +270,6 @@ export default function DiscussionWorkspace({
   activity,
   step,
   onComplete,
-  onAbandon,
   onLeave,
   onRegenerate,
 }: {

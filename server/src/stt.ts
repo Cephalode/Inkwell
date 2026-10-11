@@ -13,6 +13,10 @@
  *   • response: { text, usage?: { seconds, cost, ... } }
  */
 
+import { readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
 const OPENROUTER_STT_URL = 'https://openrouter.ai/api/v1/audio/transcriptions';
 
 /** Container formats the STT endpoint accepts (lowercased, no dot). */
@@ -27,10 +31,6 @@ export interface SttResult {
 function apiKey(): string | undefined {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { readFileSync } = require('fs') as typeof import('fs');
-    const { resolve, dirname } = require('path') as typeof import('path');
-    const { fileURLToPath } = require('url') as typeof import('url');
     const envPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.hermes/.env');
     return readFileSync(envPath, 'utf-8').match(/^OPENROUTER_API_KEY=(.+)$/m)?.[1].trim();
   } catch {

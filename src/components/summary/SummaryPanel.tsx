@@ -41,6 +41,7 @@ export default function SummaryPanel({ summary, summaryStatus, summaryError, onP
   if (summaryStatus !== lastStatus) {
     setLastStatus(summaryStatus ?? '');
     setPollCount(0); // adjust-state-on-render: reset the bounded poll per status change
+    // eslint-disable-next-line react-hooks/purity -- documented adjust-state-on-render: status change resets the poll clock
     setStartedAt(Date.now()); // drives the elapsed label while generating
   }
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function SummaryPanel({ summary, summaryStatus, summaryError, onP
   }
 
   if ((generating && !stalled) || retrying) {
+    // eslint-disable-next-line react-hooks/purity -- coarse elapsed label; recomputed per poll render by design
     const elapsed = startedAt ? Math.round((Date.now() - startedAt) / 15000) * 15 : 0;
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-10">

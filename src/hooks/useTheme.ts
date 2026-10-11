@@ -14,7 +14,6 @@ export function useTheme() {
 
 /** `'dark' | 'light' | null` — null while the theme hasn't been applied to <html> yet. */
 export function useResolvedTheme(): 'dark' | 'light' | null {
-  const theme = useSettingsStore((s) => s.settings.theme);
   const [resolved, setResolved] = useReducer((_: 'dark' | 'light' | null, c: 'dark' | 'light' | null) => c, null);
   useEffect(() => {
     const cls = document.documentElement.classList;

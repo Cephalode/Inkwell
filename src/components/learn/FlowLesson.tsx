@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { HiArrowLeft, HiCheck, HiChevronRight, HiLightBulb, HiXMark } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
 import { playCorrect, playWrong } from '../../lib/sounds';
@@ -10,7 +10,6 @@ import {
   type FlowLessonContent,
   type FlowQuizContent,
   type FlowSlot,
-  type StepDetail,
 } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
 
@@ -182,10 +181,6 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
 
   // Quiz state (review/test slots): linear, one question at a time.
   const [qi, setQi] = useState(0);
-
-  useEffect(() => {
-    setHintsUsed(0);
-  }, [qi, slide]);
 
   if (!content) {
     return (

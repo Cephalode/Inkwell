@@ -63,6 +63,7 @@ function LessonList() {
       setLessons([]);
     }
   }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load() fetches async; setState lands in a microtask, not synchronously
   useEffect(() => { void load(); }, [load]);
 
   // Poll while anything is mid-generation (section stream fills in place).
@@ -183,6 +184,7 @@ function LessonReader({ lessonId }: { lessonId: string }) {
     } catch { /* keep old state, next poll retries */ }
   }, [lessonId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load() fetches async; setState lands in a microtask, not synchronously
   useEffect(() => { void load(); }, [load]);
   const generating = lesson && (lesson.status === 'pending' || lesson.status === 'generating');
   useEffect(() => {

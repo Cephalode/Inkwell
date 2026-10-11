@@ -52,6 +52,7 @@ export default function PodcastPanel({ docId, podcastStatus, podcastError, podca
   if (podcastStatus !== lastStatus) {
     setLastStatus(podcastStatus ?? '');
     setPollCount(0); // adjust-state-on-render: reset the bounded poll per status change
+    // eslint-disable-next-line react-hooks/purity -- documented adjust-state-on-render: status change resets the poll clock
     setStartedAt(Date.now()); // drives the elapsed label while generating
   }
   useEffect(() => {
@@ -115,6 +116,7 @@ export default function PodcastPanel({ docId, podcastStatus, podcastError, podca
   }
 
   if ((generating && !stalled) || retrying) {
+    // eslint-disable-next-line react-hooks/purity -- coarse elapsed label; recomputed per poll render by design
     const elapsed = startedAt ? Math.round((Date.now() - startedAt) / 15000) * 15 : 0;
     return (
       <Card>

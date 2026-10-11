@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { HiPlay, HiPause, HiStop, HiXMark, HiExclamationTriangle, HiSpeakerWave, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import Spinner from './Spinner';
-import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
+import { buildSpeakable } from '../../utils/speechText';
 import { useChatStore } from '../../store/chatStore';
 
 const API_BASE: string =
@@ -186,6 +186,7 @@ export default function SelectionTTS() {
   const [time, setTime] = useState({ cur: 0, dur: 0 });
   const [scrubbing, setScrubbing] = useState(false);
   const pillPos = useRef({ x: -9999, y: -9999 });
+  // eslint-disable-next-line react-hooks/refs -- deliberate: pill re-anchors to the latest menu position
   if (menu) { pillPos.current = { x: menu.x, y: Math.max(menu.y, 8) }; }
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -302,6 +303,7 @@ export default function SelectionTTS() {
       <div
         ref={rootRef}
         className="fixed z-[9999]"
+        // eslint-disable-next-line react-hooks/refs -- deliberate: pill stays at its last anchored position
         style={{ left: menu ? menu.x : pillPos.current.x, top: menu ? Math.max(menu.y, 8) : pillPos.current.y }}
       >
         {menu && (

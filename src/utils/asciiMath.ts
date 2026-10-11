@@ -120,8 +120,8 @@ function convertOperators(s: string): string {
     .replace(/<=/g, '≤')
     .replace(/!=/g, '≠')
     .replace(/~=/g, '≈')
-    .replace(/([A-Za-z0-9)\]_]) ?- (?=[A-Za-z0-9(\[\u0370-\u03ff])/g, '$1 − ')
-    .replace(/([A-Za-z0-9)\]_]) ?-> (?=[A-Za-z0-9(\[\u0370-\u03ff])/g, '$1 → ');
+    .replace(/([A-Za-z0-9)\]_]) ?- (?=[A-Za-z0-9([\u0370-\u03ff])/g, '$1 − ')
+    .replace(/([A-Za-z0-9)\]_]) ?-> (?=[A-Za-z0-9([\u0370-\u03ff])/g, '$1 → ');
 }
 
 /** Full prose normalization. Order matters: greek first (so `mu_k` becomes
@@ -131,7 +131,7 @@ export function normalizeMathText(s: string): string {
   if (!s) return s;
   // `*` as multiplication (a * b → a · b) only when the text carries no
   // markdown bold — `**` pairs would corrupt.
-  const mult = s.includes('**') ? s : s.replace(/([A-Za-z0-9)\]]) \* (?=[A-Za-z0-9(\[])/g, '$1 · ');
+  const mult = s.includes('**') ? s : s.replace(/([A-Za-z0-9)\]]) \* (?=[A-Za-z0-9([])/g, '$1 · ');
   return convertNorms(convertSuperscripts(convertSubscripts(convertOperators(convertGreek(mult)))));
 }
 

@@ -171,7 +171,7 @@ Respond with ONLY JSON: {"questions": [{"qtype": "mcq|true_false|short_answer", 
     .map((q, i) => {
       const qtype: QuizQuestionType =
         q.qtype === 'true_false' ? 'true_false' : q.qtype === 'short_answer' ? 'short_answer' : 'mcq';
-      let options = qtype === 'mcq' ? asStringArray(q.options).slice(0, 6) : undefined;
+      const options = qtype === 'mcq' ? asStringArray(q.options).slice(0, 6) : undefined;
       let correctAnswer: string | boolean;
       if (qtype === 'true_false') {
         correctAnswer =

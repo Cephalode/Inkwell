@@ -99,7 +99,7 @@ function Bubble({ message }: { message: DiscussionMessage }) {
  * tutor is convinced (or turns run out) the turn response is also the
  * `SubmitResponse` that closes the activity.
  */
-export default function DiscussionRunner({ activity, onComplete, onAbandon, onLeave }: ActivityRunnerProps) {
+export default function DiscussionRunner({ activity, onComplete, onLeave }: ActivityRunnerProps) {
   // Freshest transcript: what the server returned for our last turn, unless
   // the prop (refreshed by the page) has caught up or moved past it.
   const [latest, setLatest] = useState<LearningActivity | null>(null);
