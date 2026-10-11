@@ -644,39 +644,56 @@ export default function GlobalChat() {
     setLoading(false);
   }, [input, isLoading, currentDocument, currentChapter, currentChapterText, viewerPage, attachedRefs, learningPage, focusRefs, addMessage, setLoading, setPendingTools]);
 
-  // ── Mobile: original presentation, untouched ─────────────────────────────
+  // ── Mobile: edge pull tab + Broadsheet sidebar ────────────────────────────
   if (isMobile) {
     return (
       <>
-        {/* FAB button */}
+        {/* Edge pull tab — click to pull out the chat sidebar */}
         {!isOpen && (
           <button
             onClick={toggle}
-            className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full shadow-lg shadow-cyan-600/30 flex items-center justify-center transition-all hover:scale-110"
+            className="fixed right-0 top-1/2 z-40 flex h-16 w-7 -translate-y-1/2 items-center justify-center transition-colors hover:text-[var(--color-accent)]"
+            style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-divider)',
+              borderRight: 'none',
+              borderRadius: 'var(--radius-md) 0 0 var(--radius-md)',
+              boxShadow: 'var(--shadow-md)',
+              color: 'var(--color-neutral-600)',
+            }}
             aria-label="Open chat"
+            title="Chat — ⌘L"
           >
-            <HiChatAlt2 className="w-7 h-7" />
+            <HiChatAlt2 className="h-4 w-4" />
           </button>
         )}
 
         {/* Sidebar */}
         <div
-          className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] bg-slate-900 border-l border-slate-700/50 shadow-2xl transition-transform duration-300 ease-in-out ${
+          className={`fixed inset-y-0 right-0 z-50 flex flex-col w-96 max-w-[100vw] transition-transform duration-300 ease-in-out ${
             isOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
+          style={{
+            background: 'var(--color-surface)',
+            borderLeft: '1px solid var(--color-divider)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0">
+          <div
+            className="flex items-center justify-between px-4 py-3 shrink-0"
+            style={{ borderBottom: '1px solid var(--color-divider)' }}
+          >
             <div className="relative">
               <button
                 onClick={() => setShowSessionList((v) => !v)}
-                className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors"
+                className="text-sm font-semibold flex items-center gap-1.5 hover:text-[var(--color-accent)] transition-colors"
               >
                 💬 {sessionTitle}
                 <HiChevronDown className={`w-3.5 h-3.5 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
               </button>
               {currentDocument && (
-                <span className="block text-xs text-slate-400 font-normal ml-5 mt-0.5">
+                <span className="block text-xs font-normal ml-5 mt-0.5" style={{ opacity: 0.6 }}>
                   · {currentDocument.name}
                 </span>
               )}
@@ -697,14 +714,14 @@ export default function GlobalChat() {
             <div className="flex items-center gap-1">
               <button
                 onClick={createNewSession}
-                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+                className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
                 title="New chat"
               >
                 <HiPlus className="w-4 h-4" />
               </button>
               <button
                 onClick={close}
-                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+                className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
               >
                 <HiX className="w-5 h-5" />
               </button>
@@ -714,7 +731,7 @@ export default function GlobalChat() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 && (
-              <div className="text-center text-slate-500 py-16">
+              <div className="text-center py-16" style={{ opacity: 0.5 }}>
                 <p className="text-lg mb-2">💬 Ask anything</p>
                 <p className="text-sm">
                   {currentDocument
@@ -727,11 +744,18 @@ export default function GlobalChat() {
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-cyan-600 text-white whitespace-pre-wrap'
-                      : 'bg-slate-700 text-slate-200'
+                  className={`max-w-[85%] text-sm ${
+                    msg.role === 'user' ? 'px-4 py-3 whitespace-pre-wrap' : ''
                   }`}
+                  style={
+                    msg.role === 'user'
+                      ? {
+                          background: 'var(--color-accent)',
+                          color: 'var(--color-bg)',
+                          borderRadius: 'var(--radius-lg)',
+                        }
+                      : undefined
+                  }
                 >
                   {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
                 </div>
@@ -742,11 +766,11 @@ export default function GlobalChat() {
             <ToolCallSummary />
             {isLoading && pendingTools.length === 0 && (
               <div className="flex justify-start">
-                <div className="bg-slate-700 rounded-xl px-4 py-3">
+                <div className="px-1 py-3">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -756,20 +780,140 @@ export default function GlobalChat() {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-slate-700/50 shrink-0">
+          <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--color-divider)' }}>
+            {/* Attached @ references (Feature 3) */}
+            {attachedRefs.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {attachedRefs.map((ref) => (
+                  <span
+                    key={ref.id}
+                    className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs"
+                    style={{
+                      background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                      border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--color-accent-700)',
+                    }}
+                  >
+                    {ref.type === 'chapter' ? (
+                      <HiBookOpen className="w-3 h-3 shrink-0" />
+                    ) : ref.type === 'page' ? (
+                      <HiOutlineEye className="w-3 h-3 shrink-0" />
+                    ) : (
+                      <HiDocumentText className="w-3 h-3 shrink-0" />
+                    )}
+                    <span className="truncate max-w-[180px]">{ref.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachedRef(ref.id)}
+                      className="p-0.5 rounded-[var(--radius-sm)] hover:bg-[color-mix(in_srgb,var(--color-accent)_25%,transparent)] transition-colors"
+                      title="Remove reference"
+                    >
+                      <HiX className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-                placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
-                className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
+              {/* Highlighted @-mention input (Feature 3) */}
+              <div
+                className="relative flex-1 border border-[var(--color-divider)] focus-within:border-[var(--color-accent)] transition-colors"
+                style={{
+                  background: 'var(--color-bg)',
+                  borderRadius: 'var(--radius-md)',
+                }}
+              >
+                {/* Mirror: paints ONLY the @mention highlight boxes — its base
+                    text is transparent so the real (textarea) glyphs are the
+                    only ones ever drawn. Guarantees the old double-render bug
+                    (mirror/textarea metric drift) can never come back. */}
+                <div
+                  ref={mirrorRef}
+                  aria-hidden="true"
+                  className="absolute inset-0 px-4 py-2 text-base leading-[1.5] whitespace-break-spaces break-words overflow-hidden pointer-events-none !text-transparent"
+                >
+                  {input.split(/(@\S+)/g).map((part, i) =>
+                    part.startsWith('@') ? (
+                      <span
+                        key={i}
+                        className="rounded-[3px]"
+                        style={{
+                          background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                        }}
+                      >
+                        {part}
+                      </span>
+                    ) : (
+                      <span key={i}>{part}</span>
+                    ),
+                  )}
+                </div>
+                <textarea
+                  ref={inputRef}
+                  rows={1}
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={(e) => {
+                    if (mentionOpen && filteredMentionItems.length > 0) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setMentionIndex((i) => (i + 1) % filteredMentionItems.length);
+                        return;
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setMentionIndex(
+                          (i) => (i - 1 + filteredMentionItems.length) % filteredMentionItems.length,
+                        );
+                        return;
+                      }
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleMentionSelect(filteredMentionItems[clampedMentionIndex]);
+                        return;
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setMentionOpen(false);
+                        return;
+                      }
+                    }
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault(); // textarea would otherwise insert a newline
+                      handleSend();
+                    }
+                  }}
+                  onScroll={(e) => {
+                    // Wheel/arrow scrolling desyncs the overlay too — sync on
+                    // every scroll event, not just value changes.
+                    if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+                  }}
+                  placeholder={currentDocument ? 'Ask about this document… (@ to reference)' : 'Ask a question… (@ to reference)'}
+                  className="relative w-full px-4 py-2 bg-transparent border-0 text-sm leading-[1.5] placeholder:text-[var(--color-neutral-500)] focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  style={{
+                    color: 'var(--color-text)',
+                    caretColor: 'var(--color-accent)',
+                    borderRadius: 'var(--radius-md)',
+                    minHeight: '2.5rem',
+                    maxHeight: '10rem',
+                  }}
+                />
+                {mentionOpen && (
+                  <MentionPopover
+                    items={filteredMentionItems}
+                    activeIndex={clampedMentionIndex}
+                    onSelect={handleMentionSelect}
+                    onClose={() => setMentionOpen(false)}
+                  />
+                )}
+              </div>
               <button
                 onClick={handleSend}
                 disabled={!input.trim() || isLoading}
-                className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                className="btn btn-primary shrink-0 transition-colors"
+                style={{ padding: 8 }}
               >
                 <HiPaperAirplane className="w-4 h-4" />
               </button>
@@ -791,16 +935,19 @@ export default function GlobalChat() {
   const chatBody = (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50 shrink-0 gap-2">
+      <div
+        className="flex items-center justify-between px-4 py-3 shrink-0 gap-2"
+        style={{ borderBottom: '1px solid var(--color-divider)' }}
+      >
         <div className="relative min-w-0 flex-1">
           <button
             onClick={() => setShowSessionList((v) => !v)}
-            className="text-sm font-semibold text-white flex items-center gap-1.5 hover:text-cyan-400 transition-colors min-w-0"
+            className="text-sm font-semibold flex items-center gap-1.5 hover:text-[var(--color-accent)] transition-colors min-w-0"
           >
             Tutor
             <HiChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${showSessionList ? 'rotate-180' : ''}`} />
           </button>
-          <span className="block text-xs text-slate-400 truncate mt-0.5">{contextLabel}</span>
+          <span className="block text-xs truncate mt-0.5" style={{ opacity: 0.6 }}>{contextLabel}</span>
           {showSessionList && (
             <SessionListDropdown
               sessions={sessions}
@@ -818,14 +965,14 @@ export default function GlobalChat() {
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={createNewSession}
-            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+            className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
             title="New chat"
           >
             <HiPlus className="w-4 h-4" />
           </button>
           <button
             onClick={collapseRail}
-            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 rounded-md transition-colors"
+            className="p-1.5 text-[var(--color-neutral-600)] hover:text-[var(--color-text)] hover:bg-[var(--color-neutral-200)] rounded-[var(--radius-md)] transition-colors"
             title="Collapse Tutor rail"
             aria-label="Collapse Tutor rail"
           >
@@ -837,7 +984,7 @@ export default function GlobalChat() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-slate-500 py-16">
+          <div className="text-center py-16" style={{ opacity: 0.5 }}>
             <p className="text-lg mb-2">💬 Ask your tutor</p>
             <p className="text-sm">
               {currentDocument
@@ -850,11 +997,18 @@ export default function GlobalChat() {
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
-                msg.role === 'user'
-                  ? 'bg-cyan-600 text-white whitespace-pre-wrap'
-                  : 'bg-slate-700 text-slate-200'
+              className={`max-w-[85%] text-sm ${
+                msg.role === 'user' ? 'px-4 py-3 whitespace-pre-wrap' : ''
               }`}
+              style={
+                msg.role === 'user'
+                  ? {
+                      background: 'var(--color-accent)',
+                      color: 'var(--color-bg)',
+                      borderRadius: 'var(--radius-lg)',
+                    }
+                  : undefined
+              }
             >
               {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
             </div>
@@ -865,11 +1019,11 @@ export default function GlobalChat() {
         <ToolCallSummary />
         {isLoading && pendingTools.length === 0 && (
           <div className="flex justify-start">
-            <div className="bg-slate-700 rounded-xl px-4 py-3">
+            <div className="px-1 py-3">
               <div className="flex gap-1">
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: 'var(--color-neutral-500)', animationDelay: '300ms' }} />
               </div>
             </div>
           </div>
@@ -879,20 +1033,171 @@ export default function GlobalChat() {
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t border-slate-700/50 shrink-0">
+      <div className="p-3 shrink-0" style={{ borderTop: '1px solid var(--color-divider)' }}>
+        {/* Focus chips — selections attached via "Send to AI" (Cursor-style):
+            they tell the AI what to look at; the page rides in the prompt. */}
+        {focusRefs.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {focusRefs.map((f) => (
+              <span
+                key={f.id}
+                className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 text-xs max-w-full"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--color-accent-700)',
+                }}
+                title={f.excerpt}
+              >
+                <HiOutlineSparkles className="w-3 h-3 shrink-0" />
+                <span className="truncate italic">"{f.excerpt}"</span>
+                <button
+                  type="button"
+                  onClick={() => removeFocus(f.id)}
+                  className="p-0.5 rounded-[var(--radius-sm)] hover:bg-[color-mix(in_srgb,var(--color-accent)_25%,transparent)] transition-colors shrink-0"
+                  title="Remove focus"
+                >
+                  <HiX className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Attached @ references (Feature 3) */}
+        {attachedRefs.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {attachedRefs.map((ref) => (
+              <span
+                key={ref.id}
+                className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs"
+                style={{
+                  background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--color-accent-700)',
+                }}
+              >
+                {ref.type === 'chapter' ? (
+                  <HiBookOpen className="w-3 h-3 shrink-0" />
+                ) : ref.type === 'page' ? (
+                  <HiOutlineEye className="w-3 h-3 shrink-0" />
+                ) : (
+                  <HiDocumentText className="w-3 h-3 shrink-0" />
+                )}
+                <span className="truncate max-w-[180px]">{ref.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachedRef(ref.id)}
+                  className="p-0.5 rounded-[var(--radius-sm)] hover:bg-[color-mix(in_srgb,var(--color-accent)_25%,transparent)] transition-colors"
+                  title="Remove reference"
+                >
+                  <HiX className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
-            placeholder={currentDocument ? 'Ask about this document...' : 'Ask a question...'}
-            className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-          />
+          {/* Highlighted @-mention input (Feature 3) */}
+          <div
+            className="relative flex-1 border border-[var(--color-divider)] focus-within:border-[var(--color-accent)] transition-colors"
+            style={{
+              background: 'var(--color-bg)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            {/* Mirror: paints ONLY the @mention highlight boxes — its base
+                text is transparent so the real (textarea) glyphs are the
+                only ones ever drawn. Guarantees the old double-render bug
+                (mirror/textarea metric drift) can never come back. */}
+            <div
+              ref={mirrorRef}
+              aria-hidden="true"
+              className="absolute inset-0 px-4 py-2 text-base leading-[1.5] whitespace-break-spaces break-words overflow-hidden pointer-events-none !text-transparent"
+            >
+              {input.split(/(@\S+)/g).map((part, i) =>
+                part.startsWith('@') ? (
+                  <span
+                    key={i}
+                    className="rounded-[3px]"
+                    style={{
+                      background: 'color-mix(in srgb, var(--color-accent) 18%, transparent)',
+                      boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 45%, transparent)',
+                    }}
+                  >
+                    {part}
+                  </span>
+                ) : (
+                  <span key={i}>{part}</span>
+                ),
+              )}
+            </div>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (mentionOpen && filteredMentionItems.length > 0) {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setMentionIndex((i) => (i + 1) % filteredMentionItems.length);
+                    return;
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setMentionIndex(
+                      (i) => (i - 1 + filteredMentionItems.length) % filteredMentionItems.length,
+                    );
+                    return;
+                  }
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleMentionSelect(filteredMentionItems[clampedMentionIndex]);
+                    return;
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setMentionOpen(false);
+                    return;
+                  }
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault(); // textarea would otherwise insert a newline
+                  handleSend();
+                }
+              }}
+              onScroll={(e) => {
+                // Wheel/arrow scrolling desyncs the overlay too — sync on
+                // every scroll event, not just value changes.
+                if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+              }}
+              placeholder={currentDocument ? 'Ask about this document… (@ to reference)' : 'Ask a question… (@ to reference)'}
+              className="relative w-full px-4 py-2 bg-transparent border-0 text-sm leading-[1.5] placeholder:text-[var(--color-neutral-500)] focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              style={{
+                color: 'var(--color-text)',
+                caretColor: 'var(--color-accent)',
+                borderRadius: 'var(--radius-md)',
+                minHeight: '2.5rem',
+                maxHeight: '10rem',
+              }}
+            />
+            {mentionOpen && (
+              <MentionPopover
+                items={filteredMentionItems}
+                activeIndex={clampedMentionIndex}
+                onSelect={handleMentionSelect}
+                onClose={() => setMentionOpen(false)}
+              />
+            )}
+          </div>
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            className="btn btn-primary shrink-0 transition-colors"
+            style={{ padding: 8 }}
           >
             <HiPaperAirplane className="w-4 h-4" />
           </button>
@@ -905,47 +1210,48 @@ export default function GlobalChat() {
     <>
       {/* Collapsed rail strip */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex flex-col items-center bg-slate-900 border-l border-slate-700/50 shadow-lg overflow-hidden transition-all duration-300 ease-in-out ${
+        className={`fixed inset-y-0 right-0 z-50 flex flex-col items-center overflow-hidden transition-all duration-300 ease-in-out ${
           collapsed ? 'w-[52px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
         }`}
+        style={{
+          background: 'var(--color-surface)',
+          borderLeft: '1px solid var(--color-divider)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
       >
         <button
           onClick={expandRail}
-          className="relative mt-4 flex flex-col items-center justify-center gap-2 text-slate-300 hover:text-cyan-400 transition-colors"
+          className="relative mt-4 flex flex-col items-center justify-center gap-2 transition-colors hover:text-[var(--color-accent)]"
+          style={{ color: 'var(--color-neutral-600)' }}
           title="Expand Tutor rail"
           aria-label="Expand Tutor rail"
         >
           <HiChevronLeft className="w-4 h-4" />
           <span
-            className="text-[11px] font-semibold tracking-widest text-slate-300"
-            style={{ writingMode: 'vertical-rl' }}
+            className="text-[11px] font-semibold tracking-widest"
+            style={{ writingMode: 'vertical-rl', color: 'var(--color-neutral-600)' }}
           >
             TUTOR
           </span>
           {unseenReply && (
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" aria-hidden="true" />
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--color-accent)' }} aria-hidden="true" />
           )}
         </button>
       </div>
 
       {/* Open rail */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-slate-900 border-l border-slate-700/50 shadow-2xl overflow-hidden transition-all duration-300 ease-in-out ${
+        className={`fixed inset-y-0 right-0 z-50 flex flex-col overflow-hidden transition-all duration-300 ease-in-out ${
           railOpen ? 'w-[320px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
         }`}
+        style={{
+          background: 'var(--color-surface)',
+          borderLeft: '1px solid var(--color-divider)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
       >
         {chatBody}
       </div>
-
-      {/* FAB fallback (never shown when rail handles open/collapsed) */}
-      {!railOpen && !collapsed && (
-        <button
-          onClick={() => setRailCollapsed(false)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full shadow-lg shadow-cyan-600/30 flex items-center justify-center transition-all hover:scale-110"
-          aria-label="Open chat"
-          title="Chat — ⌘L"
-        >
-          <HiChatAlt2 className="h-4 w-4" />
-        </button>
-      )}
     </>
+  );
+}

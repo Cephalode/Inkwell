@@ -9,6 +9,8 @@
  */
 
 import { callGLMJson } from './llm.js';
+import { svgOverlapProblems } from './svgOverlap.js';
+import { normalizeMathText, normalizeSvgMath } from './asciiMath.js';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -575,7 +577,7 @@ export function sanitizeSvg(raw: unknown): string | undefined {
 
 /** Shared teaching-SVG rules for every generator that asks the model for
  *  diagrams. Kept minimal so small per-diagram calls stay small. */
-const SVG_RULES = `ONE self-contained <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"> element, no width/height, font-family sans-serif, font-size 20-28, arrowheads via small polygons. FIRST element: a full-canvas background rect (<rect x="0" y="0" width="800" height="400" fill="#26262c" rx="12"/>) — the diagram must carry its own dark background. Text fill #e8e4dd, shape stroke #a8a29a, accents #d97757. No <image>, <foreignObject>, <use>, scripts, CSS, or external references. Every meaningful shape gets a short label. Keep the SVG under 30 elements. NO title text inside the SVG — the page already shows the subject title. Keep every text and shape inside x 40-760, y 30-370 (leave margins) and NEVER overlap text with shapes, lines, or other text — axis/caption labels sit fully clear of every line, offset perpendicular to it.`;
+const SVG_RULES = `ONE self-contained <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"> element, no width/height, font-family sans-serif, font-size 20-28, arrowheads via small polygons. FIRST element: a full-canvas background rect (<rect x="0" y="0" width="800" height="400" fill="#26262c" rx="12"/>) — the diagram must carry its own dark background. Text fill #e8e4dd, shape stroke #a8a29a, accents #d97757. No <image>, <foreignObject>, <use>, scripts, CSS, or external references. Every meaningful shape gets a short label. Keep the SVG under 30 elements. NO title text inside the SVG — the page already shows the subject title. Keep every text and shape inside x 40-760, y 30-370 (leave margins) and NEVER overlap text with shapes, lines, or other text — axis/caption labels sit fully clear of every line, offset perpendicular to it. SEMANTICS: markers a label references must exist and sit where the label claims (a centroid/mean marker sits at the visual center of its group); annotation arrows must END at the element they describe; never state a count of drawn elements (no "150 points" next to 20 dots) — use generic wording like "points" or "sample points".`;
 
 const SLIDES_PROMPT = `You create study slide decks. Turn the study material into a slideshow that explains the topic: title slides, bullet slides, and diagram slides.
 
@@ -875,20 +877,20 @@ function asFlowSubject(raw: Record<string, unknown>, i: number): FlowSubject | n
   if (typeof raw.title !== 'string' || options.length < 2 || !correct) return null;
   return {
     id: `s${i + 1}`,
-    title: raw.title,
-    explanation: typeof raw.explanation === 'string' ? raw.explanation : '',
-    example: typeof raw.example === 'string' ? raw.example : '',
+    title: normalizeMathText(raw.title),
+    explanation: normalizeMathText(typeof raw.explanation === 'string' ? raw.explanation : ''),
+    example: normalizeMathText(typeof raw.example === 'string' ? raw.example : ''),
     // Diagrams are decoration, never blockers — a missing/broken SVG drops silently.
     diagram: sanitizeSvg(raw.diagram),
     exampleDiagram: sanitizeSvg(raw.example_diagram),
     mcq: {
-      prompt: typeof mcq.prompt === 'string' ? mcq.prompt : `Which statement is true?`,
-      options,
+      prompt: normalizeMathText(typeof mcq.prompt === 'string' ? mcq.prompt : `Which statement is true?`),
+      options: options.map(normalizeMathText),
       // The model sometimes answers with a letter — map A/B/C/D onto the options.
       correct: options.includes(correct)
-        ? correct
-        : options[String(correct).trim().toUpperCase().charCodeAt(0) - 65] ?? options[0],
-      explanation: typeof mcq.explanation === 'string' ? mcq.explanation : '',
+        ? normalizeMathText(correct)
+        : normalizeMathText(options[String(correct).trim().toUpperCase().charCodeAt(0) - 65] ?? options[0]),
+      explanation: normalizeMathText(typeof mcq.explanation === 'string' ? mcq.explanation : ''),
     },
   };
 }
@@ -940,7 +942,12 @@ Respond with ONLY JSON: {"prompt": "...", "options": ["...","...","...","..."], 
   const prompt = typeof out?.prompt === 'string' ? out.prompt : '';
   if (options.length < 4 || !correct || !options.includes(correct) || !prompt) return undefined;
   if (longestOptionTell(options, correct)) return undefined;
-  return { prompt, options, correct, explanation: typeof out?.explanation === 'string' ? out.explanation : mcq.explanation };
+  return {
+    prompt: normalizeMathText(prompt),
+    options: options.map(normalizeMathText),
+    correct: normalizeMathText(correct),
+    explanation: normalizeMathText(typeof out?.explanation === 'string' ? out.explanation : mcq.explanation),
+  };
 }
 
 /** Learn stage: split the topic into subjects, each = explanation + example + MCQ. */
@@ -967,6 +974,8 @@ Split this topic into ${maxSubjects} or fewer distinct subjects (single ideas a 
 - "explanation": 2-5 sentences, straight to the point, teaching just that one subject.
 - "example": a concrete worked example of exactly that subject.
 - "mcq": one quick multiple-choice check on the subject — "prompt", 4 "options" (one correct, plausible distractors), "correct" set to the exact text of the correct option, and a one-sentence "explanation" of why. CRITICAL: all 4 options must be similar length (within ~25%) and the same grammatical form — a longer, more detailed correct option is a giveaway.
+
+MATH NOTATION (all fields, including titles and MCQ text): write math in clean Unicode, NEVER LaTeX and NEVER ASCII spell-outs. Subscripts as Unicode (xᵢ, Cₖ, μₖ, ₜ₊₁), superscripts as Unicode (², ⁿ, ᵗ⁺¹), Greek letters as characters (μ, σ, Σ, α — never "mu", "sigma"), norms as ‖xᵢ − μₖ‖², comparison ops as ≤ ≥ ≠ →. No $...$, no \\frac, no ^ or _ markers.
 
 Respond with ONLY JSON: {"subjects": [{"title": "...", "explanation": "...", "example": "...", "mcq": {"prompt": "...", "options": ["...","...","...","..."], "correct": "...", "explanation": "..."}}]}`,
       },
@@ -1038,8 +1047,11 @@ Respond with ONLY JSON: {"diagram": "<svg ...>...</svg>", "example_diagram": "<s
         // live). Budget stays 16384 — belt and suspenders.
         { temperature: 0.4, maxTokens: 16384, thinkingDisabled: true },
       );
-      s.diagram = sanitizeSvg(out?.diagram);
-      s.exampleDiagram = sanitizeSvg(out?.example_diagram);
+      // ASCII math in <text> labels (mu_1, x_i, ||a-b||) is normalized to
+      // Unicode BEFORE sanitize: the overlap checker measures real text
+      // widths, and Unicode math (‖xᵢ−μₖ‖²) is what ships to the DOM.
+      s.diagram = sanitizeSvg(normalizeSvgMath(String(out?.diagram ?? '')));
+      s.exampleDiagram = sanitizeSvg(normalizeSvgMath(String(out?.example_diagram ?? '')));
     }),
   );
 
@@ -1049,6 +1061,12 @@ Respond with ONLY JSON: {"diagram": "<svg ...>...</svg>", "example_diagram": "<s
   // obvious in the render. Up to 2 review→repair rounds per diagram, gated by
   // a shared deadline: a slow API episode must not push the lesson past the
   // reaper's 10-min window, and an un-reviewed diagram is still usable.
+  // Since Oct 8 2026, `visionProblems` ALSO runs the deterministic geometry
+  // check (server/src/svgOverlap.ts): exact text/shape bbox intersection with
+  // Arial-approximate font metrics. Findings ride the same review→repair loop
+  // (and survive vision/render failures); fixes "never overlap" being
+  // advisory-only. Validated: 23/89 stored prod diagrams flagged, the
+  // screenshot's centroid example went 3 problems → 0 in one repair pass.
   const reviewDeadline = Date.now() + 120_000;
   await Promise.all(
     subjects.map(async (s) => {
@@ -1063,6 +1081,11 @@ Respond with ONLY JSON: {"diagram": "<svg ...>...</svg>", "example_diagram": "<s
  *  Empty array = clean (or the render/review failed — treat as clean rather
  *  than blocking a usable diagram on infrastructure). */
 async function visionProblems(step: StepContext, subjectTitle: string, svg: string): Promise<string[]> {
+  // Deterministic geometry check first: exact text/shape bounding boxes catch
+  // label overlap with no model in the loop. These findings survive even if
+  // the render or the vision call below fails, and the reviewer can't argue
+  // with coordinates.
+  const geometric = svgOverlapProblems(svg);
   try {
     const dir = await mkdtemp(join(tmpdir(), 'svg-review-'));
     try {
@@ -1084,9 +1107,10 @@ async function visionProblems(step: StepContext, subjectTitle: string, svg: stri
               {
                 type: 'text',
                 text: `You are reviewing a teaching diagram (rendered image) for the subject "${subjectTitle}" in the topic "${step.title}". Check ONLY for defects that would mislead or confuse a learner:
-1. Arrows: does every arrowhead point in the direction the flow/relationship reads (e.g. a left element flowing to a right element needs rightward arrowheads)? Arrowhead polygons are easy to write backwards — check the tip direction in both the image and the source.
-2. Text cut off by a shape or the canvas edge, or touching/overlapping other text or shapes — even slight contact counts.
-3. Elements clipped at the viewBox edge.
+1. SEMANTICS first: does the drawing actually show what its labels claim? A marker labeled "centroid"/"mean"/"X" must sit at the visual center of the group it marks. An annotation arrow must END at the element it describes — never pointing at empty space. If the text says "N points" there must be plausibly N visible points, or the label must be generic ("points"). Does the overall picture demonstrate the concept named in the subject, or its opposite?
+2. Arrows: does every arrowhead point in the direction the flow/relationship reads (e.g. a left element flowing to a right element needs rightward arrowheads)? Arrowhead polygons are easy to write backwards — check the tip direction in both the image and the source.
+3. Text cut off by a shape or the canvas edge, or touching/overlapping other text or shapes — even slight contact counts.
+4. Elements clipped at the viewBox edge.
 
 SVG SOURCE:
 ${svg}
@@ -1099,14 +1123,17 @@ Respond with ONLY JSON: {"hasDefects": boolean, "problems": ["one concrete fix i
         ],
         { temperature: 0.2, maxTokens: 4096, thinkingDisabled: true },
       );
-      return Array.isArray(review?.problems)
+      const visual = Array.isArray(review?.problems)
         ? (review!.problems as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0).slice(0, 5)
         : [];
+      // Geometric facts first (exact coordinates), visual judgment second.
+      return [...geometric, ...visual].slice(0, 8);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   } catch {
-    return [];
+    // Render/vision failed — the geometric findings still stand.
+    return geometric;
   }
 }
 
@@ -1157,7 +1184,9 @@ async function visionReviewSvg(step: StepContext, subjectTitle: string, svg: str
     if (problems.length === 0) break;
     const fixed = await visionRepair(step, subjectTitle, current, problems);
     if (!fixed) break;
-    current = fixed;
+    // Repairs rewrite <text> labels — normalize any ASCII math the model
+    // reintroduced so shipped diagrams stay Unicode.
+    current = normalizeSvgMath(fixed);
   }
   return current === svg ? undefined : current;
 }
@@ -1200,6 +1229,8 @@ Write exactly ${count} multiple-choice questions (4 options each, one correct, p
 ${focusNote}
 ${sprinkleNote}
 
+MATH NOTATION (prompts, options, explanations): write math in clean Unicode, NEVER LaTeX and NEVER ASCII spell-outs — subscripts as Unicode (xᵢ, Cₖ, μₖ), superscripts as Unicode (², ⁿ, ᵗ⁺¹), Greek as characters (μ, σ, Σ — never "mu", "sigma"), norms as ‖xᵢ − μₖ‖², ops as ≤ ≥ ≠ →. No $...$, no ^ or _ markers.
+
 For each: "subject" = the subject it checks (copy from the lists above), "correct" = exact text of the correct option.
 ${focus.length || sprinkle.length ? 'Tag every question with its subject from the lists above.' : ''}
 
@@ -1221,11 +1252,11 @@ Respond with ONLY JSON: {"questions": [{"subject": "...", "prompt": "...", "opti
     const shuffled = shuffleFlowOptions(correct, options);
     questions.push({
       id: `q${i + 1}`,
-      subject: typeof q.subject === 'string' ? q.subject : step.title,
-      prompt: typeof q.prompt === 'string' ? q.prompt : '',
-      options: shuffled.options,
-      correct: shuffled.correct,
-      explanation: typeof q.explanation === 'string' ? q.explanation : '',
+      subject: normalizeMathText(typeof q.subject === 'string' ? q.subject : step.title),
+      prompt: normalizeMathText(typeof q.prompt === 'string' ? q.prompt : ''),
+      options: shuffled.options.map(normalizeMathText),
+      correct: normalizeMathText(shuffled.correct),
+      explanation: normalizeMathText(typeof q.explanation === 'string' ? q.explanation : ''),
     });
   });
   // Length-tell check (same as lessons): rewrite only skewed questions, then
