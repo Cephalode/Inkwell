@@ -34,7 +34,6 @@ import {
   FLOW_SLOT_META,
   STRATEGY_STAGES,
   type ActivityKind,
-  type FlowSlot,
   type LearningActivity,
   type SkillEvidence,
   type StepDetail,

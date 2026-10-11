@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- exports are pure slot-sequence helpers, not components */
 import { useMemo, useState } from 'react';
 import { HiArrowLeft, HiCheck, HiChevronRight, HiLightBulb, HiXMark } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
@@ -10,6 +11,7 @@ import {
   type FlowLessonContent,
   type FlowQuizContent,
   type FlowSlot,
+  type StepDetail,
 } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
 
