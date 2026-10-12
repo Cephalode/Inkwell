@@ -279,8 +279,9 @@ export default function GlobalChat() {
   const params = useParams();
   const isMobile = useIsMobile();
 
-  // Desktop rail collapse state (initialized open); mobile keeps store `isOpen`.
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  // Desktop rail collapse state (initialized COLLAPSED — the chat rail must
+  // not open itself on page load); mobile keeps store `isOpen`.
+  const [railCollapsed, setRailCollapsed] = useState(true);
   const currentChapter = useDocumentStore((s) => s.currentChapter);
   const currentChapterText = useDocumentStore((s) => s.currentChapterText);
   const viewerPage = useDocumentStore((s) => s.viewerPage);
