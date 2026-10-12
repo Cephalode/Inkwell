@@ -10,6 +10,9 @@ interface PendingTool {
 
 export interface ChatState {
   isOpen: boolean;
+  /** Desktop Tutor rail collapsed state — in the store so any caller can expand it. */
+  railCollapsed: boolean;
+  setRailCollapsed: (v: boolean) => void;
   messages: ChatMessage[];
   isLoading: boolean;
   pendingTools: PendingTool[];
@@ -37,6 +40,8 @@ export type { PendingTool };
 
 export const useChatStore = create<ChatState>()((set, get) => ({
   isOpen: false,
+  railCollapsed: true,
+  setRailCollapsed: (v) => set({ railCollapsed: v }),
   messages: [],
   isLoading: false,
   pendingTools: [],
@@ -44,7 +49,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
   activeSessionId: null,
   isLoadingSessions: false,
   focusRefs: [],
-  open: () => set({ isOpen: true }),
+  open: () => set({ isOpen: true, railCollapsed: false }),
   close: () => set({ isOpen: false }),
   toggle: () => set((s) => ({ isOpen: !s.isOpen })),
   addFocus: (excerpt) =>

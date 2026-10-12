@@ -279,9 +279,11 @@ export default function GlobalChat() {
   const params = useParams();
   const isMobile = useIsMobile();
 
-  // Desktop rail collapse state (initialized COLLAPSED — the chat rail must
-  // not open itself on page load); mobile keeps store `isOpen`.
-  const [railCollapsed, setRailCollapsed] = useState(true);
+  // Desktop rail collapse state — lives in the chat store (initialized
+  // COLLAPSED: the rail must not open itself on page load) so any caller
+  // (TUTOR strip, ⌘L, "Send to AI") can expand it. Mobile keeps `isOpen`.
+  const railCollapsed = useChatStore((s) => s.railCollapsed);
+  const setRailCollapsed = useChatStore((s) => s.setRailCollapsed);
   const currentChapter = useDocumentStore((s) => s.currentChapter);
   const currentChapterText = useDocumentStore((s) => s.currentChapterText);
   const viewerPage = useDocumentStore((s) => s.viewerPage);
@@ -377,11 +379,11 @@ export default function GlobalChat() {
   const collapseRail = useCallback(() => {
     setSeenCountAtCollapse(messages.length);
     setRailCollapsed(true);
-  }, [messages.length]);
+  }, [messages.length, setRailCollapsed]);
   const expandRail = useCallback(() => {
     setSeenCountAtCollapse(null);
     setRailCollapsed(false);
-  }, []);
+  }, [setRailCollapsed]);
   const toggleRail = useCallback(() => {
     if (railCollapsed) expandRail();
     else collapseRail();
