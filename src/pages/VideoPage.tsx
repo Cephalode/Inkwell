@@ -218,153 +218,6 @@ function MilestoneRow({
   );
 }
 
-/** Full-viewport theatre mode: a fixed black backdrop replaces all page chrome
- *  (Layout hides TopBar/main/tab bar while `theatreMode` is set). The player
- *  box grows to whichever dimension hits the viewport edge first, using
- *  `width: min(100vw, 100vh × 16/9)` — the 16:9 box always touches an edge on
- *  both axes' limiting side. Chapters stay reachable in a top-corner overlay.
- *  Esc or the button exits; leaving the page also resets the store flag. */
-function TheatrePlayer({
-  embedSrc,
-  title,
-  onExit,
-  hint,
-  speedRow,
-  children,
-}: {
-  embedSrc: string;
-  title: string;
-  onExit: () => void;
-  /** Non-null shows a transient overlay on the player ("1.5×", "0:15"…). */
-  hint: string | null;
-  /** Clickable playback-speed chips (keys don't reach the page once the
-   *  cross-origin iframe has focus). */
-  speedRow: ReactNode;
-  /** Chapter panel content (the normal-mode chapters list). */
-  children: ReactNode;
-}) {
-  const [chaptersOpen, setChaptersOpen] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onExit();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onExit]);
-
-  const boxStyle: CSSProperties = {
-    width: 'min(100vw, calc(100vh * 16 / 9))',
-    aspectRatio: '16 / 9',
-    background: '#000',
-    overflow: 'hidden',
-  };
-
-  // Portaled to <body>: an in-tree overlay would (a) be clipped/offset by
-  // ancestor overflow/filters and (b) its fixed positioning would still work
-  // but the page behind keeps whatever height it has — portaling to body
-  // guarantees the backdrop covers the full viewport on every browser.
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black">
-      <div className="relative" style={boxStyle}>
-        <iframe
-          key={embedSrc}
-          src={embedSrc}
-          title={title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
-        />
-
-        {hint !== null && (
-          <div
-            aria-live="polite"
-            style={{
-              position: 'absolute',
-              top: 12,
-              left: 12,
-              zIndex: 5,
-              padding: '4px 10px',
-              borderRadius: 999,
-              background: 'rgba(0,0,0,0.7)',
-              color: '#fff',
-              font: '600 13px var(--font-body)',
-            }}
-          >
-            {hint}
-          </div>
-        )}
-
-        {/* Top-right controls: exit theatre, toggle the chapter overlay. */}
-        <div className="absolute right-2 top-2 flex items-center gap-1.5">
-          <button
-            type="button"
-            className="btn btn-ghost flex items-center gap-1.5 text-white hover:bg-white/15"
-            style={{ background: 'rgba(0,0,0,0.55)' }}
-            aria-pressed={chaptersOpen}
-            aria-expanded={chaptersOpen}
-            title="Chapters"
-            onClick={() => setChaptersOpen((o) => !o)}
-          >
-            <HiOutlineQueueList className="h-4 w-4" />
-            Chapters
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost flex items-center gap-1.5 text-white hover:bg-white/15"
-            style={{ background: 'rgba(0,0,0,0.55)' }}
-            onClick={onExit}
-            title="Exit theatre mode (Esc)"
-          >
-            <HiOutlineArrowsPointingIn className="h-4 w-4" />
-            Exit theatre
-          </button>
-        </div>
-
-        {/* Speed chips, bottom edge of the player. */}
-        <div
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center"
-          style={{
-            gap: 4,
-            maxWidth: 'calc(100% - 16px)',
-            padding: '4px 8px',
-            borderRadius: 999,
-            background: 'rgba(0,0,0,0.55)',
-            color: '#fff',
-          }}
-        >
-          {speedRow}
-        </div>
-
-        {/* Chapter list overlay, dismissed with the same button or a click outside. */}
-        {chaptersOpen && (
-          <div className="absolute inset-0 z-10 flex items-start justify-end" onClick={() => setChaptersOpen(false)}>
-            <div
-              className="max-h-full overflow-y-auto"
-              style={{
-                margin: 12,
-                width: 280,
-                maxWidth: 'calc(100% - 24px)',
-                padding: 'var(--space-3)',
-                borderRadius: 'var(--radius-lg)',
-                background: 'rgba(10,10,10,0.92)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="section-label" style={{ margin: '0 0 6px', color: 'rgba(255,255,255,0.85)' }}>
-                Chapters
-              </h3>
-              {children}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body,
-  );
-}
 
 function VideoView({ videoId }: { videoId: string }) {
   const navigate = useNavigate();
@@ -374,12 +227,22 @@ function VideoView({ videoId }: { videoId: string }) {
   const markWatched = useVideoStore((s) => s.markWatched);
 
   const [loadError, setLoadError] = useState<string | null>(null);
-  /** Where the embed starts; set by the chapter list (re-renders the iframe). */
+  /** Where the embed starts; set by the chapter list (reloads the embed). */
   const [start, setStart] = useState<{ seconds: number; skillId: string | null; autoplay: boolean }>({
     seconds: 0,
     skillId: null,
     autoplay: false,
   });
+  // www.youtube.com/embed rather than youtube-nocookie: nocookie serves blank
+  // players to cookie-less contexts (YouTube bot-detection); the regular
+  // domain embed worked historically (SourceViewer used it).
+  // enablejsapi+origin allow posting commands (setPlaybackRate) into the
+  // cross-origin player. Null until the video row has loaded.
+  const embedSrc = video
+    ? `https://www.youtube.com/embed/${encodeURIComponent(video.id)}?start=${start.seconds}${
+        start.autoplay ? '&autoplay=1' : ''
+      }&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`
+    : null;
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [watchError, setWatchError] = useState<string | null>(null);
@@ -395,6 +258,29 @@ function VideoView({ videoId }: { videoId: string }) {
   const playerRef = useRef<HTMLDivElement>(null);
   const quizRef = useRef<HTMLDivElement>(null);
   const [theatreMode, setTheatreMode] = useState(false);
+
+  // ── Seamless theatre mode (CSS-only) ─────────────────────────────────────
+  // The embed iframe is rendered ONCE and never unmounts, reparents, or
+  // changes src on toggle. Theatre mode is pure CSS: the player box becomes
+  // position:fixed over a black backdrop portal. Reparenting the node (the
+  // previous approach) reloads the iframe in Chromium — full restart from
+  // 0:00 — while a fixed-position swap is invisible to the embed: playhead,
+  // rate and play state continue through both directions of the transition.
+  const [theatreChaptersOpen, setTheatreChaptersOpen] = useState(false);
+  const exitTheatre = useCallback(() => {
+    setTheatreMode(false);
+    setTheatreChaptersOpen(false);
+  }, []);
+
+  // Esc exits theatre mode.
+  useEffect(() => {
+    if (!theatreMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitTheatre();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [theatreMode, exitTheatre]);
 
   // Lock page scroll while the theatre overlay covers the screen.
   useEffect(() => {
@@ -644,14 +530,6 @@ function VideoView({ videoId }: { videoId: string }) {
   });
   const unlearned = video.unlearnedMilestones || milestones.filter((m) => m.mastery !== 'learned').length;
   const multi = unlearned >= 2;
-  // www.youtube.com/embed rather than youtube-nocookie: nocookie serves blank
-  // players to cookie-less contexts (YouTube bot-detection); the regular
-  // domain embed worked historically (SourceViewer used it).
-  // enablejsapi+origin allow posting commands (setPlaybackRate) into the
-  // cross-origin player.
-  const embedSrc = `https://www.youtube.com/embed/${encodeURIComponent(video.id)}?start=${start.seconds}${
-    start.autoplay ? '&autoplay=1' : ''
-  }&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
   const moved = outcome ? outcome.skills.filter((s) => s.previous !== s.mastery) : [];
   const transcript = video.transcriptExcerpt?.trim() ?? '';
 
@@ -692,18 +570,27 @@ function VideoView({ videoId }: { videoId: string }) {
   const playerBox = (
     <div
       style={{
-        position: 'relative',
+        // Theatre mode: fixed over everything (backdrop portal below). The
+        // iframe stays in this box in both modes — it never reloads.
+        position: theatreMode ? 'fixed' : 'relative',
+        zIndex: theatreMode ? 61 : undefined,
+        inset: theatreMode ? 0 : undefined,
+        margin: 'auto',
+        // 16:9 box; in theatre it grows until an edge is hit.
         aspectRatio: '16 / 9',
-        width: '100%',
+        width: theatreMode ? 'min(100vw, calc(100vh * 16 / 9))' : '100%',
         maxWidth: '100%',
+        height: theatreMode ? 'auto' : undefined,
+        maxHeight: '100vh',
         background: '#000',
-        borderRadius: 'var(--radius-lg)',
+        borderRadius: theatreMode ? 0 : 'var(--radius-lg)',
         overflow: 'hidden',
       }}
     >
-      {/* Unmounted while theatre mode shows its own fixed copy above — keeps
-          the page from silently playing duplicate audio. */}
-      {!theatreMode && (
+      {/* ONE iframe for the whole page — never unmounted/reparented, so
+          playback continues through theatre enter/exit seamlessly. Null-safe
+          after the video loads (embedSrc null ⇒ nothing to embed yet). */}
+      {embedSrc && (
         <iframe
           key={embedSrc}
           src={embedSrc}
@@ -730,6 +617,67 @@ function VideoView({ videoId }: { videoId: string }) {
         >
           {hint}
         </div>
+      )}
+
+      {/* Theatre-only chrome: exit + chapters buttons, chapter panel. */}
+      {theatreMode && (
+        <>
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+            <button
+              type="button"
+              className="btn btn-ghost flex items-center gap-1.5 text-white hover:bg-white/15"
+              style={{ background: 'rgba(0,0,0,0.55)' }}
+              aria-pressed={theatreChaptersOpen}
+              aria-expanded={theatreChaptersOpen}
+              title="Chapters"
+              onClick={() => setTheatreChaptersOpen((o) => !o)}
+            >
+              <HiOutlineQueueList className="h-4 w-4" />
+              Chapters
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost flex items-center gap-1.5 text-white hover:bg-white/15"
+              style={{ background: 'rgba(0,0,0,0.55)' }}
+              onClick={exitTheatre}
+              title="Exit theatre mode (Esc)"
+            >
+              <HiOutlineArrowsPointingIn className="h-4 w-4" />
+              Exit theatre
+            </button>
+          </div>
+
+          {theatreChaptersOpen && (
+            <div
+              className="absolute inset-0 z-10 flex items-start justify-end"
+              onClick={() => setTheatreChaptersOpen(false)}
+            >
+              <div
+                className="max-h-full overflow-y-auto"
+                style={{
+                  margin: 12,
+                  width: 280,
+                  maxWidth: 'calc(100% - 24px)',
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-lg)',
+                  background: 'rgba(10,10,10,0.92)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="section-label" style={{ margin: '0 0 6px', color: 'rgba(255,255,255,0.85)' }}>
+                  Chapters
+                </h3>
+                {chapters.length > 0 ? (
+                  chaptersList
+                ) : (
+                  <p style={{ fontSize: 13, opacity: 0.6, margin: 0 }}>No chapters for this video.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -844,19 +792,20 @@ function VideoView({ videoId }: { videoId: string }) {
         )}
       </div>
 
-      {/* Theatre mode — fixed overlay, portaled to <body>, covering all page
-          chrome. Local state; unmounting on exit also unmounts the theatre
-          iframe, which returns the embed to 1× — the load handler re-applies
-          the chosen rate. */}
-      {theatreMode && (
-        <TheatrePlayer embedSrc={embedSrc} title={video.title} onExit={() => setTheatreMode(false)} hint={hint} speedRow={speedRow}>
-          {chapters.length > 0 ? (
-            chaptersList
-          ) : (
-            <p style={{ fontSize: 13, opacity: 0.6, margin: 0 }}>No chapters for this video.</p>
-          )}
-        </TheatrePlayer>
-      )}
+      {/* Theatre backdrop — a pure black fixed layer under the fixed player
+          box (z 61). No iframes live here: the single embed stays in the page
+          and simply sits above this layer, so nothing reloads on toggle. */}
+      {theatreMode &&
+        createPortal(
+          <div
+            aria-hidden
+            className="fixed inset-0 z-[60]"
+            style={{ background: '#000' }}
+            // Clicking the backdrop exits (the player box above stops propagation).
+            onClick={exitTheatre}
+          />,
+          document.body,
+        )}
 
       {/* Actions */}
       <div className="space-y-3">
