@@ -19,9 +19,9 @@ import type { ActivityRunnerProps } from './runnerProps';
  * weak evidence (XP only).
  *
  * Read mode (Oct 2026): toggling "Read" speaks the current slide via the
- * client TTS engine and — as each slide finishes — advances and reads the
- * next, until the deck ends. Any navigation (keys, click, dots) stops the
- * in-flight read and reads the newly shown slide instead.
+ * client TTS engine — ONE slide per trigger, no auto-advance. While read
+ * mode is on, every slide the user navigates to (Next/Prev/keys/dots/click)
+ * reads aloud immediately; toggling off stops speech.
  */
 
 /** One slide → speakable text. Speaker notes ARE the narration (generated for
@@ -75,42 +75,28 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
     setSpeaking(false);
   }, []);
 
-  /** Read slide `idx` aloud; then, while read mode is on, advance + repeat
-   * until the deck ends. `token` must match the live session. (Iterative —
-   * each slide's speech is awaited in sequence.) */
+  /** Read slide `idx` aloud — ONE slide per trigger. The user advances
+   * (Next/Prev/dots/stage click); each newly shown slide reads immediately.
+   * `token` must match the live session. */
   const readFrom = useCallback(async (idx: number, token: number) => {
-    let cur = idx;
-    for (;;) {
-      const s = slidesRef.current[cur];
-      if (!s || token !== tokenRef.current) return;
-      setSpeaking(true);
-      setReadError(null);
-      try {
-        await speakAll(chunkSpeechText(slideSpeech(s)));
-      } catch {
-        if (token === tokenRef.current) {
-          setSpeaking(false);
-          setReadError('Read-aloud failed — the slides are still readable above.');
-        }
-        return;
-      }
-      if (token !== tokenRef.current) return; // superseded while reading
-      if (!readModeRef.current) {
-        setSpeaking(false); // one-shot (mode turned off mid-read)
-        return;
-      }
-      const next = cur + 1;
-      if (next > lastRef.current) {
-        // Deck finished — mode stays on for re-reads, but leave the audio
-        // element fully stopped (a lingering src can keep playing).
-        tokenRef.current += 1;
-        stopSpeak();
+    const s = slidesRef.current[idx];
+    if (!s || token !== tokenRef.current) return;
+    setSpeaking(true);
+    setReadError(null);
+    try {
+      await speakAll(chunkSpeechText(slideSpeech(s)));
+    } catch {
+      if (token === tokenRef.current) {
         setSpeaking(false);
-        return;
+        setReadError('Read-aloud failed — the slides are still readable above.');
       }
-      cur = next;
-      iRef.current = next;
-      setI(next);
+      return;
+    }
+    // Leave the audio element fully stopped (a lingering src can keep playing).
+    if (token === tokenRef.current) {
+      tokenRef.current += 1;
+      stopSpeak();
+      setSpeaking(false);
     }
   }, []);
 
@@ -284,7 +270,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
             className={`btn ${readMode ? 'btn-primary' : 'btn-secondary'}`}
             onClick={toggleRead}
             aria-pressed={readMode}
-            title={readMode ? 'Stop read-aloud' : 'Read this slide aloud, then keep reading as you advance'}
+            title={readMode ? 'Stop read-aloud (slides no longer read on navigate)' : 'Read this slide aloud — also reads each slide you navigate to'}
           >
             {speaking ? <Spinner size="sm" /> : readMode ? <HiStop className="h-4 w-4" aria-hidden /> : <HiSpeakerWave className="h-4 w-4" aria-hidden />}
             {readMode ? (speaking ? 'Reading…' : 'Read on') : 'Read'}

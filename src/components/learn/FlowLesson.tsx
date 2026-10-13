@@ -1,36 +1,19 @@
-/* eslint-disable react-refresh/only-export-components -- exports are pure slot-sequence helpers, not components */
-import { useMemo, useState } from 'react';
-import { HiArrowLeft, HiCheck, HiChevronRight, HiLightBulb, HiXMark } from 'react-icons/hi2';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HiArrowLeft, HiCheck, HiChevronRight, HiLightBulb, HiSpeakerWave, HiStop, HiXMark } from 'react-icons/hi2';
 import Markdown from '../shared/Markdown';
+import Spinner from '../shared/Spinner';
 import { playCorrect, playWrong } from '../../lib/sounds';
+import { nextRedoQueue, type RedoItem } from '../../lib/flowSequence';
+import { stopSpeak, speakAll } from '../shared/SelectionTTS';
+import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
 import { FlowProgressDots as ProgressDots } from './ActivityOutcome';
 import { useLearningStore } from '../../store/learningStore';
 import {
-  FLOW_SLOTS,
   FLOW_SLOT_META,
   type FlowLessonContent,
   type FlowQuizContent,
-  type FlowSlot,
-  type StepDetail,
 } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
-
-/** The account's slot progression, derived from completed flow activities. */
-export function slotsDone(step: StepDetail): Set<FlowSlot> {
-  const done = new Set<FlowSlot>();
-  for (const a of step.activities) {
-    if (a.kind !== 'flow' || a.status !== 'completed') continue;
-    const slot = (a.result as { slot?: FlowSlot } | null)?.slot;
-    if (slot) done.add(slot);
-  }
-  return done;
-}
-
-/** First incomplete slot — the app decides, no strategy picker. */
-export function nextSlot(step: StepDetail): FlowSlot {
-  const done = slotsDone(step);
-  return FLOW_SLOTS.find((s) => !done.has(s)) ?? 'test'; // all done → replayable test
-}
 
 interface McqLike {
   prompt: string;
@@ -40,7 +23,7 @@ interface McqLike {
 }
 
 /** One instant-graded MCQ. Green/red on pick, explanation, no typing anywhere. */
-function Mcq({ q, onAnswered, onHelp, helpText }: { q: McqLike; onAnswered?: (correct: boolean) => void; onHelp?: () => void; helpText?: string }) {
+function Mcq({ q, onAnswered, onHelp, helpText }: { q: McqLike; onAnswered?: (correct: boolean, picked: string) => void; onHelp?: () => void; helpText?: string }) {
   const [picked, setPicked] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const answered = picked !== null;
@@ -70,7 +53,7 @@ function Mcq({ q, onAnswered, onHelp, helpText }: { q: McqLike; onAnswered?: (co
               disabled={answered}
               onClick={() => {
                 setPicked(opt);
-                onAnswered?.(opt === q.correct);
+                onAnswered?.(opt === q.correct, opt);
                 (opt === q.correct ? playCorrect : playWrong)();
               }}
               className="flex min-h-20 w-full flex-col items-center justify-center gap-1.5 p-3 text-center text-sm transition-colors"
@@ -158,7 +141,7 @@ function Mcq({ q, onAnswered, onHelp, helpText }: { q: McqLike; onAnswered?: (co
  * Progress lives on the account (completed flow activities), so the sequence
  * survives reloads and follows the user across devices.
  */
-export default function FlowLesson({ activity, step, onComplete, onAbandon, onLeave }: ActivityRunnerProps) {
+export default function FlowLesson({ activity, step, onComplete, onAbandon, onLeave, onReplay }: ActivityRunnerProps) {
   const submitActivity = useLearningStore((s) => s.submitActivity);
   const content = activity.content as FlowLessonContent | FlowQuizContent | null;
   const slot = content?.slot ?? 'learn1'; // ponytail: pre-stamp activities lack it; learn1 is the safe default
@@ -176,13 +159,141 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
   const [slide, setSlide] = useState(0);
   // Keyed by prompt so Back-nav + re-answering replaces the attempt instead of
   // double-counting it. Quiz questions repeat subjects, so the question prompt
-  // (unique per question) is the right key there.
-  const [attempts, setAttempts] = useState<Record<string, { subject: string; correct: boolean }>>({});
+  // (unique per question) is the right key there. Each attempt carries the
+  // prompt + picked answer so the server's wrong-answer log gets real text.
+  const [attempts, setAttempts] = useState<Record<string, { subject: string; correct: boolean; prompt: string; answer: string }>>({});
   const [hintsUsed, setHintsUsed] = useState(0);
   const attemptList = useMemo(() => Object.values(attempts), [attempts]);
 
+  // ── Redo phase: repeat first-pass misses until every one is answered right.
+  // Client-side only — `attempts` (the graded record + wrong-answer bank) is
+  // frozen after the main pass, so retries never change the score or the log.
+  // Misses append to `redoQueue` during the main pass; `redoPhase` flips when
+  // the learner hits Retry. `missedCount` drives the Retry button.
+  const [redoQueue, setRedoQueue] = useState<RedoItem[]>([]);
+  const [redoPhase, setRedoPhase] = useState(false);
+  const redoSeen = useRef<Set<string>>(new Set()); // prompts already queued (first pass)
+  const [missedCount, setMissedCount] = useState(0);
+  const missCount = Object.values(attempts).filter((a) => !a.correct).length;
+
   // Quiz state (review/test slots): linear, one question at a time.
   const [qi, setQi] = useState(0);
+
+  // ── Read mode (learn slots) ──────────────────────────────────────────────
+  // Speaks the current card: Concept → its Example → the Quick check prompt +
+  // options ONCE (no spoiler of the right answer), then WAITS for the answer.
+  // "Continue" moves on and the read follows the deck to the summary. Any
+  // manual navigation (Back/Continue/dots) re-reads the newly shown card.
+  // Same token-ref invalidation pattern as SlidesRunner.
+  const [readMode, setReadMode] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const tokenRef = useRef(0);
+  const slideRef = useRef(slide);
+  const readModeRef = useRef(readMode);
+  const subjectsRef = useRef(subjects);
+  const perSubjectRef = useRef(perSubject);
+  useEffect(() => { slideRef.current = slide; }, [slide]);
+  useEffect(() => { readModeRef.current = readMode; }, [readMode]);
+  useEffect(() => { subjectsRef.current = subjects; }, [subjects]);
+  useEffect(() => { perSubjectRef.current = perSubject; }, [perSubject]);
+
+  /** The current card → speakable text (null = nothing to say on this card). */
+  const cardSpeech = useCallback((idx: number): string | null => {
+    const subs = subjectsRef.current;
+    const per = perSubjectRef.current;
+    if (idx >= subs.length * per) return null; // summary slide — nothing to read
+    const subject = subs[Math.min(Math.floor(idx / per), subs.length - 1)];
+    const phase = idx % per;
+    if (phase === 0) {
+      const parts = [`Concept. ${subject.title}.`, buildSpeakable(subject.explanation)];
+      return parts.join(' ');
+    }
+    if (phase === 1) return `Example. ${buildSpeakable(subject.example)}`;
+    // Quick check: prompt + options, never the answer.
+    const mcq = subject.mcq;
+    const opts = mcq.options.map((o, n) => `Option ${String.fromCharCode(65 + n)}: ${buildSpeakable(o)}`).join('. ');
+    return `Quick check. ${buildSpeakable(mcq.prompt)} ${opts}`;
+  }, []);
+
+  /** Read card `idx` — ONE card per trigger, no auto-advance. Continue and
+   * Back re-read the newly shown card while read mode is on. */
+  const readFrom = useCallback(async (idx: number, token: number) => {
+    if (token !== tokenRef.current) return;
+    const text = cardSpeech(idx);
+    if (!text) { setSpeaking(false); return; } // summary — nothing to read
+    setSpeaking(true);
+    setReadError(null);
+    try {
+      await speakAll(chunkSpeechText(text));
+    } catch {
+      if (token === tokenRef.current) {
+        setSpeaking(false);
+        setReadError('Read-aloud failed — the lesson is still readable.');
+      }
+      return;
+    }
+    // Leave the audio element fully stopped (a lingering src can keep playing).
+    if (token === tokenRef.current) {
+      tokenRef.current += 1;
+      stopSpeak();
+      setSpeaking(false);
+    }
+  }, [cardSpeech]);
+
+  /** Kill any in-flight read. */
+  const abortRead = useCallback(() => {
+    tokenRef.current += 1;
+    stopSpeak();
+    setSpeaking(false);
+  }, []);
+
+  /** Toggle read mode. On: starts at the current card. Off: stops. */
+  const toggleRead = useCallback(() => {
+    if (readModeRef.current) {
+      setReadMode(false);
+      abortRead();
+      return;
+    }
+    setReadMode(true);
+    readModeRef.current = true;
+    tokenRef.current += 1;
+    void readFrom(slideRef.current, tokenRef.current);
+  }, [abortRead, readFrom]);
+
+  // Single nav entry point: clamps, syncs slideRef (rapid clicks stay
+  // accurate), and in read mode re-reads the newly shown card. The Continue
+  // handler calls the raw setSlide instead when a read should keep running
+  // (readFrom already advanced through teach/example pairs).
+  const goTo = useCallback(
+    (n: number) => {
+      const next = Math.max(0, n);
+      if (next === slideRef.current) return;
+      slideRef.current = next;
+      setSlide(next);
+      if (readModeRef.current) {
+        tokenRef.current += 1;
+        stopSpeak();
+        void readFrom(next, tokenRef.current);
+      }
+    },
+    [readFrom],
+  );
+
+  // Leaving the runner stops speech unconditionally — a `speaking` guard
+  // races the between-cards gap and leaks a playing element (seen live in
+  // SlidesRunner).
+  useEffect(
+    () => () => {
+      tokenRef.current += 1;
+      stopSpeak();
+    },
+    [],
+  );
+
+  // Revisit mode: a replay of an already-completed lesson (opened from its
+  // pill). Graded locally, never re-submitted — score/credit are frozen.
+  const replay = !!content && (content as { replay?: boolean }).replay === true;
 
   if (!content) {
     return (
@@ -210,8 +321,17 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
     }
   };
 
-  const onMcqAnswered = (subject: string, correct: boolean) => {
-    setAttempts((prev) => ({ ...prev, [subject]: { subject, correct } }));
+  const onMcqAnswered = (subject: string, correct: boolean, prompt = '', answer = '') => {
+    setAttempts((prev) => ({ ...prev, [subject]: { subject, correct, prompt, answer } }));
+    // First pass only: queue the miss for the end-of-lesson redo.
+    if (!redoPhase && prompt && !redoSeen.current.has(prompt)) {
+      const q = subjects.find((s) => s.title === subject)?.mcq;
+      if (q && !correct) {
+        redoSeen.current.add(prompt);
+        setMissedCount((c) => c + 1);
+        setRedoQueue((prev) => [...prev, { subject, prompt: q.prompt, options: q.options, correct: q.correct, explanation: q.explanation }]);
+      }
+    }
   };
 
   const helpFor = (subject: string) => {
@@ -239,9 +359,84 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
     const subj = subjects[subjectIdx];
     const last = slide === slidesTotal - 1;
 
+    // Redo phase (after the summary slide): repeat first-pass misses until
+    // every one is answered right, then Finish.
+    if (isSummary && redoPhase) {
+      const current = redoQueue[0];
+      if (!current) {
+        // Queue empty — every miss has been redone correctly.
+        return (
+          <div className="space-y-4">
+            <ProgressDots step={step} current={slot} onReplay={onReplay} />
+            <div className="card space-y-3" style={{ padding: 'var(--space-6)' }}>
+              <h3 className="text-2xl font-semibold">{replay ? 'Refresher complete 🎉' : 'Lesson complete 🎉'}</h3>
+              <p className="text-sm" style={{ opacity: 0.7 }}>
+                You answered {attemptList.filter((a) => a.correct).length} of {attemptList.length} checks right
+                {replay
+                  ? ' — your recorded score stands.'
+                  : ` and worked through the ${missCount} you missed. The next lesson will focus on whatever slipped — keep going.`}
+              </p>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span />
+              {replay ? (
+                <button type="button" className="btn btn-primary" onClick={onLeave}>
+                  Done
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={submitting || attemptList.length === 0}
+                  onClick={() => void finish(hintsUsed)}
+                >
+                  {submitting ? 'Saving…' : 'Finish lesson'}
+                </button>
+              )}
+            </div>
+            {error && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+            {!replay && (
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onLeave}>
+                Leave for now — progress is saved
+              </button>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div className="space-y-4">
+          <ProgressDots step={step} current={slot} onReplay={onReplay} />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+              Let's try that again · {current.subject}
+            </span>
+            <span className="text-xs" style={{ opacity: 0.55 }}>
+              {redoQueue.length} to retry
+            </span>
+          </div>
+          <div className="card min-h-[240px] space-y-5" style={{ padding: 'var(--space-6)' }}>
+            <Mcq
+              key={current.prompt}
+              q={current}
+              onAnswered={(correct) => setRedoQueue((q) => nextRedoQueue(q ?? [], current.prompt, correct))}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs" style={{ opacity: 0.55 }}>
+              Answer right to clear it — these don't change your score
+            </span>
+          </div>
+          {error && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+          <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onLeave}>
+            Leave for now — progress is saved
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-4">
-        <ProgressDots step={step} current={slot} />
+        <ProgressDots step={step} current={slot} onReplay={onReplay} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
             {meta.label} · {subj.title}
@@ -272,6 +467,11 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
                 You answered {attemptList.filter((a) => a.correct).length} of {attemptList.length} checks right. The next
                 lesson will focus on whatever slipped — keep going.
               </p>
+              {redoQueue && redoQueue.length > 0 && (
+                <p className="text-sm" style={{ color: 'var(--color-accent)', margin: 0 }}>
+                  {redoQueue.length} quick check{redoQueue.length === 1 ? '' : 's'} to retry before you finish.
+                </p>
+              )}
               {attemptList.length > 0 && (
                 <ul className="space-y-1.5">
                   {subjects.map((s) => {
@@ -332,45 +532,91 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
               <div className="card-kicker">Quick check</div>
               <Mcq
                 q={subj.mcq}
-                onAnswered={(correct) => onMcqAnswered(subj.title, correct)}
+                onAnswered={(correct, picked) => onMcqAnswered(subj.title, correct, subj.mcq.prompt, picked)}
               />
             </>
           )}
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={slide === 0 || submitting}
-            onClick={() => setSlide((s) => Math.max(0, s - 1))}
-          >
-            <HiArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-          {last ? (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              className="btn btn-primary"
-              disabled={submitting || attemptList.length === 0}
-              title={attemptList.length === 0 ? 'Answer the quick checks first' : undefined}
-              onClick={() => void finish(hintsUsed)}
+              className="btn btn-ghost"
+              disabled={slide === 0 || submitting}
+              onClick={() => goTo(slide - 1)}
             >
-              {submitting ? 'Saving…' : 'Finish lesson'}
+              <HiArrowLeft className="h-4 w-4" />
+              Back
             </button>
+            <button
+              type="button"
+              className={`btn ${readMode ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={toggleRead}
+              aria-pressed={readMode}
+              title={readMode ? 'Stop read-aloud' : 'Read the lesson aloud — follows along as you continue'}
+            >
+              {speaking ? <Spinner size="sm" /> : readMode ? <HiStop className="h-4 w-4" aria-hidden /> : <HiSpeakerWave className="h-4 w-4" aria-hidden />}
+              {readMode ? (speaking ? 'Reading…' : 'Read on') : 'Read'}
+            </button>
+          </div>
+          {last ? (
+            missedCount > 0 ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  // Enter the redo phase: repeat every first-pass miss until
+                  // each is answered right (queue was built during the pass).
+                  abortRead();
+                  setRedoPhase(true);
+                }}
+              >
+                Retry {missedCount} missed check{missedCount === 1 ? '' : 's'}
+                <HiChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting || attemptList.length === 0}
+                title={attemptList.length === 0 ? 'Answer the quick checks first' : undefined}
+                onClick={() => {
+                  abortRead();
+                  void finish(hintsUsed);
+                }}
+              >
+                {submitting ? 'Saving…' : 'Finish lesson'}
+              </button>
+            )
           ) : (
             <button
               type="button"
               className="btn btn-primary"
               disabled={submitting || (phase === 2 && attempts[subj.title] === undefined)}
               title={phase === 2 && attempts[subj.title] === undefined ? 'Answer the quick check to continue' : undefined}
-              onClick={() => setSlide((s) => s + 1)}
+              onClick={() => {
+                const next = slide + 1;
+                slideRef.current = next;
+                setSlide(next);
+                // In read mode the next card reads automatically: the read
+                // loop is either still parked after a quick check (token
+                // alive) or was stopped by nav — restart it at the new card.
+                if (readModeRef.current) {
+                  tokenRef.current += 1;
+                  stopSpeak();
+                  void readFrom(next, tokenRef.current);
+                }
+              }}
             >
               Continue
               <HiChevronRight className="h-4 w-4" />
             </button>
           )}
         </div>
+        {readError && (
+          <p className="text-xs" style={{ color: 'var(--color-danger)', opacity: 0.85 }}>{readError}</p>
+        )}
         {error && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
         <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onLeave}>
           Leave for now — progress is saved
@@ -392,18 +638,104 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
       </div>
     );
   }
+  // ── Review/Test slots: pure quiz ───────────────────────────────────────────
   const q = questions[Math.min(qi, questions.length - 1)];
   const isLastQ = qi === questions.length - 1;
   const qAnswered = attempts[q.prompt] !== undefined;
   // Quiz questions can repeat a subject (focus weighting) — every question
   // counts, keyed by its prompt.
-  const recordQuizAnswer = (subject: string, correct: boolean, prompt: string) => {
-    setAttempts((prev) => ({ ...prev, [prompt]: { subject, correct } }));
+  const recordQuizAnswer = (subject: string, correct: boolean, prompt: string, answer: string) => {
+    setAttempts((prev) => ({ ...prev, [prompt]: { subject, correct, prompt, answer } }));
+    // First pass only: queue the miss for the end-of-quiz redo.
+    if (!redoPhase && !redoSeen.current.has(prompt) && !correct) {
+      redoSeen.current.add(prompt);
+      setMissedCount((c) => c + 1);
+      const missed = questions.find((x) => x.prompt === prompt);
+      if (missed) {
+        setRedoQueue((prev) => [
+          ...prev,
+          { subject, prompt: missed.prompt, options: missed.options, correct: missed.correct, explanation: missed.explanation },
+        ]);
+      }
+    }
   };
+
+  // Redo phase (after the last question): repeat first-pass misses until every
+  // one is answered right, then Finish. Score stays the first-pass record.
+  if (redoPhase) {
+    const current = redoQueue[0];
+    if (!current) {
+      return (
+        <div className="space-y-4">
+          <ProgressDots step={step} current={slot} onReplay={onReplay} />
+          <div className="card space-y-3" style={{ padding: 'var(--space-6)' }}>
+            <h3 className="text-2xl font-semibold">{replay ? 'Refresher complete 🎉' : 'Review complete 🎉'}</h3>
+            <p className="text-sm" style={{ opacity: 0.7 }}>
+              {replay
+                ? `You answered ${attemptList.filter((a) => a.correct).length} of ${attemptList.length} right — your recorded score stands.`
+                : `You answered ${attemptList.filter((a) => a.correct).length} of ${attemptList.length} right — and worked each miss until you got it.`}
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span />
+            {replay ? (
+              <button type="button" className="btn btn-primary" onClick={onLeave}>
+                Done
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting || attemptList.length === 0}
+                onClick={() => void finish(hintsUsed)}
+              >
+                {submitting ? 'Saving…' : slot === 'test' ? 'Finish test' : 'Finish review'}
+              </button>
+            )}
+          </div>
+          {error && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+          {!replay && (
+            <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onLeave}>
+              Leave for now — progress is saved
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        <ProgressDots step={step} current={slot} onReplay={onReplay} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+            Let's try that again · {current.subject}
+          </span>
+          <span className="text-xs" style={{ opacity: 0.55 }}>
+            {redoQueue.length} to retry
+          </span>
+        </div>
+        <div className="card min-h-[240px] space-y-5" style={{ padding: 'var(--space-6)' }}>
+          <Mcq
+            key={current.prompt}
+            q={current}
+            onAnswered={(correct) => setRedoQueue((qq) => nextRedoQueue(qq ?? [], current.prompt, correct))}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs" style={{ opacity: 0.55 }}>
+            Answer right to clear it — these don't change your score
+          </span>
+        </div>
+        {error && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{error}</p>}
+        <button type="button" className="btn btn-ghost" style={{ fontSize: 12.5 }} onClick={onLeave}>
+          Leave for now — progress is saved
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <ProgressDots step={step} current={slot} />
+      <ProgressDots step={step} current={slot} onReplay={onReplay} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
           {meta.label} · {q.subject}
@@ -430,7 +762,7 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
         <Mcq
           key={q.id}
           q={q}
-          onAnswered={(correct) => recordQuizAnswer(q.subject, correct, q.prompt)}
+          onAnswered={(correct, picked) => recordQuizAnswer(q.subject, correct, q.prompt, picked ?? '')}
           onHelp={() => setHintsUsed((h) => h + 1)}
           helpText={helpFor(q.subject)}
         />
@@ -447,14 +779,29 @@ export default function FlowLesson({ activity, step, onComplete, onAbandon, onLe
           Back
         </button>
         {isLastQ ? (
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={submitting || attemptList.length === 0}
-            onClick={() => void finish(hintsUsed)}
-          >
-            {submitting ? 'Saving…' : slot === 'test' ? 'Finish test' : 'Finish review'}
-          </button>
+          missedCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                // Enter the redo phase: repeat every first-pass miss until
+                // each is answered right (queue was built during the pass).
+                setRedoPhase(true);
+              }}
+            >
+              Retry {missedCount} missed question{missedCount === 1 ? '' : 's'}
+              <HiChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={submitting || attemptList.length === 0}
+              onClick={() => void finish(hintsUsed)}
+            >
+              {submitting ? 'Saving…' : slot === 'test' ? 'Finish test' : 'Finish review'}
+            </button>
+          )
           ) : (
           <button
             type="button"
