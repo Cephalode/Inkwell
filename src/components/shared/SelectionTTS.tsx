@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { HiPlay, HiPause, HiStop, HiXMark, HiExclamationTriangle, HiSpeakerWave, HiChatBubbleLeftRight } from 'react-icons/hi2';
 import Spinner from './Spinner';
-import { buildSpeakable } from '../../utils/speechText';
+import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
 import { useChatStore } from '../../store/chatStore';
 
 const API_BASE: string =
@@ -28,12 +28,16 @@ function getAudio(): HTMLAudioElement {
 
 /** Stop playback and drop any in-flight download. */
 export function stopSpeak(): void {
+  seq++; // invalidate the live session — late fetches/events no-op instead of ghost-resuming
   const a = getAudio();
   a.pause();
   a.removeAttribute('src');
   a.load();
   progressState = { phase: 'idle', partsDone: 0, partsTotal: 0 };
   emitProgress();
+  // resolve any speakAll() callers awaiting this session's end
+  for (const w of waiters) w();
+  waiters.clear();
 }
 
 /** Word timing from the server: t = seconds into this chunk's audio. */
@@ -45,7 +49,7 @@ export interface WordMark {
 /** POST the text to /api/tts. Default: raw MP3 bytes. With Accept: json, the
  * server enables edge-tts word boundaries and returns
  * {audio: base64 mp3, marks: [{t, w}]} — timestamps for the karaoke highlight. */
-async function fetchTts(text: string, words = false): Promise<{ bytes: Uint8Array; marks: WordMark[] }> {
+async function fetchTts(text: string, words = false): Promise<{ bytes: Uint8Array<ArrayBuffer>; marks: WordMark[] }> {
   const res = await fetch(`${API_BASE}/tts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(words ? { Accept: 'application/json' } : {}) },
@@ -66,6 +70,23 @@ async function fetchTts(text: string, words = false): Promise<{ bytes: Uint8Arra
 let activeWord: number | null = null;
 let audioMarks: WordMark[] = [];
 let rafId = 0;
+/** Sum of durations of all fully-played parts in the current session —
+ * wordIndexAt adds it to currentTime so the karaoke index is continuous
+ * across parts (marks are stored on the session-global timeline). */
+let markOffset = 0;
+/** Session id for the queue. Bump on stop/new read: stale onEnded handlers,
+ * late fetches and player events from the old read no-op against it. */
+let seq = 0;
+/** Streaming queue: blob URLs consumed in order while the rest generate. */
+let queue: string[] = [];
+let queueHead = 0;
+/** Index of the part currently loaded in the player (-1 = none yet). */
+let curIdx = -1;
+/** User pressed pause — hold the queue (a landing part must not override). */
+let userPaused = false;
+/** speakAll end-waiters — flushed by drain (normal) and stopSpeak (abort).
+ * Called with an error when nothing ever played. */
+const waiters = new Set<(err?: unknown) => void>();
 
 /** Progress signal for long reads (lesson Listen): fires on every audio
  * state change with {phase, partsDone, partsTotal}. phase: 'generating' |
@@ -92,7 +113,7 @@ export function currentWordIndex(): number | null {
 
 function wordIndexAt(a: HTMLAudioElement): number | null {
   if (!audioMarks.length || a.paused) return activeWord && a.paused ? activeWord : null;
-  const t = a.currentTime;
+  const t = a.currentTime + markOffset;
   let lo = 0;
   let hi = audioMarks.length - 1;
   let hit: number | null = null;
@@ -133,39 +154,114 @@ function clearWordTracking() {
   }
 }
 
-/** Speak pre-chunked text: fetch each chunk, concatenate the MP3s (MP3 frames
- * concat cleanly — same trick as the podcast pipeline), play as ONE audio so
- * the bar's scrubber covers the whole read. Marks (when fetched) are rebased
- * per chunk byte-length before merging. Fetches SEQUENTIALLY and emits
- * 'tts-progress' after each part so long reads show N/M generation progress
- * (ponytail: serial instead of parallel — the latency cost is progress
- * visibility; parallel + monotonic counting needs in-flight tracking). */
+/** Streaming pipeline over sentence-granular chunks: ONE fetch in flight, each
+ * part's MP3 pushed to a blob queue as it lands. Playback is a cursor over the
+ * queue — when a part ends, the next starts immediately (gap < ms) while the
+ * rest still generate; 'canplaythrough' advances past fetch stalls mid-part.
+ * Marks (when fetched) merge globally: part i's times add all prior parts'
+ * durations, so the karaoke index is continuous across parts. Generation
+ * failures mark the queue done; playback of what landed keeps going. */
 export async function speakAll(chunks: string[], words = false): Promise<void> {
+  if (!chunks.length) { stopSpeak(); return; } // nothing to say — end any session, don't hang the caller
   stopSpeak(); // one voice at a time — a new read always replaces the old
+  const id = ++seq; // AFTER stopSpeak: its seq++ kills the OLD session, not this one
   clearWordTracking();
+  markOffset = 0;
+  queue = chunks.map(() => '');
+  queueHead = 0;
+  curIdx = -1;
+  userPaused = false;
   progressState = { phase: 'generating', partsDone: 0, partsTotal: chunks.length };
   emitProgress();
-  const parts: { bytes: Uint8Array; marks: WordMark[] }[] = [];
-  for (const c of chunks) {
-    parts.push(await fetchTts(c, words));
-    progressState = { ...progressState, partsDone: parts.length };
-    emitProgress();
-  }
-  const total = parts.reduce((n, p) => n + p.bytes.byteLength, 0);
-  const merged = new Uint8Array(total);
-  let off = 0;
-  audioMarks = [];
-  for (const p of parts) {
-    if (words) for (const m of p.marks) audioMarks.push({ t: m.t + off / 6000, w: m.w });
-    merged.set(p.bytes, off);
-    off += p.bytes.byteLength;
-  }
   const a = getAudio();
-  a.src = URL.createObjectURL(new Blob([merged], { type: 'audio/mpeg' }));
-  if (audioMarks.length) startWordRaf(a);
-  progressState = { phase: 'playing', partsDone: parts.length, partsTotal: parts.length };
-  emitProgress();
-  await a.play();
+
+  /** Playback cursor: play the next queued part; queue exhausted → session
+   * over — the LAST part's 'ended' lands here, nothing re-advances. */
+  const drain = (err?: unknown) => {
+    progressState = { phase: 'idle', partsDone: 0, partsTotal: 0 };
+    emitProgress();
+    for (const w of waiters) w(err); // resolve speakAll — the read is over
+    waiters.clear();
+  };
+  const advance = () => {
+    if (id !== seq) return; // superseded
+    if (curIdx >= 0) partDur[curIdx] = a.duration || partDur[curIdx] || 0; // outgoing part's real duration
+    if (queueHead >= queue.length) { drain(); return; }
+    const url = queue[queueHead];
+    if (!url) {
+      if (genDone) drain(); // tail chunks failed — nothing will fill them
+      return; // next part still generating; 'canplaythrough' re-advances
+    }
+    const idx = queueHead++;
+    curIdx = idx;
+    if (words) {
+      // part boundaries: sum of durations of parts 0..idx-1 (real audio time)
+      let off = 0;
+      for (let k = 0; k < idx; k++) off += partDur[k];
+      markOffset = off;
+      for (const m of partMarks[idx]) audioMarks.push({ t: m.t + off, w: m.w });
+    }
+    a.src = url;
+    void a.play().catch((e) => {
+      if (id === seq) console.error('TTS playback failed:', e);
+    });
+    if (audioMarks.length) startWordRaf(a);
+    progressState = { phase: 'playing', partsDone: idx + 1, partsTotal: queue.length };
+    emitProgress();
+  };
+  const advanceIfIdle = () => {
+    if (id !== seq) return;
+    // A part is loaded and not finished → we're not idle. Without this gate
+    // the 'emptied' event fired by our OWN src assignment re-entered advance:
+    // single-part reads drained instantly (audio killed mid-play) and
+    // multi-part reads skipped ahead.
+    if (a.src && !a.ended) return;
+    if (a.paused && !userPaused) advance();
+  };
+
+  const partDur: number[] = [];
+  const partMarks: WordMark[][] = chunks.map(() => []);
+  let failed = 0;
+  let genDone = false;
+
+  // Generation pipeline: keep exactly one fetch in flight; each result is
+  // parked as a blob URL and 'canplaythrough' kicks the player when idle.
+  (async () => {
+    for (let i = 0; i < chunks.length; i++) {
+      if (id !== seq) return; // superseded — drop in-flight work
+      try {
+        const part = await fetchTts(chunks[i], words);
+        if (id !== seq) return;
+        partMarks[i] = part.marks;
+        queue[i] = URL.createObjectURL(new Blob([part.bytes], { type: 'audio/mpeg' }));
+        progressState = { ...progressState, partsDone: Math.max(progressState.partsDone, i + 1) };
+        emitProgress();
+        advanceIfIdle();
+      } catch (err) {
+        if (id !== seq) return;
+        failed++;
+        console.error(`TTS chunk ${i + 1}/${chunks.length} failed:`, err);
+      }
+    }
+    genDone = true;
+    if (id === seq) {
+      if (failed === chunks.length) {
+        drain(new Error(`TTS failed — all ${chunks.length} parts errored`)); // nothing played → real error for the caller
+        return;
+      }
+      advanceIfIdle(); // playback already drained (fast generation) → drain now
+    }
+  })();
+
+  a.addEventListener('canplaythrough', advanceIfIdle);
+  a.addEventListener('ended', advance);
+  a.addEventListener('emptied', advanceIfIdle); // pause/stop/scrub mid-session → resume the queue if it was ours
+  await new Promise<void>((resolve, reject) => {
+    waiters.add((err) => (err ? reject(err) : resolve()));
+  });
+  a.removeEventListener('canplaythrough', advanceIfIdle);
+  a.removeEventListener('ended', advance);
+  a.removeEventListener('emptied', advanceIfIdle);
 }
 
 const fmt = (s: number) =>
@@ -184,6 +280,18 @@ export default function SelectionTTS() {
   const [error, setError] = useState<string | null>(null);
   const [bar, setBar] = useState<{ text: string } | null>(null); // what the bottom bar shows
   const [time, setTime] = useState({ cur: 0, dur: 0 });
+  // Volume lives on the module-level audio element; persist across reads/reloads.
+  const [vol, setVol] = useState(() => {
+    const v = Number(localStorage.getItem('tts-vol') ?? '1');
+    const clamped = Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+    getAudio().volume = clamped;
+    return clamped;
+  });
+  const changeVol = (v: number) => {
+    setVol(v);
+    getAudio().volume = v;
+    localStorage.setItem('tts-vol', String(v));
+  };
   const [scrubbing, setScrubbing] = useState(false);
   const pillPos = useRef({ x: -9999, y: -9999 });
   // eslint-disable-next-line react-hooks/refs -- deliberate: pill re-anchors to the latest menu position
@@ -195,7 +303,15 @@ export default function SelectionTTS() {
     const a = getAudio();
     const onPlay = () => { setSpeaking(true); setLoading(false); setPaused(false); };
     const onPause = () => { setSpeaking(false); setPaused(true); };
-    const onEnded = () => { setSpeaking(false); setLoading(false); setPaused(false); setBar(null); clearWordTracking(); progressState = { phase: 'idle', partsDone: 0, partsTotal: 0 }; emitProgress(); };
+    const onEnded = () => {
+      // 'ended' fires at EVERY part boundary in the streaming pipeline. Defer
+      // past the pipeline's own ended-handler: it either starts the next part
+      // (progress stays 'playing') or drains the queue (idle → real teardown).
+      queueMicrotask(() => {
+        if (progressState.phase !== 'idle') return;
+        setSpeaking(false); setLoading(false); setPaused(false); setBar(null); clearWordTracking();
+      });
+    };
     const onTime = () => { if (!scrubbing) setTime({ cur: a.currentTime, dur: a.duration || 0 }); };
     const onEmptied = () => { stopWordRaf(); }; // stop/replace drops the element's source
     const onSeeked = () => {
@@ -268,7 +384,7 @@ export default function SelectionTTS() {
     setBar({ text });
     setTime({ cur: 0, dur: 0 });
     try {
-      await speakAll([text]); // 'play' event flips loading→speaking
+      await speakAll(chunkSpeechText(text)); // sentence chunks → first audio in ~3s instead of full-selection single-shot
     } catch (err) {
       console.error('SelectionTTS:', err);
       setLoading(false);
@@ -281,6 +397,7 @@ export default function SelectionTTS() {
 
   const togglePause = () => {
     const a = getAudio();
+    userPaused = a.paused ? false : true; // hold the queue while paused (resume releases it)
     if (a.paused) void a.play();
     else a.pause();
   };
@@ -387,6 +504,23 @@ export default function SelectionTTS() {
           <span className="w-10 shrink-0 tabular-nums opacity-70">
             {time.dur > 0 ? fmt(time.dur) : '--:--'}
           </span>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <HiSpeakerWave className="h-4 w-4 opacity-70" />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={vol}
+              onChange={(e) => changeVol(Number(e.target.value))}
+              className="h-1.5 w-16 cursor-pointer appearance-none rounded-full"
+              style={{
+                background: `linear-gradient(to right, var(--color-accent) ${vol * 100}%, var(--color-neutral-300) ${vol * 100}%)`,
+              }}
+              aria-label="Volume"
+            />
+          </div>
 
           {speaking && (
             <button
