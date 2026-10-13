@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { HiChevronDown, HiChevronLeft, HiChevronRight, HiCheck, HiSpeakerWave } from 'react-icons/hi2';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HiChevronDown, HiChevronLeft, HiChevronRight, HiCheck, HiSpeakerWave, HiStop } from 'react-icons/hi2';
 import Spinner from '../shared/Spinner';
 import Markdown from '../shared/Markdown';
 import { getActivity } from '../../services/api/learning';
 import { useLearningStore } from '../../store/learningStore';
+import { stopSpeak, speakAll } from '../shared/SelectionTTS';
+import { buildSpeakable, chunkSpeechText } from '../../utils/speechText';
 import type { Slide, SlidesContent } from '../../types/learning';
 import type { ActivityRunnerProps } from './runnerProps';
 
@@ -15,7 +17,24 @@ import type { ActivityRunnerProps } from './runnerProps';
  * deck reads fine meanwhile, and once the audio (plus its per-slide timing)
  * lands, playback auto-advances the slides. "Finish deck" submits; viewing is
  * weak evidence (XP only).
+ *
+ * Read mode (Oct 2026): toggling "Read" speaks the current slide via the
+ * client TTS engine and — as each slide finishes — advances and reads the
+ * next, until the deck ends. Any navigation (keys, click, dots) stops the
+ * in-flight read and reads the newly shown slide instead.
  */
+
+/** One slide → speakable text. Speaker notes ARE the narration (generated for
+ * exactly this); fall back to reading the visible content when empty. */
+function slideSpeech(s: Slide): string {
+  if (s.notes?.trim()) return buildSpeakable(s.notes);
+  const parts = [buildSpeakable(s.title)];
+  if (s.type === 'title' && s.subtitle) parts.push(buildSpeakable(s.subtitle));
+  if (s.type === 'bullets' && s.bullets.length) parts.push(s.bullets.map((b) => buildSpeakable(b)).join('. '));
+  if (s.type === 'diagram' && s.caption) parts.push(buildSpeakable(s.caption));
+  return parts.filter(Boolean).join('. ');
+}
+
 export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave }: ActivityRunnerProps) {
   const submitActivity = useLearningStore((s) => s.submitActivity);
   const [current, setCurrent] = useState(activity);
@@ -28,8 +47,99 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
   // Fresh content from a poll must be visible to the render: poll writes into
   // `current` (same pattern as PodcastRunner — `activity` stays frozen).
   const content = current.content as SlidesContent | null;
-  const slides = content?.slides ?? [];
+  const slides = useMemo(() => content?.slides ?? [], [content]);
   const last = Math.max(0, slides.length - 1);
+
+  // ── Read mode ────────────────────────────────────────────────────────────
+  // `readMode` = auto-read on every slide change; `speaking` = a read is live.
+  // tokenRef invalidates in-flight reads on nav/toggle/unmount: when speakAll
+  // resolves (or is stopped), a stale token just drops out instead of
+  // advancing. Refs mirror state via effects — the async loop reads them.
+  const [readMode, setReadMode] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const tokenRef = useRef(0);
+  const slidesRef = useRef(slides);
+  const lastRef = useRef(last);
+  const iRef = useRef(i);
+  const readModeRef = useRef(readMode);
+  useEffect(() => { slidesRef.current = slides; }, [slides]);
+  useEffect(() => { lastRef.current = last; }, [last]);
+  useEffect(() => { iRef.current = i; }, [i]);
+  useEffect(() => { readModeRef.current = readMode; }, [readMode]);
+
+  /** Kill any in-flight read. Token bump makes its continuation a no-op. */
+  const abortRead = useCallback(() => {
+    tokenRef.current += 1;
+    stopSpeak();
+    setSpeaking(false);
+  }, []);
+
+  /** Read slide `idx` aloud; then, while read mode is on, advance + repeat
+   * until the deck ends. `token` must match the live session. (Iterative —
+   * each slide's speech is awaited in sequence.) */
+  const readFrom = useCallback(async (idx: number, token: number) => {
+    let cur = idx;
+    for (;;) {
+      const s = slidesRef.current[cur];
+      if (!s || token !== tokenRef.current) return;
+      setSpeaking(true);
+      setReadError(null);
+      try {
+        await speakAll(chunkSpeechText(slideSpeech(s)));
+      } catch {
+        if (token === tokenRef.current) {
+          setSpeaking(false);
+          setReadError('Read-aloud failed — the slides are still readable above.');
+        }
+        return;
+      }
+      if (token !== tokenRef.current) return; // superseded while reading
+      if (!readModeRef.current) {
+        setSpeaking(false); // one-shot (mode turned off mid-read)
+        return;
+      }
+      const next = cur + 1;
+      if (next > lastRef.current) {
+        // Deck finished — mode stays on for re-reads, but leave the audio
+        // element fully stopped (a lingering src can keep playing).
+        tokenRef.current += 1;
+        stopSpeak();
+        setSpeaking(false);
+        return;
+      }
+      cur = next;
+      iRef.current = next;
+      setI(next);
+    }
+  }, []);
+
+  /** Turn read mode on/off. Turning it on starts at the current slide (also
+   * pausing the narration MP3 — two voices at once is noise). */
+  const toggleRead = useCallback(() => {
+    if (readModeRef.current) {
+      setReadMode(false);
+      abortRead();
+      return;
+    }
+    audioRef.current?.pause();
+    setReadMode(true);
+    readModeRef.current = true;
+    tokenRef.current += 1;
+    void readFrom(iRef.current, tokenRef.current);
+  }, [abortRead, readFrom]);
+
+  // Leave nothing speaking when the runner goes away — unconditionally. A
+  // conditional guard (speakingRef) races: the loop can be between slides
+  // (speaking=false) while the audio element still has a src. stopSpeak() on
+  // an idle element is harmless (seq bump + pause + src clear).
+  useEffect(
+    () => () => {
+      tokenRef.current += 1;
+      stopSpeak();
+    },
+    [],
+  );
 
   // Poll while the narration render is in flight (bounded ~5 min at 5s).
   const [polls, setPolls] = useState(0);
@@ -45,7 +155,25 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
     return () => clearTimeout(t);
   }, [content, polls, activity.id]);
 
-  const go = useCallback((d: number) => setI((n) => Math.max(0, Math.min(last, n + d))), [last]);
+  /** Single navigation entry point: clamps, syncs iRef immediately (rapid
+   * arrow keys stay accurate), and in read mode stops the current slide's
+   * read and reads the target slide. */
+  const goTo = useCallback(
+    (n: number) => {
+      const next = Math.max(0, Math.min(lastRef.current, n));
+      if (next === iRef.current) return;
+      iRef.current = next;
+      setI(next);
+      if (readModeRef.current) {
+        tokenRef.current += 1;
+        stopSpeak();
+        void readFrom(next, tokenRef.current);
+      }
+    },
+    [readFrom],
+  );
+
+  const go = useCallback((d: number) => goTo(iRef.current + d), [goTo]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,6 +203,8 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
   const gaveUp = !audioPath && !renderError && polls >= 60;
 
   // Auto-advance: while narration plays, the audio clock picks the slide.
+  // (Deliberately a plain setI: the narration MP3 is the driver here, so the
+  // read-mode loop must not also fire — goTo would double-voice the slide.)
   const onTime = () => {
     const segs = content.slideAudio;
     const t = audioRef.current?.currentTime;
@@ -85,6 +215,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
   };
 
   const finish = async () => {
+    abortRead();
     setSubmitting(true);
     setError(null);
     try {
@@ -93,6 +224,11 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
       setError(err instanceof Error ? err.message : 'Could not finish the deck');
       setSubmitting(false);
     }
+  };
+
+  const leave = () => {
+    abortRead();
+    onLeave();
   };
 
   return (
@@ -104,7 +240,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
         onClick={(e) => {
           const rect = stageRef.current?.getBoundingClientRect();
           if (!rect) return;
-          go(e.clientX - rect.left > rect.width / 2 ? 1 : -1);
+          goTo(e.clientX - rect.left > rect.width / 2 ? i + 1 : i - 1);
         }}
       >
         <div ref={stageRef} className="relative w-full" style={{ aspectRatio: '16 / 9', background: 'var(--color-bg)' }}>
@@ -138,10 +274,22 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
 
       {/* Controls */}
       <div className="flex items-center justify-between gap-3">
-        <button type="button" className="btn btn-secondary" onClick={() => go(-1)} disabled={i === 0} aria-label="Previous slide">
-          <HiChevronLeft className="h-4 w-4" />
-          Prev
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn btn-secondary" onClick={() => goTo(i - 1)} disabled={i === 0} aria-label="Previous slide">
+            <HiChevronLeft className="h-4 w-4" />
+            Prev
+          </button>
+          <button
+            type="button"
+            className={`btn ${readMode ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={toggleRead}
+            aria-pressed={readMode}
+            title={readMode ? 'Stop read-aloud' : 'Read this slide aloud, then keep reading as you advance'}
+          >
+            {speaking ? <Spinner size="sm" /> : readMode ? <HiStop className="h-4 w-4" aria-hidden /> : <HiSpeakerWave className="h-4 w-4" aria-hidden />}
+            {readMode ? (speaking ? 'Reading…' : 'Read on') : 'Read'}
+          </button>
+        </div>
         <div className="flex items-center gap-1.5">
           {slides.map((_, n) => (
             <button
@@ -149,7 +297,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
               type="button"
               aria-label={`Go to slide ${n + 1}`}
               aria-current={n === i}
-              onClick={() => setI(n)}
+              onClick={() => goTo(n)}
               className="transition-colors"
               style={{
                 width: 8,
@@ -164,7 +312,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
           ))}
         </div>
         {i < last ? (
-          <button type="button" className="btn btn-primary" onClick={() => go(1)}>
+          <button type="button" className="btn btn-primary" onClick={() => goTo(i + 1)}>
             Next
             <HiChevronRight className="h-4 w-4" />
           </button>
@@ -199,6 +347,12 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
         </div>
       )}
 
+      {readError && (
+        <div className="text-xs" style={{ color: 'var(--color-danger)', opacity: 0.85 }}>
+          {readError}
+        </div>
+      )}
+
       {error && (
         <div
           className="text-sm"
@@ -214,7 +368,7 @@ export default function SlidesRunner({ activity, onComplete, onAbandon, onLeave 
       )}
 
       <div className="flex justify-end">
-        <button type="button" className="btn btn-ghost" onClick={onLeave}>
+        <button type="button" className="btn btn-ghost" onClick={leave}>
           Back to strategies
         </button>
       </div>
