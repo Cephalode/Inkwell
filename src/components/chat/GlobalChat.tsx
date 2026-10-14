@@ -1212,9 +1212,10 @@ export default function GlobalChat() {
 
   return (
     <>
-      {/* Collapsed rail strip */}
+      {/* Collapsed rail strip — starts below the 56px header so the TopBar
+          avatar (top right) stays visible and clickable (z-50 would cover it) */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex flex-col items-center overflow-hidden transition-all duration-300 ease-in-out ${
+        className={`fixed bottom-0 right-0 top-14 z-50 flex flex-col items-center overflow-hidden transition-all duration-300 ease-in-out ${
           collapsed ? 'w-[52px] opacity-100' : 'w-0 opacity-0 pointer-events-none'
         }`}
         style={{
