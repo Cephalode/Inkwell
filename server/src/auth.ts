@@ -156,6 +156,22 @@ router.get('/google/start', (req: Request, res: Response) => {
   res.cookie('inkwell_oauth_state', state, { httpOnly: true, sameSite: 'lax', secure: PUBLIC_ORIGIN.startsWith('https'), maxAge: 10 * 60 * 1000, path: '/' });
   if (req.query.native) {
     res.cookie('inkwell_oauth_native', '1', { httpOnly: true, sameSite: 'lax', secure: PUBLIC_ORIGIN.startsWith('https'), maxAge: 10 * 60 * 1000, path: '/' });
+    // Native code+PKCE (PRD-15 SEC-1): when the app sends a challenge, the
+    // callback issues a one-time code (not the session token). Clients that
+    // don't send one keep the legacy token-fragment redirect.
+    const challenge = String(req.query.code_challenge || '');
+    const method = String(req.query.code_challenge_method || '');
+    const clientState = String(req.query.client_state || '');
+    const cookieOpts = { httpOnly: true, sameSite: 'lax' as const, secure: PUBLIC_ORIGIN.startsWith('https'), maxAge: 10 * 60 * 1000, path: '/' };
+    if (challenge) {
+      if (method !== 'S256' || !/^[A-Za-z0-9_-]{43,128}$/.test(challenge)) {
+        return res.status(400).json({ error: 'Invalid code_challenge' });
+      }
+      res.cookie('inkwell_oauth_challenge', challenge, cookieOpts);
+      if (/^[A-Za-z0-9_-]{8,128}$/.test(clientState)) {
+        res.cookie('inkwell_oauth_client_state', clientState, cookieOpts);
+      }
+    }
   }
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 });
@@ -235,17 +251,70 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     await claimSharedRows(user.id);
     const token = await createSession(res, user.id);
     // Native clients (iOS ASWebAuthenticationSession) carry the inkwell_oauth_native
-    // flag cookie — hand the session token to the app via its URL scheme instead
-    // of redirecting to the web root. Token is secret-of-the-web-view only.
+    // flag cookie. Code+PKCE clients (PRD-15 SEC-1) get a single-use 5-min code bound
+    // to their challenge — the session token NEVER rides a URL. Legacy native builds
+    // (no challenge cookie) keep the old token-fragment redirect until they update.
     const native = (req as Request & { cookies?: Record<string, string> }).cookies?.['inkwell_oauth_native'];
     if (native) {
       res.clearCookie('inkwell_oauth_native', { path: '/' });
+      const challenge = (req as Request & { cookies?: Record<string, string> }).cookies?.['inkwell_oauth_challenge'];
+      const clientState = (req as Request & { cookies?: Record<string, string> }).cookies?.['inkwell_oauth_client_state'];
+      if (challenge) {
+        res.clearCookie('inkwell_oauth_challenge', { path: '/' });
+        if (clientState) res.clearCookie('inkwell_oauth_client_state', { path: '/' });
+        const code = newToken();
+        await pool.query(
+          `INSERT INTO native_auth_codes (code_hash, user_id, code_challenge, expires_at)
+           VALUES ($1, $2, $3, $4)`,
+          [hashToken(code), user.id, challenge, new Date(Date.now() + 5 * 60 * 1000)],
+        );
+        const frag = [`code=${encodeURIComponent(code)}`, `state=${encodeURIComponent(clientState || '')}`].join('&');
+        return res.redirect(`inkwell://auth/callback#${frag}`);
+      }
       return res.redirect(`inkwell://auth/callback#token=${encodeURIComponent(token)}`);
     }
     res.redirect('/');
   } catch (err: unknown) {
     console.error('OAuth callback error:', err);
     res.status(500).send('Sign-in failed');
+  }
+});
+
+// POST /api/auth/native/exchange — code+PKCE token exchange (PRD-15 SEC-1).
+// Body {code, code_verifier}: code must exist, be unexpired, unused, and hash
+// to the stored challenge. Single-use: claimed with UPDATE ... WHERE used_at
+// IS NULL so a concurrent replay loses the race. Returns the session token in
+// the JSON body (never a URL). Note: createSession above already minted a
+// cookie session for this sign-in — that one rides the OAuth browser and
+// dies with it; THIS token is the credential the app keeps.
+router.post('/native/exchange', async (req: Request, res: Response) => {
+  try {
+    if (!AUTH_ENABLED) return res.status(501).json({ error: 'OAuth not configured' });
+    const code = String(req.body?.code || '');
+    const verifier = String(req.body?.code_verifier || '');
+    if (!code || !/^[A-Za-z0-9_-]{43,128}$/.test(verifier)) {
+      return res.status(400).json({ error: 'Invalid exchange request' });
+    }
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const claim = await pool.query(
+      `UPDATE native_auth_codes
+          SET used_at = now()
+        WHERE code_hash = $1 AND used_at IS NULL AND expires_at > now()
+          AND code_challenge = $2
+      RETURNING user_id`,
+      [hashToken(code), challenge],
+    );
+    const userId = (claim.rows[0] as { user_id: string } | undefined)?.user_id;
+    if (!userId) return res.status(400).json({ error: 'Invalid or expired code' });
+    const token = newToken();
+    await pool.query(
+      `INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)`,
+      [hashToken(token), userId, new Date(Date.now() + SESSION_TTL_MS)],
+    );
+    res.json({ token });
+  } catch (err: unknown) {
+    console.error('native exchange error:', err);
+    res.status(500).json({ error: 'Exchange failed' });
   }
 });
 
