@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inkwell — The Student's Daily</title>
+<meta name="description" content="Inkwell is the AI study companion that files your readings, drafts your flashcards, and keeps your semester on the record. Upload anything — PDFs, slides, textbooks, videos — and study from what you actually use.">
+<meta name="theme-color" content="#191817">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#191817; --surface:#22201f; --text:#ebe7e5;
+  --divider:color-mix(in srgb,#ebe7e5 16%,transparent);
+  --n500:#6e6a69; --n600:#918d8c; --n700:#b3afae;
+  --accent:#38a6cf; --accent-700:#83c9e6; --accent-200:#0f3c4e;
+  --pink:#ff7fa9; --success:#2f9e57; --warning:#f59e0b;
+  --serif:"Source Serif 4",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+html.light{
+  --bg:#f3f2f2; --surface:#eae9e9; --text:#201e1d;
+  --divider:color-mix(in srgb,#201e1d 16%,transparent);
+  --n500:#9b9797; --n600:#7d7979; --n700:#605d5d;
+  --accent:#0088b0; --accent-700:#006786; --accent-200:#cbeeff;
+  --pink:#aa0b56;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--serif);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.sheet{max-width:1160px;margin:0 auto;padding:0 32px 64px}
+
+/* ---------- masthead ---------- */
+.mast{padding:18px 0 0}
+.mast-row{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--n600);border-top:1px solid var(--divider);border-bottom:1px solid var(--divider);padding:6px 2px}
+.mast-title{display:flex;align-items:baseline;justify-content:center;gap:18px;padding:26px 0 18px}
+.mast-title h1{font-size:clamp(30px,7vw,58px);font-weight:700;letter-spacing:.14em;text-transform:uppercase;line-height:1;white-space:nowrap}
+.fleuron{color:var(--accent);font-size:22px;transform:translateY(-6px)}
+.mast-sub{display:flex;justify-content:center;gap:28px;font-family:var(--mono);font-size:11.5px;color:var(--n600);padding-bottom:14px}
+.mast-sub b{color:var(--text);font-weight:500}
+.mast-sub .up{color:var(--accent)}
+.theme-btn{position:fixed;top:12px;right:14px;z-index:9;font-family:var(--mono);font-size:11px;color:var(--n600);background:none;border:1px solid var(--divider);border-radius:2px;padding:4px 9px;cursor:pointer}
+.theme-btn:hover{color:var(--text);border-color:var(--n500)}
+.double{border-top:3px double var(--text);opacity:.85}
+
+/* ---------- section nav ---------- */
+.sectnav{display:flex;justify-content:center;gap:0;flex-wrap:wrap;border-bottom:1px solid var(--divider);margin-bottom:26px}
+.sectnav a{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--n600);text-decoration:none;padding:8px 16px;border-right:1px solid var(--divider)}
+.sectnav a:first-child{border-left:1px solid var(--divider)}
+.sectnav a:hover,.sectnav a.on{color:var(--text)}
+.sectnav a.cta{color:var(--accent)}
+.sectnav a.cta:hover{color:var(--accent-700)}
+
+/* ---------- front page grid ---------- */
+.front,.wire>*{min-width:0}
+.front{display:grid;grid-template-columns:1fr 1fr 300px;gap:0 30px}
+.front .lead{grid-column:1 / 3;border-right:1px solid var(--divider);padding-right:30px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.lead h2{font-size:34px;font-weight:700;line-height:1.14;margin-bottom:12px;transition:opacity .25s}
+.lead .deck{font-size:16px;line-height:1.55;color:var(--n700);max-width:56ch;text-align:justify;hyphens:auto;margin-bottom:18px;transition:opacity .25s}
+.fading{opacity:0}
+.lead .meta-line{font-family:var(--mono);font-size:11.5px;color:var(--n600);margin-bottom:8px}
+.prog{height:3px;background:var(--divider);border-radius:1px;max-width:420px;margin-bottom:20px}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:1px}
+.btn{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;background:var(--accent);color:var(--bg);border:none;border-radius:2px;padding:11px 22px;cursor:pointer;text-decoration:none;display:inline-block}
+.btn:hover{filter:brightness(1.12)}
+.btn.ghost{background:none;color:var(--accent-700);border:1px solid var(--divider)}
+.btn.ghost:hover{border-color:var(--n500);filter:none}
+
+/* briefs column */
+.briefs{padding-bottom:8px}
+.briefs-head{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--text);padding-bottom:6px;margin-bottom:4px}
+.briefs-head h3{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:500}
+.brief{display:block;padding:12px 0;border-bottom:1px solid var(--divider);text-decoration:none}
+.brief:hover .b-t{color:var(--accent-700)}
+.b-k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--n500);margin-bottom:3px}
+.b-t{font-size:15px;font-weight:600;line-height:1.3;transition:color .15s}
+.b-m{font-family:var(--mono);font-size:11px;color:var(--n600);margin-top:3px}
+.flag{color:var(--pink)}
+
+/* ---------- section heads ---------- */
+.sect-head{display:flex;align-items:center;gap:14px;margin:34px 0 16px}
+.sect-head h3{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;font-weight:500;white-space:nowrap}
+.sect-head::before,.sect-head::after{content:"";height:1px;background:var(--divider);flex:1}
+
+/* feature desks (courses slot) */
+.courses{display:grid;grid-template-columns:repeat(3,1fr);gap:0 30px}
+.course{border-top:2px solid var(--text);padding:12px 0 16px;display:block;text-decoration:none}
+.course:hover h4{color:var(--accent-700)}
+.course h4{font-size:17px;font-weight:700;margin-bottom:2px;transition:color .15s}
+.course .c-next{font-size:13px;color:var(--n700);font-style:italic;margin-bottom:10px;min-height:38px}
+.c-bar{height:3px;background:var(--divider);border-radius:1px;margin-bottom:6px}
+.c-bar i{display:block;height:100%;background:var(--accent);border-radius:1px}
+.c-m{font-family:var(--mono);font-size:10.5px;color:var(--n600)}
+
+/* composing room */
+.wire{display:grid;grid-template-columns:1fr 1fr 300px;gap:0 30px}
+.doclist .row{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--divider)}
+.doclist .row:hover .d-n{color:var(--accent-700)}
+.d-n{font-size:14.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.d-m{font-family:var(--mono);font-size:10.5px;color:var(--n500);white-space:nowrap}
+.notices .note{padding:10px 0;border-bottom:1px solid var(--divider)}
+.notices .b-t{font-size:14px}
+.margin-q{border-left:2px solid var(--accent);padding-left:16px}
+.margin-q p{font-style:italic;font-size:15px;line-height:1.6;color:var(--n700);margin-bottom:8px}
+.margin-q .b-k{margin-bottom:8px}
+footer{margin-top:44px;border-top:3px double var(--text);padding-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--n500)}
+footer a{color:var(--accent);text-decoration:none}
+footer a:hover{text-decoration:underline}
+@media(max-width:960px){.front,.wire{grid-template-columns:1fr}.front .lead{grid-column:auto;border-right:none;padding-right:0}.courses{grid-template-columns:1fr}.lead h2{font-size:26px}.mast-sub{flex-wrap:wrap;gap:10px 18px;justify-content:center}}
+</style>
+</head>
+<body>
+<button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ light</button>
+<div class="sheet">
+
+  <header class="mast">
+    <div class="mast-row"><span>THE STUDENT'S DAILY</span><span id="dateline">—</span><span>EST. MMXXVI</span></div>
+    <div class="mast-title"><h1>Inkwell</h1><span class="fleuron">❦</span></div>
+    <div class="mast-sub">
+      <span><b>Every reading,</b> filed &amp; classified</span>
+      <span><b class="up">Cards, quizzes, guides</b> — drafted for you</span>
+      <span><b>One app</b> for the whole semester</span>
+    </div>
+    <div class="double"></div>
+    <nav class="sectnav">
+      <a href="#front" class="on">Front page</a><a href="#desks">The Desks</a><a href="#composing">The Composing Room</a><a href="#margin">The Margin</a><a class="cta" href="https://app.inkd.dev">Sign in →</a>
+    </nav>
+  </header>
+
+  <section class="front" id="front">
+    <article class="lead" id="lead">
+      <div class="kicker" id="l-k">Announcing</div>
+      <h2 id="l-h">Your entire semester, set in type.</h2>
+      <p class="deck" id="l-d">Inkwell takes the pile you actually study from — lecture slides, problem sets, textbooks, recorded lectures — and turns it into one organized desk. Documents are classified the moment they arrive, chapters are extracted so you always know where you left off, and the review materials are drafted from your own sources, never generic ones.</p>
+      <div class="meta-line" id="l-m">PDF · DOCX · PPTX · EPUB · VIDEO — ALL ACCEPTED AT THE DESK</div>
+      <div class="prog"><i id="l-p" style="width:100%"></i></div>
+      <a class="btn" href="https://app.inkd.dev">Open the app →</a>
+      <button class="btn ghost" style="margin-left:10px" onclick="nextStory()">Not this — next ↻</button>
+    </article>
+
+    <aside class="briefs">
+      <div class="briefs-head"><h3>Briefs</h3></div>
+      <a class="brief" href="https://app.inkd.dev">
+        <div class="b-k">Generation</div>
+        <div class="b-t">Flashcards &amp; quizzes drafted from your own documents</div>
+        <div class="b-m">AUTO-BUILT AS YOU UPLOAD</div>
+      </a>
+      <a class="brief" href="https://app.inkd.dev">
+        <div class="b-k">Tutor</div>
+        <div class="b-t">Ask about your highlights — answers cite your sources</div>
+        <div class="b-m">CHAT GROUNDED IN YOUR LIBRARY</div>
+      </a>
+      <a class="brief" href="https://app.inkd.dev">
+        <div class="b-k">Roadmaps</div>
+        <div class="b-t">Courses that assemble themselves into next steps</div>
+        <div class="b-m">VIDEO · READING · CHECKPOINTS</div>
+      </a>
+      <a class="brief" href="https://app.inkd.dev">
+        <div class="b-k">Read aloud</div>
+        <div class="b-t">Text-to-speech that follows your reading, chapter by chapter</div>
+        <div class="b-m">BUILT IN — NO EXTRA APP</div>
+      </a>
+    </aside>
+  </section>
+
+  <div class="sect-head" id="desks"><h3>The Desks</h3></div>
+  <section class="courses">
+    <a class="course" href="https://app.inkd.dev">
+      <h4>The Reader</h4>
+      <p class="c-next">Textbooks and papers split into chapters; your page is kept, your progress remembered.</p>
+      <div class="c-bar"><i style="width:100%"></i></div>
+      <div class="c-m">CHAPTERS · PROGRESS · READ-ALOUD</div>
+    </a>
+    <a class="course" href="https://app.inkd.dev">
+      <h4>The Tutor</h4>
+      <p class="c-next">A study partner that has read everything you've uploaded, and shows its sources.</p>
+      <div class="c-bar"><i style="width:100%"></i></div>
+      <div class="c-m">CHAT · CITATIONS · TOPIC MAP</div>
+    </a>
+    <a class="course" href="https://app.inkd.dev">
+      <h4>The Examiner</h4>
+      <p class="c-next">Practice tests built from your materials, then graded with the same strictness as the real thing.</p>
+      <div class="c-bar"><i style="width:100%"></i></div>
+      <div class="c-m">PRACTICE TESTS · FLASHCARDS · REVIEW</div>
+    </a>
+  </section>
+
+  <div class="sect-head" id="composing"><h3>The Composing Room</h3></div>
+  <section class="wire">
+    <div class="doclist">
+      <div class="row"><span class="d-n">Drop in a PDF — it's classified and filed on arrival</span><span class="d-m">STEP 1</span></div>
+      <div class="row"><span class="d-n">Chapters extracted; where you stop is remembered</span><span class="d-m">STEP 2</span></div>
+      <div class="row"><span class="d-n">Cards, quizzes &amp; study guides drafted from the source</span><span class="d-m">STEP 3</span></div>
+      <div class="row"><span class="d-n">Exam week: practice tests on tap, deadlines on record</span><span class="d-m">STEP 4</span></div>
+    </div>
+    <div class="doclist">
+      <div class="row"><span class="d-n">Lecture slides &amp; decks</span><span class="d-m">PPTX · KEYNOTE EXPORTS</span></div>
+      <div class="row"><span class="d-n">Problem sets &amp; handouts</span><span class="d-m">PDF · DOCX</span></div>
+      <div class="row"><span class="d-n">Textbooks, whole editions</span><span class="d-m">EPUB · PDF</span></div>
+      <div class="row"><span class="d-n">Recorded lectures &amp; video plans</span><span class="d-m">VIDEO · YOUTUBE</span></div>
+      <div class="row"><span class="d-n">Course syllabi — dates pulled out automatically</span><span class="d-m">DEADLINES</span></div>
+    </div>
+    <aside class="notices">
+      <div class="kicker" style="margin-bottom:2px">Notices</div>
+      <div class="note"><div class="b-t">Inkwell is in active development</div><div class="b-m">THE DESK CHANGES DAILY</div></div>
+      <div class="note"><div class="b-t">Your documents stay yours</div><div class="b-m">STORED SERVER-SIDE · NO AD TECH</div></div>
+      <div class="note"><div class="b-t">Sign in with Google</div><div class="b-m">ONE ENTRANCE — <span class="flag">APP.INKD.DEV</span></div></div>
+    </aside>
+  </section>
+
+  <div class="sect-head" id="margin"><h3>The Margin</h3></div>
+  <section class="wire">
+    <aside class="margin-q">
+      <div class="kicker">House style</div>
+      <p>“Read diligently.” Nothing at this desk is auto-generated filler — every card, quiz, and summary is set from the sources you brought with you.</p>
+      <div class="b-m">THE INKWELL METHOD · <a href="https://app.inkd.dev" style="color:var(--accent)">SEE IT IN THE APP →</a></div>
+    </aside>
+    <div></div>
+    <div></div>
+  </section>
+
+  <footer>
+    <span>SET IN SOURCE SERIF · INKWELL — THE STUDENT'S DAILY</span>
+    <span>© MMXXVI</span>
+    <span><a href="https://app.inkd.dev">APP.INKD.DEV →</a></span>
+  </footer>
+</div>
+
+<script>
+// Dateline — today, always.
+document.getElementById('dateline').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+// Theme
+const themeBtn=document.getElementById('theme-btn');
+function setBtn(){themeBtn.textContent=document.documentElement.classList.contains('light')?'☾ dark':'☀ light'}
+function toggleTheme(){document.documentElement.classList.toggle('light');setBtn()}
+if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.classList.add('light')}
+setBtn();
+
+// Lead story cycle — three angles on the product.
+const stories=[
+ {k:'Announcing',h:'Your entire semester, set in type.',
+  d:'Inkwell takes the pile you actually study from — lecture slides, problem sets, textbooks, recorded lectures — and turns it into one organized desk. Documents are classified the moment they arrive, chapters are extracted so you always know where you left off, and the review materials are drafted from your own sources, never generic ones.',
+  m:'PDF · DOCX · PPTX · EPUB · VIDEO — ALL ACCEPTED AT THE DESK',p:100},
+ {k:'The Review Desk',h:'Flashcards that cite their source.',
+  d:'Every deck is drafted from what you uploaded — the definition your professor used, not the first hit on the internet. Cards schedule themselves for review, the hard ones come back sooner, and ten minutes a day keeps the streak on record.',
+  m:'SPACED REPETITION · QUIZZES · STUDY GUIDES',p:80},
+ {k:'The Roadmap',h:'Courses that assemble themselves.',
+  d:'Point Inkwell at a course and it builds the plan: a video here, a short reading there, checkpoint questions to prove you absorbed it. The next step is always on the front page — about the length of one focused sitting.',
+  m:'VIDEO · READING · CHECKPOINTS — ONE NEXT STEP AT A TIME',p:60},
+];
+let si=0;
+function renderStory(){
+  const s=stories[si],lead=document.getElementById('lead');
+  lead.querySelectorAll('#l-h,#l-d,#l-m').forEach(e=>e.classList.add('fading'));
+  setTimeout(()=>{
+    document.getElementById('l-k').textContent=s.k;
+    document.getElementById('l-h').textContent=s.h;
+    document.getElementById('l-d').textContent=s.d;
+    document.getElementById('l-m').textContent=s.m;
+    document.getElementById('l-p').style.width=s.p+'%';
+    lead.querySelectorAll('#l-h,#l-d,#l-m').forEach(e=>e.classList.remove('fading'));
+  },220);
+}
+function nextStory(){si=(si+1)%stories.length;renderStory()}
+</script>
+</body>
+</html>
