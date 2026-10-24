@@ -2,7 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://inkwell.cephalode.com/api/:path*" },
-    { "source": "/", "destination": "/landing.html", "has": [{ "type": "host", "value": "inkd.dev" }] },
     { "source": "/:path*", "destination": "/index.html" }
+  ],
+  "redirects": [
+    { "source": "/", "destination": "/landing.html", "permanent": false, "has": [{ "type": "host", "value": "inkd.dev" }] }
   ]
 }
